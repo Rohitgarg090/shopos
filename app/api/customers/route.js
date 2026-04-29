@@ -1,0 +1,4 @@
+import { supabase } from '@/lib/supabase'; import { NextResponse } from 'next/server';
+export async function GET(){const{data,error}=await supabase.from('customers').select('*').order('created_at',{ascending:false});if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json(data);}
+export async function POST(req){const b=await req.json();const{data,error}=await supabase.from('customers').insert([b]).select().single();if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json(data,{status:201});}
+export async function DELETE(req){const{searchParams}=new URL(req.url);const id=searchParams.get('id');const{error}=await supabase.from('customers').delete().eq('id',id);if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json({success:true});}
