@@ -74,7 +74,7 @@ export const FloatingNav: React.FC<FloatingNavProps> = ({ activePage, onNavigate
         {items.map((item, index) => (
           <button
             key={item.id}
-            ref={(el) => (btnRefs.current[index] = el)}
+            ref={(el) => { if (el) btnRefs.current[index] = el; }}
             onClick={() => handleNavClick(index, item.page)}
             className="relative flex flex-col items-center justify-center flex-1 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors duration-200 hover:text-gray-900 dark:hover:text-gray-100"
           >
