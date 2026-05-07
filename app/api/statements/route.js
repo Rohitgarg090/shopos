@@ -29,15 +29,6 @@ export async function GET(req) {
   return NextResponse.json((data||[]).map(s => ({ ...shape(s), fileData: undefined })));
 }
 
-export async function GET_ONE(req) {
-  const c = await ctx(req);
-  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const id = new URL(req.url).searchParams.get('id');
-  const { data, error } = await c.sb.from('customer_statements').select('*').eq('id', id).single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(shape(data));
-}
-
 export async function POST(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
