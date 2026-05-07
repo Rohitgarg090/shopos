@@ -1,22 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-function getSupabase(token) {
-  const sb = createClient(
+function getSb(token) {
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     { global: { headers: { Authorization: `Bearer ${token}` } } }
   );
-  return sb;
 }
 
-async function getUser(req) {
-  const auth = req.headers.get('authorization') || '';
-  const token = auth.replace('Bearer ', '').trim();
-  if (!token) return { user: null, supabase: null, token: null };
-  const sb = getSupabase(token);
+async function ctx(req) {
+  const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
+  if (!token) return null;
+  const sb = getSb(token);
   const { data: { user } } = await sb.auth.getUser();
-  return { user, supabase: sb, token };
+  return user ? { user, sb, firmId: req.headers.get('x-firm-id') } : null;
 }
 
 const shape = r => ({
@@ -44,45 +42,91 @@ const shape = r => ({
   ewbPassword: r.ewb_password || '',
   interestEnabled: !!r.interest_enabled,
   interestOnOpeningBalance: !!r.interest_on_opening_balance,
+  msg91Key: r.msg91_key || '',
+  msg91SmsTemplate: r.msg91_sms_template || '',
+  msg91WaTemplate: r.msg91_wa_template || '',
+  notifEnabled: !!r.notif_enabled,
 });
 
 export async function GET(req) {
-  const { user, supabase } = await getUser(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const c = await ctx(req);
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { data, error } = await supabase
-    .from('firm_settings').select('*').eq('user_id', user.id).single();
-
-  if (error && error.code === 'PGRST116') return NextResponse.json(shape({}));
+  // Try firm-specific first, fall back to user-only query
+  let query = c.sb.from('firm_settings').select('*').eq('user_id', c.user.id);
+  if (c.firmId) query = query.eq('firm_id', c.firmId);
+  
+  const { data, error } = await query.maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(shape(data));
+  return NextResponse.json(shape(data || {}));
 }
 
 export async function POST(req) {
-  const { user, supabase } = await getUser(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const c = await ctx(req);
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const b = await req.json();
-  const row = {
-    user_id: user.id,
-    name: b.name || '', shoptype: b.shoptype || '', gstin: b.gstin || '',
-    address: b.address || '', mobile: b.mobile || '', email: b.email || '',
-    sender_email: b.senderEmail || '', state: b.state || 'Madhya Pradesh',
-    state_code: b.stateCode || '23', pincode: b.pincode || '',
-    bank_name: b.bankName || '', bank_account: b.bankAccount || '',
-    bank_ifsc: b.bankIFSC || '', invoice_prefix: b.invoicePrefix || 'INV',
-    invoice_seq: b.invoiceSeq || 1, logo: b.logo || '',
-    email_subject: b.emailSubject || '', email_body: b.emailBody || '',
-    terms: b.terms || '', gemini_key: b.geminiKey || '',
-    ewb_username: b.ewbUsername || '', ewb_password: b.ewbPassword || '',
+  
+  const fields = {
+    name: b.name || '',
+    shoptype: b.shoptype || '',
+    gstin: b.gstin || '',
+    address: b.address || '',
+    mobile: b.mobile || '',
+    email: b.email || '',
+    sender_email: b.senderEmail || '',
+    state: b.state || 'Madhya Pradesh',
+    state_code: b.stateCode || '23',
+    pincode: b.pincode || '',
+    bank_name: b.bankName || '',
+    bank_account: b.bankAccount || '',
+    bank_ifsc: b.bankIFSC || '',
+    invoice_prefix: b.invoicePrefix || 'INV',
+    invoice_seq: b.invoiceSeq || 1,
+    logo: b.logo || '',
+    email_subject: b.emailSubject || '',
+    email_body: b.emailBody || '',
+    terms: b.terms || '',
+    gemini_key: b.geminiKey || '',
+    ewb_username: b.ewbUsername || '',
+    ewb_password: b.ewbPassword || '',
     interest_enabled: !!b.interestEnabled,
     interest_on_opening_balance: !!b.interestOnOpeningBalance,
+    msg91_key: b.msg91Key || '',
+    msg91_sms_template: b.msg91SmsTemplate || '',
+    msg91_wa_template: b.msg91WaTemplate || '',
+    notif_enabled: !!b.notifEnabled,
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
-    .from('firm_settings').upsert(row, { onConflict: 'user_id' }).select().single();
+  // Step 1: check if row exists for this user+firm
+  let existsQuery = c.sb.from('firm_settings').select('id').eq('user_id', c.user.id);
+  if (c.firmId) existsQuery = existsQuery.eq('firm_id', c.firmId);
+  const { data: existing } = await existsQuery.maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  let data, error;
+
+  if (existing?.id) {
+    // UPDATE existing row
+    ({ data, error } = await c.sb.from('firm_settings')
+      .update(fields)
+      .eq('id', existing.id)
+      .select().single());
+  } else {
+    // INSERT new row
+    const insertRow = {
+      user_id: c.user.id,
+      ...(c.firmId ? { firm_id: c.firmId } : {}),
+      ...fields,
+    };
+    ({ data, error } = await c.sb.from('firm_settings')
+      .insert([insertRow])
+      .select().single());
+  }
+
+  if (error) {
+    console.error('[settings] save error:', error.message, 'code:', error.code);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json(shape(data));
 }

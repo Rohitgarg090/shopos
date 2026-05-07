@@ -1,4 +1,14 @@
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+
+async function ctx(req) {
+  const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
+  if (!token) return null;
+  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { global: { headers: { Authorization: `Bearer ${token}` } } });
+  const { data: { user } } = await sb.auth.getUser();
+  return user ? { user, sb, firmId: req.headers.get('x-firm-id') } : null;
+}
 
 // Build invoice HTML for email
 function buildInvoiceHTML(bill, firm, payments = []) {
@@ -146,6 +156,9 @@ function buildInvoiceHTML(bill, firm, payments = []) {
 }
 
 export async function POST(req) {
+  const c = await ctx(req);
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const body = await req.json();
   const { bill, firm, payments, toEmail, customSubject, customBody } = body;
 

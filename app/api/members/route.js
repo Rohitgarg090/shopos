@@ -94,6 +94,17 @@ export async function PATCH(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { memberId, role, status } = await req.json();
+
+  // Verify member exists and get firmId
+  const { data: member } = await c.sb.from('firm_members').select('firm_id').eq('id', memberId).single();
+  if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+
+  // Verify current user has manager/owner role in this firm
+  const { data: myRole } = await c.sb.from('firm_members')
+    .select('role').eq('firm_id', member.firm_id).eq('user_id', c.user.id).single();
+  if (!myRole || !['owner','manager'].includes(myRole.role))
+    return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+
   const updates = {};
   if (role) updates.role = role;
   if (status) updates.status = status;
@@ -107,6 +118,17 @@ export async function DELETE(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = new URL(req.url).searchParams.get('id');
+
+  // Verify member exists and get firmId
+  const { data: member } = await c.sb.from('firm_members').select('firm_id').eq('id', id).single();
+  if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+
+  // Verify current user has manager/owner role in this firm
+  const { data: myRole } = await c.sb.from('firm_members')
+    .select('role').eq('firm_id', member.firm_id).eq('user_id', c.user.id).single();
+  if (!myRole || !['owner','manager'].includes(myRole.role))
+    return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+
   const { error } = await c.sb.from('firm_members').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });

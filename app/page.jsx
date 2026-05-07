@@ -1,5 +1,5 @@
-import ShopOS from '@/components/ShopOS'
+import PageWrapper from './page-wrapper';
 
 export default function Page() {
-  return <ShopOS />;
+  return <PageWrapper />;
 }
