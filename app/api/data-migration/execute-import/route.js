@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import csv from 'csv-parse/sync';
+import { parse } from 'csv-parse/sync';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -44,7 +44,7 @@ export async function POST(req) {
     const csvText = await csvFile.text();
     let records;
     try {
-      records = csv.parse(csvText, {
+      records = parse(csvText, {
         columns: true,
         skip_empty_lines: true,
       });
