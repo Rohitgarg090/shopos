@@ -2147,7 +2147,7 @@ function BroadcastModal({firm,C,B,Py,onClose,onSent}){
         </button>)}
       </div>
       {filtered.length>0&&<div style={{...S.card,maxHeight:200,overflowY:'auto',marginBottom:8}}>
-        <div style={S.h3} style={{marginBottom:8}}>Select ({selected.size}/{filtered.length})</div>
+        <div style={{...S.h3,marginBottom:8}}>Select ({selected.size}/{filtered.length})</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:6}}>{filtered.map(c=><label key={c.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px',border:'0.5px solid '+BORD,borderRadius:6,cursor:'pointer',background:selected.has(c.id)?BLL:'#fff'}}>
           <input type='checkbox' checked={selected.has(c.id)} onChange={e=>{const s=new Set(selected);e.target.checked?s.add(c.id):s.delete(c.id);setSelected(s);}} style={{cursor:'pointer'}}/>
           <div>
