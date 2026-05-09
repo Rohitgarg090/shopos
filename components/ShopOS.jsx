@@ -7,6 +7,7 @@ import BillingDashboard from '@/components/BillingDashboard';
 import TrialExtensionModal from '@/components/TrialExtensionModal';
 import UpgradeBlockModal from '@/components/UpgradeBlockModal';
 import BillingPopup from '@/components/BillingPopup';
+import SupportTickets from '@/components/SupportTickets';
 
 /* ── constants ── */
 const CATS=['All','Kids','Girls','Men','Women','Jeans','Tops','Jackets','Hosiery','Woollen','Suits','Others'];
@@ -220,6 +221,8 @@ export default function ShopOS(){
   const[showTrialExtend,setShowTrialExtend]=useState(false);
   const[showUpgradeBlock,setShowUpgradeBlock]=useState(false);
   const[showBillingPopup,setShowBillingPopup]=useState(false);
+  const[announcements,setAnnouncements]=useState([]);
+  const[dismissedAnnouncements,setDismissedAnnouncements]=useState(()=>isBR?JSON.parse(localStorage.getItem('dismissed_announcements')||'[]'):[]);
   const ww=useWW();const mob=ww<768;const tab=ww<1024;
 
   useEffect(()=>{supabase.auth.getSession().then(({data:{session}})=>{setSes(session);setAl(false);});const{data:{subscription}}=supabase.auth.onAuthStateChange((event,s)=>{if(event==='SIGNED_OUT'){setSes(null);}else if(s){setSes(s);}});return()=>subscription.unsubscribe();},[]);
@@ -257,6 +260,18 @@ export default function ShopOS(){
       }catch(e){console.error('Failed to check trial:',e);}
     };
     checkTrial();
+  },[ses]);
+
+  // Fetch announcements
+  useEffect(()=>{
+    if(!ses)return;
+    const fetchAnnouncements=async()=>{
+      try{
+        const res=await api.get('/api/announcements');
+        setAnnouncements((res.announcements||[]).filter(a=>!dismissedAnnouncements.includes(a.id)));
+      }catch(e){console.error('Failed to fetch announcements:',e);}
+    };
+    fetchAnnouncements();
   },[ses]);
 
   useEffect(()=>{
@@ -339,18 +354,39 @@ export default function ShopOS(){
 
   const modernBg=_theme==='modern'?'linear-gradient(135deg, #EEF2FF 0%, #F0F9FF 50%, #F5F3FF 100%)':BG;
   const modernCSS=_theme==='modern'?'button:hover{opacity:1!important;transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.12)!important;transition:all 0.2s ease}input:focus,select:focus,textarea:focus{border-color:#1B5E8A!important;box-shadow:0 0 0 3px rgba(27,94,138,.12)!important}tr:hover td{background:rgba(27,94,138,.02)!important}.shopos-card-modern{transition:transform 0.2s ease,box-shadow 0.2s ease}.shopos-card-modern:hover{transform:translateY(-2px);box-shadow:0 16px 48px rgba(31,38,135,.12)!important}':'button:hover{opacity:.85}input:focus,select:focus,textarea:focus{border-color:'+BL+'!important;box-shadow:0 0 0 2px rgba(27,94,138,.12)!important;outline:none!important}tr:hover td{background:#fafaf8}';
+
+  const AnnouncementBanner=({announcement})=>{
+    const colors={info:{bg:BLL,co:BL,icon:'ℹ️'},warning:{bg:AMBL,co:AMB,icon:'⚠️'},maintenance:{bg:'#FEF3E0',co:'#F97316',icon:'🔧'},critical:{bg:'rgba(255,0,0,0.08)',co:'#EF4444',icon:'🚨'}};
+    const c=colors[announcement.type]||colors.info;
+    return<div style={{background:c.bg,border:'0.5px solid '+c.co+'40',borderRadius:8,padding:'12px 16px',marginBottom:8,display:'flex',alignItems:'flex-start',gap:12,justifyContent:'space-between'}}>
+      <div style={{display:'flex',gap:12,flex:1,alignItems:'flex-start'}}>
+        <span style={{fontSize:18,flexShrink:0}}>{c.icon}</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:13,color:c.co}}>{announcement.title}</div>
+          <div style={{fontSize:12,color:c.co+'80',marginTop:2,lineHeight:1.4}}>{announcement.message}</div>
+        </div>
+      </div>
+      <button onClick={()=>{setDismissedAnnouncements(d=>{const nd=[...d,announcement.id];if(isBR)localStorage.setItem('dismissed_announcements',JSON.stringify(nd));return nd;});setAnnouncements(a=>a.filter(x=>x.id!==announcement.id));}} style={{border:'none',background:'transparent',cursor:'pointer',color:c.co+'60',fontSize:16,flexShrink:0,padding:0}}>×</button>
+    </div>;
+  };
+
   return<div style={{fontFamily:"'Inter',system-ui,sans-serif",background:modernBg,minHeight:'100vh',color:TXT,paddingBottom:mob?64:0}}>
     <style>{'@import url(\'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap\');@keyframes spin{to{transform:rotate(360deg)}}'+modernCSS+'@media print{.np{display:none!important}}'}</style>
 
+    {/* Announcements */}
+    {announcements.length>0&&<div style={{maxWidth:'100%',padding:mob?'8px 12px':'12px 16px',background:_theme==='modern'?'rgba(15,23,42,0.5)':'#fafaf8',borderBottom:_theme==='modern'?'1px solid rgba(255,255,255,0.1)':'0.5px solid '+BORD,position:'sticky',top:0,zIndex:99}}>
+      {announcements.map(a=><AnnouncementBanner key={a.id} announcement={a}/>)}
+    </div>}
+
     {/* Desktop/Tablet nav */}
-    {!mob&&<nav style={_theme==='modern'?{display:'flex',alignItems:'center',padding:'0 14px',background:'linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.95))',backdropFilter:'blur(20px)',borderBottom:'1px solid rgba(148,163,184,0.2)',boxShadow:'0 8px 32px rgba(0,0,0,0.15)',position:'sticky',top:0,zIndex:100,flexWrap:'wrap',minHeight:48}:{display:'flex',alignItems:'center',padding:'0 14px',background:'#fff',borderBottom:'0.5px solid '+BORD,position:'sticky',top:0,zIndex:100,flexWrap:'wrap',minHeight:46}} className='np'>
+    {!mob&&<nav style={_theme==='modern'?{display:'flex',alignItems:'center',padding:'0 14px',background:'linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.95))',backdropFilter:'blur(20px)',borderBottom:'1px solid rgba(148,163,184,0.2)',boxShadow:'0 8px 32px rgba(0,0,0,0.15)',position:'sticky',top:announcements.length>0?56:0,zIndex:100,flexWrap:'wrap',minHeight:48}:{display:'flex',alignItems:'center',padding:'0 14px',background:'#fff',borderBottom:'0.5px solid '+BORD,position:'sticky',top:announcements.length>0?56:0,zIndex:100,flexWrap:'wrap',minHeight:46}} className='np'>
       <span style={_theme==='modern'?{fontSize:15,fontWeight:800,color:'#fff',marginRight:8,letterSpacing:'-0.5px'}:{fontSize:15,fontWeight:800,color:BL,marginRight:8,letterSpacing:'-0.5px'}}>SHOP<span style={{color:_theme==='modern'?'#FF8C42':AMB}}>OS</span></span>
       <div style={{display:'flex',flex:1,flexWrap:'wrap'}}>
         {TABS.map(([p,l])=><button key={p} onClick={()=>setPage(p)} style={_theme==='modern'&&page===p?{padding:'6px 14px',border:'none',borderRadius:8,background:'linear-gradient(135deg, #1B5E8A, #2980b9)',color:'#fff',cursor:'pointer',fontSize:tab?10:11.5,fontWeight:700,boxShadow:'0 4px 12px rgba(27,94,138,0.3)',whiteSpace:'nowrap',transition:'all 0.2s ease'}:_theme==='modern'?{padding:'6px 14px',border:'none',borderRadius:8,background:'transparent',color:'rgba(255,255,255,0.7)',cursor:'pointer',fontSize:tab?10:11.5,fontWeight:500,whiteSpace:'nowrap',transition:'all 0.2s ease'}:{padding:'12px 8px',border:'none',borderRadius:0,background:'transparent',color:page===p?BL:MUT,cursor:'pointer',fontSize:tab?10:11.5,fontWeight:page===p?700:500,borderBottom:page===p?'2px solid '+BL:'2px solid transparent',whiteSpace:'nowrap'}} onMouseEnter={e=>{if(_theme==='modern'&&page!==p)e.currentTarget.style.color='rgba(255,255,255,0.9)'}} onMouseLeave={e=>{if(_theme==='modern'&&page!==p)e.currentTarget.style.color='rgba(255,255,255,0.7)'}}>{l}</button>)}
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:8}}>
         <FirmDropdown activeFirm={activeFirm} firms={firms} onSwitch={switchFirm} onAdd={()=>setPage('team')} onRefresh={refreshFirms}/>
-        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={p=>{if(p==='settings')setPage('settings');else if(p==='labels')setPage('labels');else if(p==='profile')alert('Profile editing coming soon');else if(p==='billing')setShowBillingPopup(true);else if(p==='help')alert('Help & Support coming soon');}}/>
+        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={p=>{if(p==='settings')setPage('settings');else if(p==='labels')setPage('labels');else if(p==='support')setPage('support');else if(p==='profile')alert('Profile editing coming soon');else if(p==='billing')setShowBillingPopup(true);else if(p==='help')alert('Help & Support coming soon');}}/>
       </div>
     </nav>}
 
@@ -374,6 +410,7 @@ export default function ShopOS(){
       {page==='ledger'&&<Ledger B={B} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
       {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org}/>}
+      {page==='support'&&<SupportTickets mob={mob}/>}
     </div>
 
     {/* Trial Extension Modal */}

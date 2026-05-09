@@ -1,0 +1,215 @@
+import { createClient } from '@supabase/supabase-js';
+
+const ADMIN_EMAILS = ['rohitgargof@gmail.com'];
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+async function verifyAdmin(token) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser(token);
+
+  if (!user || !ADMIN_EMAILS.includes(user.email)) {
+    return null;
+  }
+
+  return user;
+}
+
+function generatePassword() {
+  const names = ['Sharma', 'Patel', 'Kumar', 'Singh', 'Verma', 'Gupta'];
+  const name = names[Math.floor(Math.random() * names.length)];
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `${name}@${num}`;
+}
+
+export async function GET(req) {
+  try {
+    const token = req.headers.get('authorization')?.split('Bearer ')[1];
+    const admin = await verifyAdmin(token);
+
+    if (!admin) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const status = new URL(req.url).searchParams.get('status') || 'all';
+
+    let query = supabase.from('organizations').select('*');
+
+    if (status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const { data: orgs, error } = await query.order('created_at', {
+      ascending: false,
+    });
+
+    if (error) {
+      return Response.json({ error: error.message }, { status: 500 });
+    }
+
+    // Enrich with auth user emails
+    const enriched = await Promise.all(
+      orgs.map(async (org) => {
+        const {
+          data: { user },
+        } = await supabase.auth.admin.getUserById(org.owner_id);
+
+        const trialEndsAt = new Date(org.trial_ends_at);
+        const now = new Date();
+        const trialDaysRemaining = org.status === 'trial'
+          ? Math.ceil((trialEndsAt - now) / (1000 * 60 * 60 * 24))
+          : null;
+
+        return {
+          id: org.id,
+          name: org.name,
+          email: user?.email || 'N/A',
+          status: org.status,
+          plan: org.plan,
+          trialDaysRemaining,
+          createdAt: org.created_at,
+          owner_id: org.owner_id,
+        };
+      })
+    );
+
+    return Response.json({ organizations: enriched });
+  } catch (error) {
+    console.error('GET /admin/organizations error:', error);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(req) {
+  try {
+    const token = req.headers.get('authorization')?.split('Bearer ')[1];
+    const admin = await verifyAdmin(token);
+
+    if (!admin) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { name, email, businessName, phone, plan = 'trial' } = await req.json();
+
+    if (!email || !businessName) {
+      return Response.json(
+        { error: 'Email and business name required' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Generate temp password
+    const tempPassword = generatePassword();
+
+    // 2. Create auth user
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+    });
+
+    if (authError) {
+      return Response.json({ error: authError.message }, { status: 400 });
+    }
+
+    const userId = authData.user.id;
+
+    // 3. Create organization
+    const trialEndsAt = plan === 'free' ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const orgStatus = plan === 'free' ? 'active' : 'trial';
+    const orgPlan = plan === 'free' ? 'starter' : plan;
+
+    const { data: org, error: orgError } = await supabase
+      .from('organizations')
+      .insert({
+        owner_id: userId,
+        name: businessName,
+        status: orgStatus,
+        plan: orgPlan,
+        trial_ends_at: trialEndsAt,
+      })
+      .select()
+      .single();
+
+    if (orgError) {
+      return Response.json({ error: orgError.message }, { status: 500 });
+    }
+
+    // 4. Create firm
+    const { data: firm, error: firmError } = await supabase
+      .from('firms')
+      .insert({
+        name: businessName,
+        owner_id: userId,
+      })
+      .select()
+      .single();
+
+    if (firmError) {
+      return Response.json({ error: firmError.message }, { status: 500 });
+    }
+
+    // 5. Create firm member
+    const { error: memberError } = await supabase
+      .from('firm_members')
+      .insert({
+        firm_id: firm.id,
+        user_id: userId,
+        role: 'owner',
+        status: 'active',
+      });
+
+    if (memberError) {
+      return Response.json({ error: memberError.message }, { status: 500 });
+    }
+
+    // 6. Create firm settings
+    const { error: settingsError } = await supabase
+      .from('firm_settings')
+      .insert({
+        user_id: userId,
+        firm_id: firm.id,
+        name: businessName,
+        mobile: phone || '',
+      });
+
+    if (settingsError) {
+      return Response.json({ error: settingsError.message }, { status: 500 });
+    }
+
+    // 7. Generate magic link
+    const { data: magicLinkData, error: magicError } = await supabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+      options: {
+        redirectTo: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      },
+    });
+
+    if (magicError) {
+      console.error('Magic link error:', magicError);
+    }
+
+    return Response.json({
+      success: true,
+      userId,
+      orgId: org.id,
+      firmId: firm.id,
+      email,
+      businessName,
+      tempPassword,
+      magicLink: magicLinkData?.properties?.action_link || null,
+      portalUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      plan: orgPlan,
+      status: orgStatus,
+      trialEndsAt,
+    });
+  } catch (error) {
+    console.error('POST /admin/organizations error:', error);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}

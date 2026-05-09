@@ -9,6 +9,8 @@ import {
   LogOut,
   ChevronDown,
   QrCode,
+  MessageSquare,
+  Shield,
 } from "lucide-react";
 
 export default function UserMenu({
@@ -37,11 +39,21 @@ export default function UserMenu({
     { icon: Settings, label: "Settings", action: () => onNavigate("settings") },
     { icon: CreditCard, label: "Billing", action: () => onNavigate("billing") },
     {
-      icon: HelpCircle,
-      label: "Help & Support",
-      action: () => onNavigate("help"),
+      icon: MessageSquare,
+      label: "Support Tickets",
+      action: () => onNavigate("support"),
     },
   ];
+
+  if (email === "rohitgargof@gmail.com") {
+    menuItems.unshift({
+      icon: Shield,
+      label: "Admin Panel",
+      action: () => {
+        window.location.href = "/admin";
+      },
+    });
+  }
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
