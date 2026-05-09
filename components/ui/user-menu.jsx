@@ -45,8 +45,7 @@ export default function UserMenu({
     },
   ];
 
-  const ADMIN_EMAILS = ["info@shopos.co.in", "rohitgarg090@gmail.com"];
-  if (ADMIN_EMAILS.includes(email)) {
+  if (email === "rohitgarg090@gmail.com") {
     menuItems.unshift({
       icon: Shield,
       label: "Admin Panel",
