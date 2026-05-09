@@ -45,7 +45,7 @@ export default function UserMenu({
     },
   ];
 
-  if (email === "rohitgargof@gmail.com") {
+  if (email === "rohitgarg090@gmail.com") {
     menuItems.unshift({
       icon: Shield,
       label: "Admin Panel",

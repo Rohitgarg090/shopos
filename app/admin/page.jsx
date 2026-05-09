@@ -20,7 +20,7 @@ export default function AdminPage() {
         data: { session: ses },
       } = await supabase.auth.getSession();
 
-      if (ses?.user?.email === 'rohitgargof@gmail.com') {
+      if (ses?.user?.email === 'rohitgarg090@gmail.com') {
         setSession(ses);
       } else {
         setAccessDenied(true);
