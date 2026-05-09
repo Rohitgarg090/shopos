@@ -85,6 +85,7 @@ export default function AdminPanel({ session }) {
   const fetchData = async () => {
     try {
       setLoading(true);
+      console.log('Fetching admin data...');
       const [orgsRes, analyticsRes, announcementsRes, ticketsRes] = await Promise.all([
         api.get('/api/admin/organizations'),
         api.get('/api/admin/analytics'),
@@ -92,12 +93,17 @@ export default function AdminPanel({ session }) {
         api.get('/api/admin/support'),
       ]);
 
+      console.log('Orgs Response:', orgsRes);
+      console.log('Analytics Response:', analyticsRes);
+      console.log('Tickets Response:', ticketsRes);
+
       setOrganizations(orgsRes.organizations || []);
       setAnalytics(analyticsRes);
       setAnnouncements(announcementsRes.announcements || []);
       setSupportTickets(ticketsRes.tickets || []);
     } catch (error) {
       console.error('Error fetching data:', error);
+      alert('Error loading admin data: ' + error.message);
     } finally {
       setLoading(false);
     }

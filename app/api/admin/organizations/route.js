@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const ADMIN_EMAILS = ['rohitgarg090@gmail.com'];
+const ADMIN_EMAILS = ['info@shopos.co.in', 'rohitgarg090@gmail.com'];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,

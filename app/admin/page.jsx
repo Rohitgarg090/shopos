@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import AdminPanel from '@/components/AdminPanel';
 
+const ADMIN_EMAILS = ['info@shopos.co.in', 'rohitgarg090@gmail.com'];
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -20,7 +22,7 @@ export default function AdminPage() {
         data: { session: ses },
       } = await supabase.auth.getSession();
 
-      if (ses?.user?.email === 'rohitgarg090@gmail.com') {
+      if (ses?.user?.email && ADMIN_EMAILS.includes(ses.user.email)) {
         setSession(ses);
       } else {
         setAccessDenied(true);
