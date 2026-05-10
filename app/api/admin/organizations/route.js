@@ -128,9 +128,24 @@ export async function POST(req) {
     const userId = authData.user.id;
 
     // 3. Create organization
-    const trialEndsAt = plan === 'free' ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    const orgStatus = plan === 'free' ? 'active' : 'trial';
-    const orgPlan = plan === 'free' ? 'starter' : plan;
+    // Map plan to valid database values
+    let orgPlan = 'starter';
+    let orgStatus = 'trial';
+    let trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+    if (plan === 'free') {
+      orgPlan = 'starter';
+      orgStatus = 'active';
+      trialEndsAt = null;
+    } else if (plan === 'trial') {
+      orgPlan = 'starter';
+      orgStatus = 'trial';
+      trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    } else if (['starter', 'business', 'pro', 'enterprise'].includes(plan)) {
+      orgPlan = plan;
+      orgStatus = 'active';
+      trialEndsAt = null;
+    }
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
