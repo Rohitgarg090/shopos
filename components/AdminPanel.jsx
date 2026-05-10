@@ -17,6 +17,82 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+// Announcement form with local state to prevent parent re-renders
+const AnnouncementForm = memo(({ onSubmit, styles, Bell }) => {
+  const [form, setForm] = useState({
+    title: '',
+    message: '',
+    type: 'info',
+    target: 'all',
+    targetOrgIds: [],
+    showUntil: '',
+  });
+
+  const handleSubmit = () => {
+    if (!form.title || !form.message) {
+      alert('Title and message are required');
+      return;
+    }
+    onSubmit(form);
+    setForm({ title: '', message: '', type: 'info', target: 'all', targetOrgIds: [], showUntil: '' });
+  };
+
+  return (
+    <div>
+      <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '16px' }}>
+        New Announcement
+      </h3>
+      <input
+        autoComplete="off"
+        placeholder="Title"
+        value={form.title}
+        onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
+        style={styles.input}
+      />
+      <textarea
+        placeholder="Message"
+        value={form.message}
+        onChange={(e) => setForm(prev => ({ ...prev, message: e.target.value }))}
+        style={{ ...styles.input, minHeight: '100px', fontFamily: 'monospace' }}
+      />
+      <select
+        value={form.type}
+        onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value }))}
+        style={styles.input}
+      >
+        <option value="info">ℹ️ Info</option>
+        <option value="warning">⚠️ Warning</option>
+        <option value="maintenance">🔧 Maintenance</option>
+        <option value="critical">🚨 Critical</option>
+      </select>
+      <select
+        value={form.target}
+        onChange={(e) => setForm(prev => ({ ...prev, target: e.target.value }))}
+        style={styles.input}
+      >
+        <option value="all">All Customers</option>
+        <option value="trial">Trial Only</option>
+        <option value="active">Active Only</option>
+        <option value="specific">Specific Customers</option>
+      </select>
+      <input
+        autoComplete="off"
+        type="datetime-local"
+        placeholder="Show Until"
+        value={form.showUntil}
+        onChange={(e) => setForm(prev => ({ ...prev, showUntil: e.target.value }))}
+        style={styles.input}
+      />
+      <button
+        onClick={handleSubmit}
+        style={{ ...styles.button, width: '100%' }}
+      >
+        <Bell size={14} style={{ marginRight: '6px' }} /> Create Announcement
+      </button>
+    </div>
+  );
+});
+
 // Onboarding form with local state to prevent parent re-renders
 const OnboardingForm = memo(({ onSubmit, styles, Plus }) => {
   const [form, setForm] = useState({
@@ -96,17 +172,7 @@ export default function AdminPanel({ session }) {
   const [createdCustomer, setCreatedCustomer] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [ticketResponse, setTicketResponse] = useState('');
 
-  // Form states
-  const [newAnnouncementForm, setNewAnnouncementForm] = useState({
-    title: '',
-    message: '',
-    type: 'info',
-    target: 'all',
-    targetOrgIds: [],
-    showUntil: '',
-  });
 
   const api = {
     get: async (url) => {
@@ -188,22 +254,9 @@ export default function AdminPanel({ session }) {
     }
   };
 
-  const handleCreateAnnouncement = async () => {
-    if (!newAnnouncementForm.title || !newAnnouncementForm.message) {
-      alert('Title and message are required');
-      return;
-    }
-
+  const handleCreateAnnouncement = async (formData) => {
     try {
-      await api.post('/api/admin/announcements', newAnnouncementForm);
-      setNewAnnouncementForm({
-        title: '',
-        message: '',
-        type: 'info',
-        target: 'all',
-        targetOrgIds: [],
-        showUntil: '',
-      });
+      await api.post('/api/admin/announcements', formData);
       await fetchData();
     } catch (error) {
       alert('Error creating announcement: ' + error.message);
@@ -710,54 +763,11 @@ ShopOS Team`}
   const AnnouncementsTab = () => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
       <div>
-        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '16px' }}>
-          New Announcement
-        </h3>
-        <input
-          placeholder="Title"
-          value={newAnnouncementForm.title}
-          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, title: e.target.value }))}
-          style={styles.input}
+        <AnnouncementForm
+          onSubmit={handleCreateAnnouncement}
+          styles={styles}
+          Bell={Bell}
         />
-        <textarea
-          placeholder="Message"
-          value={newAnnouncementForm.message}
-          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, message: e.target.value }))}
-          style={{ ...styles.input, minHeight: '100px', fontFamily: 'monospace' }}
-        />
-        <select
-          value={newAnnouncementForm.type}
-          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, type: e.target.value }))}
-          style={styles.input}
-        >
-          <option value="info">ℹ️ Info</option>
-          <option value="warning">⚠️ Warning</option>
-          <option value="maintenance">🔧 Maintenance</option>
-          <option value="critical">🚨 Critical</option>
-        </select>
-        <select
-          value={newAnnouncementForm.target}
-          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, target: e.target.value }))}
-          style={styles.input}
-        >
-          <option value="all">All Customers</option>
-          <option value="trial">Trial Only</option>
-          <option value="active">Active Only</option>
-          <option value="specific">Specific Customers</option>
-        </select>
-        <input
-          type="datetime-local"
-          placeholder="Show Until"
-          value={newAnnouncementForm.showUntil}
-          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, showUntil: e.target.value }))}
-          style={styles.input}
-        />
-        <button
-          onClick={handleCreateAnnouncement}
-          style={{ ...styles.button, width: '100%' }}
-        >
-          <Bell size={14} style={{ marginRight: '6px' }} /> Create Announcement
-        </button>
       </div>
 
       <div>
@@ -864,92 +874,106 @@ ShopOS Team`}
     </div>
   );
 
+  // Support detail component with local response state
+  const SupportDetail = memo(({ ticket, onBack, styles }) => {
+    const [response, setResponse] = useState('');
+
+    return (
+      <div>
+        <button onClick={onBack} style={{ ...styles.button, marginBottom: '16px', background: '#94A3B8' }}>
+          ← Back to List
+        </button>
+        <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '10px', padding: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CUSTOMER</div>
+              <div style={{ fontSize: '14px', fontWeight: '600' }}>{ticket.customerName}</div>
+              <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '4px' }}>{ticket.customerEmail}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CREATED</div>
+              <div style={{ fontSize: '14px', fontWeight: '600' }}>{new Date(ticket.createdAt).toLocaleDateString()}</div>
+              <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '4px' }}>{new Date(ticket.createdAt).toLocaleTimeString()}</div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>TITLE</div>
+            <div style={{ fontSize: '16px', fontWeight: '700', marginBottom: '12px' }}>{ticket.title}</div>
+            <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>DESCRIPTION</div>
+            <div style={{ fontSize: '13px', lineHeight: '1.6', color: '#E2E8F0' }}>{ticket.description}</div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CATEGORY</div>
+              <div style={{ fontSize: '13px', fontWeight: '600' }}>{ticket.category}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>PRIORITY</div>
+              <span style={{
+                background: ticket.priority === 'high' || ticket.priority === 'urgent'
+                  ? 'rgba(239, 68, 68, 0.2)'
+                  : 'rgba(99, 102, 241, 0.2)',
+                color: ticket.priority === 'high' || ticket.priority === 'urgent'
+                  ? '#EF4444'
+                  : '#6366F1',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: '600',
+                display: 'inline-block',
+              }}>
+                {ticket.priority}
+              </span>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>STATUS</div>
+              <select
+                defaultValue={ticket.status}
+                style={{ ...styles.input, marginBottom: 0 }}
+              >
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>YOUR RESPONSE</div>
+            <textarea
+              autoComplete="off"
+              value={response}
+              onChange={(e) => setResponse(e.target.value)}
+              placeholder="Type your response to the customer..."
+              style={{ ...styles.input, minHeight: '120px', fontFamily: 'monospace', marginBottom: '12px' }}
+            />
+            <button
+              onClick={() => {
+                alert('Response feature coming soon! For now, you can note the response here.');
+                setResponse('');
+              }}
+              style={{ ...styles.button, width: '100%' }}
+            >
+              Send Response to Customer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  });
+
   // Support Tab
   const SupportTab = () => (
     <div>
       {selectedTicket ? (
-        <div>
-          <button onClick={() => setSelectedTicket(null)} style={{ ...styles.button, marginBottom: '16px', background: '#94A3B8' }}>
-            ← Back to List
-          </button>
-          <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '10px', padding: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-              <div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CUSTOMER</div>
-                <div style={{ fontSize: '14px', fontWeight: '600' }}>{selectedTicket.customerName}</div>
-                <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '4px' }}>{selectedTicket.customerEmail}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CREATED</div>
-                <div style={{ fontSize: '14px', fontWeight: '600' }}>{new Date(selectedTicket.createdAt).toLocaleDateString()}</div>
-                <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '4px' }}>{new Date(selectedTicket.createdAt).toLocaleTimeString()}</div>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>TITLE</div>
-              <div style={{ fontSize: '16px', fontWeight: '700', marginBottom: '12px' }}>{selectedTicket.title}</div>
-              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>DESCRIPTION</div>
-              <div style={{ fontSize: '13px', lineHeight: '1.6', color: '#E2E8F0' }}>{selectedTicket.description}</div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
-              <div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CATEGORY</div>
-                <div style={{ fontSize: '13px', fontWeight: '600' }}>{selectedTicket.category}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>PRIORITY</div>
-                <span style={{
-                  background: selectedTicket.priority === 'high' || selectedTicket.priority === 'urgent'
-                    ? 'rgba(239, 68, 68, 0.2)'
-                    : 'rgba(99, 102, 241, 0.2)',
-                  color: selectedTicket.priority === 'high' || selectedTicket.priority === 'urgent'
-                    ? '#EF4444'
-                    : '#6366F1',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  display: 'inline-block',
-                }}>
-                  {selectedTicket.priority}
-                </span>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>STATUS</div>
-                <select
-                  value={selectedTicket.status}
-                  style={{ ...styles.input, marginBottom: 0 }}
-                >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>YOUR RESPONSE</div>
-              <textarea
-                value={ticketResponse}
-                onChange={(e) => setTicketResponse(e.target.value)}
-                placeholder="Type your response to the customer..."
-                style={{ ...styles.input, minHeight: '120px', fontFamily: 'monospace', marginBottom: '12px' }}
-              />
-              <button
-                onClick={() => {
-                  alert('Response feature coming soon! For now, you can note the response here.');
-                  setTicketResponse('');
-                }}
-                style={{ ...styles.button, width: '100%' }}
-              >
-                Send Response to Customer
-              </button>
-            </div>
-          </div>
-        </div>
+        <SupportDetail
+          ticket={selectedTicket}
+          onBack={() => setSelectedTicket(null)}
+          styles={styles}
+        />
       ) : (
         <table style={styles.table}>
           <thead>
