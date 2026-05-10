@@ -46,6 +46,17 @@ export default function SupportTickets({mob}){
     }
   };
 
+  const fetchTicketDetail=async(ticketId)=>{
+    try{
+      const res=await api.get(`/api/support/tickets?id=${ticketId}`);
+      if(res.success&&res.ticket){
+        setSelectedTicket(res.ticket);
+      }
+    }catch(err){
+      console.error('Failed to fetch ticket detail:',err);
+    }
+  };
+
   const getGeminiSuggestion=async()=>{
     if(!formData.title||!formData.description){
       alert('Fill in title and description first');
@@ -129,10 +140,7 @@ export default function SupportTickets({mob}){
       }
       setReplyText('');
       await fetchTickets();
-      if(selectedTicket){
-        const updated=tickets.find(t=>t.id===selectedTicket.id);
-        if(updated) setSelectedTicket(updated);
-      }
+      await fetchTicketDetail(selectedTicket.id);
     }catch(err){
       console.error('Send reply error:',err);
       alert('Failed to send reply: '+(err.message||'Unknown error'));
@@ -156,7 +164,7 @@ export default function SupportTickets({mob}){
       {loading?<div style={{padding:40,textAlign:'center',color:MUT}}>Loading tickets...</div>:
        tickets.length===0?<div style={{padding:40,textAlign:'center',color:MUT}}>No tickets yet. <button onClick={()=>setView('create')} style={{background:'none',border:'none',color:BL,cursor:'pointer',fontWeight:600}}>Create one</button></div>:
        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-         {tickets.map(t=><div key={t.id} onClick={()=>{setSelectedTicket(t);setView('detail');}} style={{padding:'12px 14px',border:'0.5px solid '+BORD,borderRadius:8,background:'#fff',cursor:'pointer',transition:'all 0.2s',display:'flex',justifyContent:'space-between',alignItems:'flex-start'}} onMouseEnter={e=>e.currentTarget.style.background=BG} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>
+         {tickets.map(t=><div key={t.id} onClick={()=>{fetchTicketDetail(t.id);setView('detail');}} style={{padding:'12px 14px',border:'0.5px solid '+BORD,borderRadius:8,background:'#fff',cursor:'pointer',transition:'all 0.2s',display:'flex',justifyContent:'space-between',alignItems:'flex-start'}} onMouseEnter={e=>e.currentTarget.style.background=BG} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>
            <div style={{flex:1}}>
              <div style={{fontWeight:700,fontSize:13,color:TXT,marginBottom:4}}>{t.title}</div>
              <div style={{fontSize:11,color:MUT,marginBottom:6}}>{t.description?.substring(0,80)}...</div>
@@ -277,9 +285,9 @@ export default function SupportTickets({mob}){
       <div style={{background:'#fff',border:'0.5px solid '+BORD,borderRadius:10,padding:16,marginBottom:16,maxHeight:400,overflowY:'auto'}}>
         <div style={{fontSize:12,fontWeight:600,color:MUT,marginBottom:12,textTransform:'uppercase'}}>Conversation</div>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          {(selectedTicket.messages||[]).map((msg,i)=><div key={i} style={{padding:'10px 12px',borderRadius:8,background:msg.is_internal?'#f8f8f8':msg.sender_id?BLL:BG,borderLeft:'3px solid '+(msg.is_internal?MUT:msg.sender_id?BL:GR)}}>
-            <div style={{fontSize:10,fontWeight:600,color:msg.is_internal?MUT:msg.sender_id?BL:GR,marginBottom:4}}>
-              {msg.is_internal?'[Internal Note]':'Support'}
+          {(selectedTicket.messages||[]).map((msg,i)=><div key={i} style={{padding:'10px 12px',borderRadius:8,background:msg.is_internal?'#f8f8f8':msg.isSupport?BLL:BG,borderLeft:'3px solid '+(msg.is_internal?MUT:msg.isSupport?BL:GR)}}>
+            <div style={{fontSize:10,fontWeight:600,color:msg.is_internal?MUT:msg.isSupport?BL:GR,marginBottom:4}}>
+              {msg.is_internal?'[Internal Note]':msg.isSupport?'👥 Support Team':'👤 You'}
             </div>
             <div style={{fontSize:12,color:TXT,lineHeight:1.5}}>{msg.message}</div>
             <div style={{fontSize:9,color:MUT,marginTop:4}}>{new Date(msg.created_at).toLocaleString('en-IN')}</div>

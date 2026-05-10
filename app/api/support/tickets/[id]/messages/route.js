@@ -22,6 +22,71 @@ async function ctx(req) {
   return { user, org, supabase };
 }
 
+// Get messages for ticket (used by SupportTickets component to fetch messages)
+export async function GET(req, { params }) {
+  try {
+    const { user, org, supabase: sb } = await ctx(req);
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { id: ticketId } = params;
+
+    // Verify ticket belongs to org
+    const { data: ticket } = await sb
+      .from('support_tickets')
+      .select('*')
+      .eq('id', ticketId)
+      .eq('organization_id', org.id)
+      .single();
+
+    if (!ticket) {
+      return Response.json({ error: 'Ticket not found' }, { status: 404 });
+    }
+
+    const { data: messages, error } = await sb
+      .from('ticket_messages')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return Response.json({ error: error.message }, { status: 500 });
+    }
+
+    // Enrich messages with sender info
+    const enriched = await Promise.all(
+      messages.map(async (msg) => {
+        let senderName = 'Support Team';
+        let isSupport = false;
+
+        try {
+          if (msg.sender_id && msg.sender_id !== user.id) {
+            const {
+              data: { user: sender },
+            } = await supabase.auth.admin.getUserById(msg.sender_id);
+            if (sender) {
+              senderName = 'Support Team';
+              isSupport = true;
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching sender:', e);
+        }
+
+        return {
+          ...msg,
+          senderName,
+          isSupport,
+        };
+      })
+    );
+
+    return Response.json({ messages: enriched });
+  } catch (error) {
+    console.error('GET messages error:', error);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}
+
 // Add message to support ticket
 export async function POST(req, { params }) {
   try {

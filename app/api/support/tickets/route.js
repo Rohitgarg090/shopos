@@ -115,11 +115,39 @@ export async function GET(req) {
         .eq('ticket_id', ticketId)
         .order('created_at', { ascending: true });
 
+      // Enrich messages with sender info
+      const enrichedMessages = await Promise.all(
+        (messages || []).map(async (msg) => {
+          let senderName = 'Support Team';
+          let isSupport = false;
+
+          try {
+            if (msg.sender_id && msg.sender_id !== user.id) {
+              const {
+                data: { user: sender },
+              } = await supabase.auth.admin.getUserById(msg.sender_id);
+              if (sender) {
+                senderName = 'Support Team';
+                isSupport = true;
+              }
+            }
+          } catch (e) {
+            console.error('Error fetching sender:', e);
+          }
+
+          return {
+            ...msg,
+            senderName,
+            isSupport,
+          };
+        })
+      );
+
       return Response.json({
         success: true,
         ticket: {
           ...tickets[0],
-          messages: messages || [],
+          messages: enrichedMessages || [],
         },
       });
     }
