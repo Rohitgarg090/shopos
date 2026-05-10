@@ -16,7 +16,11 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [mode, setMode] = useState<"in" | "up" | "forgot">("in");
+  const [forgotStep, setForgotStep] = useState<"email" | "otp" | "reset">("email");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -54,6 +58,77 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (forgotStep === "email") {
+      if (!email) {
+        setError("Please enter your email");
+        return;
+      }
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        setError("OTP sent to your email");
+        setForgotStep("otp");
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    } else if (forgotStep === "otp") {
+      if (!otp) {
+        setError("Please enter the OTP");
+        return;
+      }
+      setForgotStep("reset");
+    } else if (forgotStep === "reset") {
+      if (!newPassword || !confirmPassword) {
+        setError("Please enter both passwords");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setError("Passwords do not match");
+        return;
+      }
+      if (newPassword.length < 6) {
+        setError("Password must be at least 6 characters");
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch("/api/auth/verify-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, otp, newPassword }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        setError("Password reset successful! Redirecting to login...");
+        setTimeout(() => {
+          setMode("in");
+          setForgotStep("email");
+          setEmail("");
+          setOtp("");
+          setNewPassword("");
+          setConfirmPassword("");
+          setError("");
+        }, 2000);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
       {/* Background decoration */}
@@ -84,62 +159,128 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
 
           <CardContent>
             {/* Tab Toggle */}
-            <div className="flex gap-2 mb-6 bg-slate-800/50 p-1 rounded-lg">
-              {[
-                { id: "in", label: "Sign In" },
-                { id: "up", label: "Register" },
-              ].map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => setMode(id as "in" | "up")}
-                  className={`flex-1 py-2 px-4 rounded-md font-semibold transition-all text-sm ${
-                    mode === id
-                      ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
-                      : "text-slate-400 hover:text-slate-300"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {mode !== "forgot" && (
+              <div className="flex gap-2 mb-6 bg-slate-800/50 p-1 rounded-lg">
+                {[
+                  { id: "in", label: "Sign In" },
+                  { id: "up", label: "Register" },
+                ].map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => setMode(id as "in" | "up")}
+                    className={`flex-1 py-2 px-4 rounded-md font-semibold transition-all text-sm ${
+                      mode === id
+                        ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
+                        : "text-slate-400 hover:text-slate-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {/* Email Input */}
-            <div className="mb-4">
-              <Input
-                type="email"
-                label="Email Address"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                icon={<Mail size={18} />}
-                variant="glass"
-                disabled={loading}
-              />
-            </div>
+            {/* Forgot Password Header */}
+            {mode === "forgot" && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white mb-2">Reset Password</h3>
+                <p className="text-sm text-slate-400">
+                  {forgotStep === "email" && "Enter your email to receive an OTP"}
+                  {forgotStep === "otp" && "Enter the OTP sent to your email"}
+                  {forgotStep === "reset" && "Enter your new password"}
+                </p>
+              </div>
+            )}
 
-            {/* Password Input */}
-            <div className="mb-6">
-              <Input
-                type="password"
-                label="Password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAuth()}
-                icon={<Lock size={18} />}
-                variant="glass"
-                disabled={loading}
-              />
-            </div>
+            {/* Email Input - Show for Sign In, Register, and Forgot Email step */}
+            {mode !== "forgot" || forgotStep === "email" ? (
+              <div className="mb-4">
+                <Input
+                  type="email"
+                  label="Email Address"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (mode === "forgot" ? handleForgotPassword() : handleAuth())}
+                  icon={<Mail size={18} />}
+                  variant="glass"
+                  disabled={loading}
+                />
+              </div>
+            ) : null}
+
+            {/* OTP Input - Show in OTP step */}
+            {mode === "forgot" && (forgotStep === "otp" || forgotStep === "reset") && (
+              <div className="mb-4">
+                <Input
+                  type="text"
+                  label="OTP"
+                  placeholder="Enter 6-digit OTP"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.slice(0, 6))}
+                  disabled={loading || forgotStep === "reset"}
+                  variant="glass"
+                />
+              </div>
+            )}
+
+            {/* Password Input - Show for Sign In and Register */}
+            {(mode === "in" || mode === "up") && (
+              <div className="mb-6">
+                <Input
+                  type="password"
+                  label="Password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAuth()}
+                  icon={<Lock size={18} />}
+                  variant="glass"
+                  disabled={loading}
+                />
+              </div>
+            )}
+
+            {/* New Password Input - Show in reset step */}
+            {mode === "forgot" && forgotStep === "reset" && (
+              <>
+                <div className="mb-4">
+                  <Input
+                    type="password"
+                    label="New Password"
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    icon={<Lock size={18} />}
+                    variant="glass"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="mb-6">
+                  <Input
+                    type="password"
+                    label="Confirm Password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleForgotPassword()}
+                    icon={<Lock size={18} />}
+                    variant="glass"
+                    disabled={loading}
+                  />
+                </div>
+              </>
+            )}
 
             {/* Error Message */}
             {error && (
               <div
                 className={`mb-6 p-3 rounded-lg text-sm font-medium ${
-                  error.includes("created")
+                  error.includes("successful") || error.includes("sent")
                     ? "bg-green-500/20 text-green-300 border border-green-500/30"
-                    : "bg-red-500/20 text-red-300 border border-red-500/30"
+                    : error.includes("created")
+                      ? "bg-green-500/20 text-green-300 border border-green-500/30"
+                      : "bg-red-500/20 text-red-300 border border-red-500/30"
                 }`}
               >
                 {error}
@@ -148,7 +289,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
 
             {/* Submit Button */}
             <Button
-              onClick={handleAuth}
+              onClick={mode === "forgot" ? handleForgotPassword : handleAuth}
               disabled={loading}
               variant="primary"
               fullWidth
@@ -162,10 +303,49 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                 </>
               ) : mode === "in" ? (
                 "Sign In"
-              ) : (
+              ) : mode === "up" ? (
                 "Create Account"
+              ) : forgotStep === "email" ? (
+                "Send OTP"
+              ) : forgotStep === "otp" ? (
+                "Verify OTP"
+              ) : (
+                "Reset Password"
               )}
             </Button>
+
+            {/* Forgot Password Link - Show in Sign In mode */}
+            {mode === "in" && (
+              <button
+                onClick={() => {
+                  setMode("forgot");
+                  setForgotStep("email");
+                  setError("");
+                  setEmail("");
+                }}
+                className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
+              >
+                Forgot your password?
+              </button>
+            )}
+
+            {/* Back Button - Show in Forgot Password mode */}
+            {mode === "forgot" && (
+              <button
+                onClick={() => {
+                  setMode("in");
+                  setForgotStep("email");
+                  setError("");
+                  setEmail("");
+                  setOtp("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                }}
+                className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
+              >
+                ← Back to Sign In
+              </button>
+            )}
 
             {/* Footer */}
             <p className="text-center text-xs text-slate-500 mt-6">

@@ -2633,6 +2633,40 @@ function ReviewSupplierSession({sessionId,onBack,mob,showT}){
 }
 
 /* ── SETTINGS ── */
+function SecurityTab({ses}){
+  const[tab,setTab]=useState('change');const[currentPwd,setCurrentPwd]=useState('');const[newPwd,setNewPwd]=useState('');const[confirmPwd,setConfirmPwd]=useState('');const[loading,setLoading]=useState(false);const[message,setMessage]=useState('');const[error,setError]=useState('');
+  const S=_theme==='modern'?MODERN_S:MINIMAL_S;
+  const handleChangePassword=async()=>{
+    if(!currentPwd||!newPwd||!confirmPwd){setError('All fields required');return;}
+    if(newPwd!==confirmPwd){setError('New passwords do not match');return;}
+    if(newPwd.length<6){setError('Password must be at least 6 characters');return;}
+    if(currentPwd===newPwd){setError('New password must be different');return;}
+    setLoading(true);setError('');setMessage('');
+    try{
+      const res=await fetch('/api/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(ses?.access_token||'')},body:JSON.stringify({currentPassword:currentPwd,newPassword:newPwd,confirmPassword:confirmPwd})});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error);
+      setMessage('Password changed successfully');setCurrentPwd('');setNewPwd('');setConfirmPwd('');
+      setTimeout(()=>setMessage(''),3000);
+    }catch(e){setError(e.message||'Failed to change password');}
+    finally{setLoading(false);}
+  };
+  return<div>
+    <div style={{display:'grid',gridTemplateColumns:'1fr',gap:14}}>
+      <div style={S.card}>
+        <div style={S.h3}>Change Password</div>
+        <div style={{fontSize:12,color:MUT,marginBottom:14,lineHeight:1.6}}>Update your account password. Make sure to use a strong, unique password.</div>
+        <Fld label='Current Password *'><input style={S.inp} type='password' value={currentPwd} onChange={e=>setCurrentPwd(e.target.value)} placeholder='Enter your current password' disabled={loading}/></Fld>
+        <Fld label='New Password *'><input style={S.inp} type='password' value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder='Enter a new password' disabled={loading}/></Fld>
+        <Fld label='Confirm Password *'><input style={S.inp} type='password' value={confirmPwd} onChange={e=>setConfirmPwd(e.target.value)} placeholder='Confirm your new password' disabled={loading}/></Fld>
+        {error&&<div style={{background:'#FDF0F0',border:'0.5px solid '+RD,borderRadius:6,padding:'8px 10px',color:RD,fontSize:12,marginBottom:12}}>{error}</div>}
+        {message&&<div style={{background:GRL,border:'0.5px solid '+GR,borderRadius:6,padding:'8px 10px',color:GR,fontSize:12,marginBottom:12}}>{message}</div>}
+        <button style={{...S.btn('pri'),width:'100%'}} onClick={handleChangePassword} disabled={loading}>{loading?'Updating...':'Update Password'}</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function Settings({firm,saveFirm,ses,mob,theme,setTheme,org}){
   const[f,setF]=useState(firm);const[saved,setSaved]=useState(false);const[logoUploading,setLogoUploading]=useState(false);
   const[settingsTab,setSettingsTab]=useState('account');
@@ -2649,6 +2683,9 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org}){
     <div style={{display:'flex',gap:8,marginBottom:20,borderBottom:'1px solid '+BORD,paddingBottom:0}}>
       <button onClick={()=>setSettingsTab('account')} style={{padding:'12px 0',fontSize:13,fontWeight:settingsTab==='account'?700:500,color:settingsTab==='account'?BL:MUT,border:'none',background:'none',cursor:'pointer',borderBottom:settingsTab==='account'?'2px solid '+BL:'2px solid transparent',transition:'all 0.2s'}}>
         Account & Firm
+      </button>
+      <button onClick={()=>setSettingsTab('security')} style={{padding:'12px 0',fontSize:13,fontWeight:settingsTab==='security'?700:500,color:settingsTab==='security'?BL:MUT,border:'none',background:'none',cursor:'pointer',borderBottom:settingsTab==='security'?'2px solid '+BL:'2px solid transparent',transition:'all 0.2s'}}>
+        Security
       </button>
     </div>
 
@@ -2773,6 +2810,8 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org}){
       </div>
     </div>
     </div>}
+
+    {settingsTab==='security'&&<SecurityTab ses={ses}/>}
   </div>;}
 
 /* ── NO FIRM SETUP ── */
