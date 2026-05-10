@@ -54,20 +54,29 @@ export async function GET(req) {
     // Enrich with auth user emails
     const enriched = await Promise.all(
       orgs.map(async (org) => {
-        const {
-          data: { user },
-        } = await supabase.auth.admin.getUserById(org.owner_id);
+        let userEmail = 'N/A';
 
-        const trialEndsAt = new Date(org.trial_ends_at);
+        try {
+          if (org.owner_id) {
+            const {
+              data: { user },
+            } = await supabase.auth.admin.getUserById(org.owner_id);
+            userEmail = user?.email || 'N/A';
+          }
+        } catch (e) {
+          console.error('Error fetching user for org:', org.id, e);
+        }
+
+        const trialEndsAt = org.trial_ends_at ? new Date(org.trial_ends_at) : null;
         const now = new Date();
-        const trialDaysRemaining = org.status === 'trial'
+        const trialDaysRemaining = org.status === 'trial' && trialEndsAt
           ? Math.ceil((trialEndsAt - now) / (1000 * 60 * 60 * 24))
           : null;
 
         return {
           id: org.id,
           name: org.name,
-          email: user?.email || 'N/A',
+          email: userEmail,
           status: org.status,
           plan: org.plan,
           trialDaysRemaining,

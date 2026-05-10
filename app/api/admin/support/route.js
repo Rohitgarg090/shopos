@@ -47,17 +47,35 @@ export async function GET(req) {
     // Enrich tickets with customer info
     const enriched = await Promise.all(
       tickets.map(async (ticket) => {
-        // Get user info
-        const {
-          data: { user },
-        } = await supabase.auth.admin.getUserById(ticket.user_id);
+        let userEmail = 'N/A';
+        let orgName = 'N/A';
+        let orgId = null;
 
-        // Get organization info
-        const { data: org } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('owner_id', ticket.user_id)
-          .single();
+        try {
+          // Get user info
+          if (ticket.user_id) {
+            const {
+              data: { user },
+            } = await supabase.auth.admin.getUserById(ticket.user_id);
+            userEmail = user?.email || 'N/A';
+          }
+
+          // Get organization info
+          if (ticket.user_id) {
+            const { data: org } = await supabase
+              .from('organizations')
+              .select('*')
+              .eq('owner_id', ticket.user_id)
+              .single();
+
+            if (org) {
+              orgName = org.name;
+              orgId = org.id;
+            }
+          }
+        } catch (e) {
+          console.error('Error enriching ticket:', ticket.id, e);
+        }
 
         return {
           id: ticket.id,
@@ -68,10 +86,10 @@ export async function GET(req) {
           status: ticket.status,
           createdAt: ticket.created_at,
           updatedAt: ticket.updated_at,
-          customerEmail: user?.email || 'N/A',
-          customerName: org?.name || 'N/A',
+          customerEmail: userEmail,
+          customerName: orgName,
           customerId: ticket.user_id,
-          orgId: org?.id,
+          orgId: orgId,
         };
       })
     );

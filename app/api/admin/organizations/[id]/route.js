@@ -41,9 +41,17 @@ export async function GET(req, { params }) {
     }
 
     // Get owner email
-    const {
-      data: { user },
-    } = await supabase.auth.admin.getUserById(org.owner_id);
+    let userEmail = 'N/A';
+    try {
+      if (org.owner_id) {
+        const {
+          data: { user },
+        } = await supabase.auth.admin.getUserById(org.owner_id);
+        userEmail = user?.email || 'N/A';
+      }
+    } catch (e) {
+      console.error('Error fetching user:', e);
+    }
 
     // Get associated firm
     const { data: firm } = await supabase
@@ -60,9 +68,9 @@ export async function GET(req, { params }) {
       .single();
 
     // Calculate trial days remaining
-    const trialEndsAt = new Date(org.trial_ends_at);
+    const trialEndsAt = org.trial_ends_at ? new Date(org.trial_ends_at) : null;
     const now = new Date();
-    const trialDaysRemaining = org.status === 'trial'
+    const trialDaysRemaining = org.status === 'trial' && trialEndsAt
       ? Math.ceil((trialEndsAt - now) / (1000 * 60 * 60 * 24))
       : null;
 
@@ -70,7 +78,7 @@ export async function GET(req, { params }) {
       organization: {
         id: org.id,
         name: org.name,
-        email: user?.email || 'N/A',
+        email: userEmail,
         status: org.status,
         plan: org.plan,
         trialEndsAt: org.trial_ends_at,
@@ -155,9 +163,17 @@ export async function PATCH(req, { params }) {
       return Response.json({ error: error.message }, { status: 500 });
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.admin.getUserById(org.owner_id);
+    let updateUserEmail = 'N/A';
+    try {
+      if (org.owner_id) {
+        const {
+          data: { user },
+        } = await supabase.auth.admin.getUserById(org.owner_id);
+        updateUserEmail = user?.email || 'N/A';
+      }
+    } catch (e) {
+      console.error('Error fetching user for update:', e);
+    }
 
     const trialEndsAt = updated.trial_ends_at
       ? new Date(updated.trial_ends_at)
@@ -173,7 +189,7 @@ export async function PATCH(req, { params }) {
       organization: {
         id: updated.id,
         name: updated.name,
-        email: user?.email || 'N/A',
+        email: updateUserEmail,
         status: updated.status,
         plan: updated.plan,
         trialEndsAt: updated.trial_ends_at,
