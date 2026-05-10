@@ -51,11 +51,11 @@ let _theme='minimal';
 const setActiveFirmId=id=>{_activeFirmId=id;};
 const authH=async()=>{const h={'Content-Type':'application/json','Authorization':'Bearer '+(await getToken())};if(_activeFirmId)h['x-firm-id']=_activeFirmId;return h;};
 const api={
-  get:async u=>fetch(u,{headers:await authH()}).then(r=>r.json()),
-  post:async(u,b)=>fetch(u,{method:'POST',headers:await authH(),body:JSON.stringify(b)}).then(r=>r.json()),
-  put:async(u,b)=>fetch(u,{method:'PUT',headers:await authH(),body:JSON.stringify(b)}).then(r=>r.json()),
-  patch:async(u,b)=>fetch(u,{method:'PATCH',headers:await authH(),body:JSON.stringify(b)}).then(r=>r.json()),
-  del:async u=>fetch(u,{method:'DELETE',headers:await authH()}).then(r=>r.json()),
+  get:async u=>{const res=await fetch(u,{headers:await authH()});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
+  post:async(u,b)=>{const res=await fetch(u,{method:'POST',headers:await authH(),body:JSON.stringify(b)});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
+  put:async(u,b)=>{const res=await fetch(u,{method:'PUT',headers:await authH(),body:JSON.stringify(b)});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
+  patch:async(u,b)=>{const res=await fetch(u,{method:'PATCH',headers:await authH(),body:JSON.stringify(b)});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
+  del:async u=>{const res=await fetch(u,{method:'DELETE',headers:await authH()});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
 };
 
 /* ── palette ── */
@@ -2781,9 +2781,15 @@ function NoFirmSetup({ses,onCreated}){
   const create=async()=>{
     if(!name.trim()){setErr('Enter your firm name');return;}
     setBusy(true);setErr('');
-    const res=await api.post('/api/firms',{name:name.trim()});
-    if(res.error){setErr(res.error);setBusy(false);return;}
-    onCreated(res);
+    try{
+      const res=await api.post('/api/firms',{name:name.trim()});
+      if(res.error){setErr(res.error);setBusy(false);return;}
+      onCreated(res);
+    }catch(e){
+      console.error('Firm creation error:',e);
+      setErr(e.message||'Failed to create firm');
+      setBusy(false);
+    }
   };
   return<div style={{minHeight:'100vh',background:'linear-gradient(145deg,#0d1f3c,#1B3A6B)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'Inter,sans-serif'}}>
     <div style={{background:'rgba(255,255,255,.08)',backdropFilter:'blur(20px)',borderRadius:18,padding:32,width:'100%',maxWidth:420,border:'1px solid rgba(255,255,255,.12)'}}>
