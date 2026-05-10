@@ -26,6 +26,8 @@ export default function AdminPanel({ session }) {
   const [loading, setLoading] = useState(true);
   const [createdCustomer, setCreatedCustomer] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [ticketResponse, setTicketResponse] = useState('');
 
   // Form states
   const [newCustomerForm, setNewCustomerForm] = useState({
@@ -853,47 +855,152 @@ ShopOS Team`}
 
   // Support Tab
   const SupportTab = () => (
-    <table style={styles.table}>
-      <thead>
-        <tr>
-          <th style={styles.th}>Customer</th>
-          <th style={styles.th}>Title</th>
-          <th style={styles.th}>Category</th>
-          <th style={styles.th}>Priority</th>
-          <th style={styles.th}>Status</th>
-          <th style={styles.th}>Date</th>
-        </tr>
-      </thead>
-      <tbody>
-        {supportTickets.map((ticket) => (
-          <tr key={ticket.id}>
-            <td style={styles.td}>{ticket.customerName}</td>
-            <td style={styles.td}>{ticket.title}</td>
-            <td style={styles.td}>{ticket.category}</td>
-            <td style={styles.td}>
-              <span style={{
-                background: ticket.priority === 'high' || ticket.priority === 'urgent'
-                  ? 'rgba(239, 68, 68, 0.1)'
-                  : 'rgba(99, 102, 241, 0.1)',
-                color: ticket.priority === 'high' || ticket.priority === 'urgent'
-                  ? '#EF4444'
-                  : '#6366F1',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-                fontWeight: '600',
-              }}>
-                {ticket.priority}
-              </span>
-            </td>
-            <td style={styles.td}>{ticket.status}</td>
-            <td style={styles.td}>
-              {new Date(ticket.createdAt).toLocaleDateString()}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div>
+      {selectedTicket ? (
+        <div>
+          <button onClick={() => setSelectedTicket(null)} style={{ ...styles.button, marginBottom: '16px', background: '#94A3B8' }}>
+            ← Back to List
+          </button>
+          <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '10px', padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CUSTOMER</div>
+                <div style={{ fontSize: '14px', fontWeight: '600' }}>{selectedTicket.customerName}</div>
+                <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '4px' }}>{selectedTicket.customerEmail}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CREATED</div>
+                <div style={{ fontSize: '14px', fontWeight: '600' }}>{new Date(selectedTicket.createdAt).toLocaleDateString()}</div>
+                <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '4px' }}>{new Date(selectedTicket.createdAt).toLocaleTimeString()}</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>TITLE</div>
+              <div style={{ fontSize: '16px', fontWeight: '700', marginBottom: '12px' }}>{selectedTicket.title}</div>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>DESCRIPTION</div>
+              <div style={{ fontSize: '13px', lineHeight: '1.6', color: '#E2E8F0' }}>{selectedTicket.description}</div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>CATEGORY</div>
+                <div style={{ fontSize: '13px', fontWeight: '600' }}>{selectedTicket.category}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>PRIORITY</div>
+                <span style={{
+                  background: selectedTicket.priority === 'high' || selectedTicket.priority === 'urgent'
+                    ? 'rgba(239, 68, 68, 0.2)'
+                    : 'rgba(99, 102, 241, 0.2)',
+                  color: selectedTicket.priority === 'high' || selectedTicket.priority === 'urgent'
+                    ? '#EF4444'
+                    : '#6366F1',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  display: 'inline-block',
+                }}>
+                  {selectedTicket.priority}
+                </span>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '4px' }}>STATUS</div>
+                <select
+                  value={selectedTicket.status}
+                  style={{ ...styles.input, marginBottom: 0 }}
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>YOUR RESPONSE</div>
+              <textarea
+                value={ticketResponse}
+                onChange={(e) => setTicketResponse(e.target.value)}
+                placeholder="Type your response to the customer..."
+                style={{ ...styles.input, minHeight: '120px', fontFamily: 'monospace', marginBottom: '12px' }}
+              />
+              <button
+                onClick={() => {
+                  alert('Response feature coming soon! For now, you can note the response here.');
+                  setTicketResponse('');
+                }}
+                style={{ ...styles.button, width: '100%' }}
+              >
+                Send Response to Customer
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Customer</th>
+              <th style={styles.th}>Title</th>
+              <th style={styles.th}>Category</th>
+              <th style={styles.th}>Priority</th>
+              <th style={styles.th}>Status</th>
+              <th style={styles.th}>Date</th>
+              <th style={styles.th}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {supportTickets.map((ticket) => (
+              <tr key={ticket.id}>
+                <td style={styles.td}>{ticket.customerName}</td>
+                <td style={styles.td}>{ticket.title}</td>
+                <td style={styles.td}>{ticket.category}</td>
+                <td style={styles.td}>
+                  <span style={{
+                    background: ticket.priority === 'high' || ticket.priority === 'urgent'
+                      ? 'rgba(239, 68, 68, 0.1)'
+                      : 'rgba(99, 102, 241, 0.1)',
+                    color: ticket.priority === 'high' || ticket.priority === 'urgent'
+                      ? '#EF4444'
+                      : '#6366F1',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                  }}>
+                    {ticket.priority}
+                  </span>
+                </td>
+                <td style={styles.td}>{ticket.status}</td>
+                <td style={styles.td}>
+                  {new Date(ticket.createdAt).toLocaleDateString()}
+                </td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => setSelectedTicket(ticket)}
+                    style={{
+                      background: '#6366F1',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '4px 12px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    View
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 
   if (loading) {
