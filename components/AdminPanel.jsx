@@ -116,7 +116,7 @@ export default function AdminPanel({ session }) {
     }
   }, [session?.access_token]);
 
-  const handleCreateCustomer = async () => {
+  const handleCreateCustomer = React.useCallback(async () => {
     if (!newCustomerForm.email || !newCustomerForm.businessName) {
       alert('Email and business name are required');
       return;
@@ -131,7 +131,7 @@ export default function AdminPanel({ session }) {
       console.error('Customer creation error:', error);
       alert('Error creating customer: ' + error.message);
     }
-  };
+  }, [newCustomerForm]);
 
   const handleCreateAnnouncement = async () => {
     if (!newAnnouncementForm.title || !newAnnouncementForm.message) {
@@ -651,30 +651,30 @@ ShopOS Team`}
             <input
               placeholder="Contact Name"
               value={newCustomerForm.name}
-              onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
+              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, name: e.target.value }))}
               style={styles.input}
             />
             <input
               placeholder="Email"
               value={newCustomerForm.email}
-              onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, email: e.target.value }))}
               style={styles.input}
             />
             <input
               placeholder="Business Name"
               value={newCustomerForm.businessName}
-              onChange={(e) => setNewCustomerForm({ ...newCustomerForm, businessName: e.target.value })}
+              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, businessName: e.target.value }))}
               style={styles.input}
             />
             <input
               placeholder="Phone"
               value={newCustomerForm.phone}
-              onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
               style={styles.input}
             />
             <select
               value={newCustomerForm.plan}
-              onChange={(e) => setNewCustomerForm({ ...newCustomerForm, plan: e.target.value })}
+              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, plan: e.target.value }))}
               style={styles.input}
             >
               <option value="trial">Trial (14 days)</option>
@@ -705,18 +705,18 @@ ShopOS Team`}
         <input
           placeholder="Title"
           value={newAnnouncementForm.title}
-          onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, title: e.target.value })}
+          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, title: e.target.value }))}
           style={styles.input}
         />
         <textarea
           placeholder="Message"
           value={newAnnouncementForm.message}
-          onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, message: e.target.value })}
+          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, message: e.target.value }))}
           style={{ ...styles.input, minHeight: '100px', fontFamily: 'monospace' }}
         />
         <select
           value={newAnnouncementForm.type}
-          onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, type: e.target.value })}
+          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, type: e.target.value }))}
           style={styles.input}
         >
           <option value="info">ℹ️ Info</option>
@@ -726,7 +726,7 @@ ShopOS Team`}
         </select>
         <select
           value={newAnnouncementForm.target}
-          onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, target: e.target.value })}
+          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, target: e.target.value }))}
           style={styles.input}
         >
           <option value="all">All Customers</option>
@@ -738,7 +738,7 @@ ShopOS Team`}
           type="datetime-local"
           placeholder="Show Until"
           value={newAnnouncementForm.showUntil}
-          onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, showUntil: e.target.value })}
+          onChange={(e) => setNewAnnouncementForm(prev => ({ ...prev, showUntil: e.target.value }))}
           style={styles.input}
         />
         <button
