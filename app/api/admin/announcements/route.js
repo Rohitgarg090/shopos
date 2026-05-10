@@ -33,14 +33,17 @@ export async function GET(req) {
       .select('*')
       .order('created_at', { ascending: false });
 
+    // If table doesn't exist or error, return empty array
     if (error) {
-      return Response.json({ error: error.message }, { status: 500 });
+      console.error('Announcements query error:', error);
+      return Response.json({ announcements: [] });
     }
 
-    return Response.json({ announcements });
+    return Response.json({ announcements: announcements || [] });
   } catch (error) {
     console.error('GET /admin/announcements error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    // Return empty array instead of error to keep admin panel working
+    return Response.json({ announcements: [] });
   }
 }
 

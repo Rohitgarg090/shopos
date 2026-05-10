@@ -35,17 +35,23 @@ export async function GET(req) {
     // Get active announcements
     const now = new Date().toISOString();
 
-    const { data: announcements, error } = await supabase
-      .from('system_announcements')
-      .select('*')
-      .eq('is_active', true)
-      .lte('show_from', now)
-      .or(`show_until.is.null,show_until.gte.${now}`)
-      .order('created_at', { ascending: false });
+    let announcements = [];
+    try {
+      const { data, error } = await supabase
+        .from('system_announcements')
+        .select('*')
+        .eq('is_active', true)
+        .lte('show_from', now)
+        .or(`show_until.is.null,show_until.gte.${now}`)
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching announcements:', error);
-      return Response.json({ announcements: [] });
+      if (error) {
+        console.error('Error fetching announcements:', error);
+      } else {
+        announcements = data || [];
+      }
+    } catch (e) {
+      console.error('Announcements fetch exception:', e);
     }
 
     // Filter announcements by target
