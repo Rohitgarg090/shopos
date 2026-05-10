@@ -103,15 +103,16 @@ export default function AdminPanel({ session }) {
       setSupportTickets(ticketsRes.tickets || []);
     } catch (error) {
       console.error('Error fetching data:', error);
-      alert('Error loading admin data: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, [session]);
+    if (session?.access_token) {
+      fetchData();
+    }
+  }, [session?.access_token]);
 
   const handleCreateCustomer = async () => {
     if (!newCustomerForm.email || !newCustomerForm.businessName) {
@@ -123,8 +124,9 @@ export default function AdminPanel({ session }) {
       const result = await api.post('/api/admin/organizations', newCustomerForm);
       setCreatedCustomer(result);
       setNewCustomerForm({ name: '', email: '', businessName: '', phone: '', plan: 'trial' });
-      await fetchData();
+      setTimeout(() => fetchData(), 500);
     } catch (error) {
+      console.error('Customer creation error:', error);
       alert('Error creating customer: ' + error.message);
     }
   };
