@@ -875,8 +875,58 @@ ShopOS Team`}
   );
 
   // Support detail component with local response state
-  const SupportDetail = memo(({ ticket, onBack, styles }) => {
+  const SupportDetail = memo(({ ticket, onBack, styles, session }) => {
     const [response, setResponse] = useState('');
+    const [messages, setMessages] = useState([]);
+    const [loadingMessages, setLoadingMessages] = useState(true);
+    const [sendingMessage, setSendingMessage] = useState(false);
+
+    useEffect(() => {
+      const fetchMessages = async () => {
+        try {
+          setLoadingMessages(true);
+          const res = await fetch(`/api/admin/support/${ticket.id}/messages`, {
+            headers: {
+              Authorization: `Bearer ${session?.access_token}`,
+            },
+          });
+          if (!res.ok) throw new Error('Failed to fetch messages');
+          const data = await res.json();
+          setMessages(data.messages || []);
+        } catch (error) {
+          console.error('Error fetching messages:', error);
+        } finally {
+          setLoadingMessages(false);
+        }
+      };
+      if (ticket?.id) fetchMessages();
+    }, [ticket?.id, session?.access_token]);
+
+    const handleSendMessage = async () => {
+      if (!response.trim()) return;
+
+      try {
+        setSendingMessage(true);
+        const res = await fetch(`/api/admin/support/${ticket.id}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ message: response.trim() }),
+        });
+
+        if (!res.ok) throw new Error('Failed to send message');
+        const data = await res.json();
+        setMessages(prev => [...prev, data.message]);
+        setResponse('');
+      } catch (error) {
+        console.error('Error sending message:', error);
+        alert('Error sending message: ' + error.message);
+      } finally {
+        setSendingMessage(false);
+      }
+    };
 
     return (
       <div>
@@ -941,6 +991,37 @@ ShopOS Team`}
             </div>
           </div>
 
+          <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '12px' }}>CONVERSATION</div>
+            <div style={{
+              background: 'rgba(0,0,0,0.2)',
+              borderRadius: '8px',
+              padding: '16px',
+              maxHeight: '300px',
+              overflowY: 'auto',
+              marginBottom: '16px',
+              minHeight: '100px',
+            }}>
+              {loadingMessages ? (
+                <div style={{ color: '#94A3B8', fontSize: '12px' }}>Loading messages...</div>
+              ) : messages.length === 0 ? (
+                <div style={{ color: '#94A3B8', fontSize: '12px' }}>No messages yet. Send a response to the customer.</div>
+              ) : (
+                messages.map((msg) => (
+                  <div key={msg.id} style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#6366F1' }}>
+                      {msg.senderEmail === session?.user?.email ? '👤 You' : `👥 ${msg.senderName}`}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '4px' }}>
+                      {new Date(msg.createdAt).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#E2E8F0', whiteSpace: 'pre-wrap' }}>{msg.message}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <div style={{ marginBottom: '16px' }}>
             <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '600', marginBottom: '8px' }}>YOUR RESPONSE</div>
             <textarea
@@ -948,16 +1029,19 @@ ShopOS Team`}
               value={response}
               onChange={(e) => setResponse(e.target.value)}
               placeholder="Type your response to the customer..."
-              style={{ ...styles.input, minHeight: '120px', fontFamily: 'monospace', marginBottom: '12px' }}
+              style={{ ...styles.input, minHeight: '100px', fontFamily: 'monospace', marginBottom: '12px' }}
             />
             <button
-              onClick={() => {
-                alert('Response feature coming soon! For now, you can note the response here.');
-                setResponse('');
+              onClick={handleSendMessage}
+              disabled={sendingMessage || !response.trim()}
+              style={{
+                ...styles.button,
+                width: '100%',
+                opacity: sendingMessage || !response.trim() ? 0.5 : 1,
+                cursor: sendingMessage || !response.trim() ? 'not-allowed' : 'pointer',
               }}
-              style={{ ...styles.button, width: '100%' }}
             >
-              Send Response to Customer
+              {sendingMessage ? 'Sending...' : '✉️ Send Response to Customer'}
             </button>
           </div>
         </div>
@@ -973,6 +1057,7 @@ ShopOS Team`}
           ticket={selectedTicket}
           onBack={() => setSelectedTicket(null)}
           styles={styles}
+          session={session}
         />
       ) : (
         <table style={styles.table}>
