@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import {
   BarChart3,
   Users,
@@ -17,6 +17,75 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+// Onboarding form with local state to prevent parent re-renders
+const OnboardingForm = memo(({ onSubmit, styles, Plus }) => {
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    businessName: '',
+    phone: '',
+    plan: 'trial',
+  });
+
+  const handleSubmit = () => {
+    if (!form.email || !form.businessName) {
+      alert('Email and business name are required');
+      return;
+    }
+    onSubmit(form);
+  };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+      <div>
+        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '16px' }}>Create New Customer</h3>
+        <input
+          autoComplete="off"
+          placeholder="Contact Name"
+          value={form.name}
+          onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
+          style={styles.input}
+        />
+        <input
+          autoComplete="off"
+          placeholder="Email"
+          value={form.email}
+          onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))}
+          style={styles.input}
+        />
+        <input
+          autoComplete="off"
+          placeholder="Business Name"
+          value={form.businessName}
+          onChange={(e) => setForm(prev => ({ ...prev, businessName: e.target.value }))}
+          style={styles.input}
+        />
+        <input
+          autoComplete="off"
+          placeholder="Phone"
+          value={form.phone}
+          onChange={(e) => setForm(prev => ({ ...prev, phone: e.target.value }))}
+          style={styles.input}
+        />
+        <select
+          value={form.plan}
+          onChange={(e) => setForm(prev => ({ ...prev, plan: e.target.value }))}
+          style={styles.input}
+        >
+          <option value="trial">Trial (14 days)</option>
+          <option value="free">Free</option>
+          <option value="starter">Starter - ₹799/mo</option>
+          <option value="business">Business - ₹1499/mo</option>
+          <option value="pro">Pro - ₹2499/mo</option>
+        </select>
+        <button onClick={handleSubmit} style={{ ...styles.button, width: '100%' }}>
+          <span>+</span> Create Portal
+        </button>
+      </div>
+    </div>
+  );
+});
+
 export default function AdminPanel({ session }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [organizations, setOrganizations] = useState([]);
@@ -30,14 +99,6 @@ export default function AdminPanel({ session }) {
   const [ticketResponse, setTicketResponse] = useState('');
 
   // Form states
-  const [newCustomerForm, setNewCustomerForm] = useState({
-    name: '',
-    email: '',
-    businessName: '',
-    phone: '',
-    plan: 'trial',
-  });
-
   const [newAnnouncementForm, setNewAnnouncementForm] = useState({
     title: '',
     message: '',
@@ -116,22 +177,16 @@ export default function AdminPanel({ session }) {
     }
   }, [session?.access_token]);
 
-  const handleCreateCustomer = React.useCallback(async () => {
-    if (!newCustomerForm.email || !newCustomerForm.businessName) {
-      alert('Email and business name are required');
-      return;
-    }
-
+  const handleCreateCustomer = async (formData) => {
     try {
-      const result = await api.post('/api/admin/organizations', newCustomerForm);
+      const result = await api.post('/api/admin/organizations', formData);
       setCreatedCustomer(result);
-      setNewCustomerForm({ name: '', email: '', businessName: '', phone: '', plan: 'trial' });
       setTimeout(() => fetchData(), 500);
     } catch (error) {
       console.error('Customer creation error:', error);
       alert('Error creating customer: ' + error.message);
     }
-  }, [newCustomerForm]);
+  };
 
   const handleCreateAnnouncement = async () => {
     if (!newAnnouncementForm.title || !newAnnouncementForm.message) {
@@ -634,7 +689,6 @@ ShopOS Team`}
           <button
             onClick={() => {
               setCreatedCustomer(null);
-              setNewCustomerForm({ name: '', email: '', businessName: '', phone: '', plan: 'trial' });
               fetchData();
             }}
             style={styles.button}
@@ -643,54 +697,11 @@ ShopOS Team`}
           </button>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-          <div>
-            <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '16px' }}>
-              Create New Customer
-            </h3>
-            <input
-              placeholder="Contact Name"
-              value={newCustomerForm.name}
-              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, name: e.target.value }))}
-              style={styles.input}
-            />
-            <input
-              placeholder="Email"
-              value={newCustomerForm.email}
-              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, email: e.target.value }))}
-              style={styles.input}
-            />
-            <input
-              placeholder="Business Name"
-              value={newCustomerForm.businessName}
-              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, businessName: e.target.value }))}
-              style={styles.input}
-            />
-            <input
-              placeholder="Phone"
-              value={newCustomerForm.phone}
-              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
-              style={styles.input}
-            />
-            <select
-              value={newCustomerForm.plan}
-              onChange={(e) => setNewCustomerForm(prev => ({ ...prev, plan: e.target.value }))}
-              style={styles.input}
-            >
-              <option value="trial">Trial (14 days)</option>
-              <option value="free">Free</option>
-              <option value="starter">Starter - ₹799/mo</option>
-              <option value="business">Business - ₹1499/mo</option>
-              <option value="pro">Pro - ₹2499/mo</option>
-            </select>
-            <button
-              onClick={handleCreateCustomer}
-              style={{ ...styles.button, width: '100%' }}
-            >
-              <Plus size={14} style={{ marginRight: '6px' }} /> Create Portal
-            </button>
-          </div>
-        </div>
+        <OnboardingForm
+          onSubmit={handleCreateCustomer}
+          styles={styles}
+          Plus={Plus}
+        />
       )}
     </div>
   );
