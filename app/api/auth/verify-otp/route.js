@@ -47,26 +47,47 @@ export async function POST(req) {
       );
     }
 
-    // Get user by email
-    const { data: users } = await supabase.auth.admin.listUsers();
-    const user = users?.find(u => u.email === email);
+    // Update password - use Supabase reset password flow with service role
+    try {
+      // Use the admin API to update password
+      // First get list of users and find the one with matching email
+      const { data: users, error: listError } = await supabase.auth.admin.listUsers({
+        pageSize: 1000,
+      });
 
-    if (!user) {
-      return Response.json(
-        { error: 'User not found' },
-        { status: 404 }
+      let userId = null;
+      if (users && Array.isArray(users)) {
+        const foundUser = users.find(u => u.email === email);
+        userId = foundUser?.id;
+      } else if (users && users.users && Array.isArray(users.users)) {
+        const foundUser = users.users.find(u => u.email === email);
+        userId = foundUser?.id;
+      }
+
+      if (!userId) {
+        return Response.json(
+          { error: 'User not found' },
+          { status: 404 }
+        );
+      }
+
+      // Update the user's password
+      const { error: updateError } = await supabase.auth.admin.updateUserById(
+        userId,
+        { password: newPassword }
       );
-    }
 
-    // Update user password
-    const { error: updateError } = await supabase.auth.admin.updateUserById(
-      user.id,
-      { password: newPassword }
-    );
-
-    if (updateError) {
+      if (updateError) {
+        console.error('Update password error:', updateError);
+        return Response.json(
+          { error: updateError.message || 'Failed to update password' },
+          { status: 500 }
+        );
+      }
+    } catch (updateException) {
+      console.error('Password update exception:', updateException);
       return Response.json(
-        { error: updateError.message },
+        { error: updateException.message || 'Failed to reset password' },
         { status: 500 }
       );
     }
