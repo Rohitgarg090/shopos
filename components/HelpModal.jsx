@@ -8,7 +8,40 @@ export default function HelpModal({ isOpen, onClose }) {
   const [activeCategory, setActiveCategory] = useState('getting-started');
   const [expandedTopic, setExpandedTopic] = useState(null);
 
+  // Handle ESC key to close modal
+  React.useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden'; // Prevent background scroll
+      return () => {
+        document.removeEventListener('keydown', handleEscape);
+        document.body.style.overflow = 'unset';
+      };
+    }
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
+
+  // Modal styles
+  const modalOverlayStyle = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 99999, // Very high to be above everything
+    animation: 'fadeIn 0.2s ease-in',
+    padding: '20px'
+  };
 
   const categories = {
     'getting-started': {
@@ -219,20 +252,15 @@ export default function HelpModal({ isOpen, onClose }) {
     }
   };
 
+  const handleBackdropClick = (e) => {
+    // Only close if clicking directly on backdrop, not on modal content
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999,
-      animation: 'fadeIn 0.2s ease-in'
-    }}>
+    <div style={modalOverlayStyle} onClick={handleBackdropClick}>
       <style>{`
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -246,11 +274,13 @@ export default function HelpModal({ isOpen, onClose }) {
         borderRadius: 12,
         width: '90%',
         maxWidth: 900,
-        maxHeight: '85vh',
+        maxHeight: '90vh',
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        position: 'relative',
+        zIndex: 100000
       }}>
         {/* Header */}
         <div style={{
@@ -271,23 +301,26 @@ export default function HelpModal({ isOpen, onClose }) {
           <button
             onClick={onClose}
             style={{
-              background: 'rgba(255,255,255,0.2)',
+              background: 'rgba(255,255,255,0.25)',
               border: 'none',
               color: '#fff',
               borderRadius: '50%',
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: 20,
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              flexShrink: 0,
+              zIndex: 100001
             }}
-            onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.3)'}
-            onMouseLeave={e => e.target.style.background = 'rgba(255,255,255,0.2)'}
+            onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.35)'}
+            onMouseLeave={e => e.target.style.background = 'rgba(255,255,255,0.25)'}
+            title="Close (ESC)"
           >
-            <X size={20} />
+            <X size={22} />
           </button>
         </div>
 
