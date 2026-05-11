@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Shield,
 } from "lucide-react";
+import HelpModal from "@/components/HelpModal";
 
 export default function UserMenu({
   email,
@@ -20,6 +21,7 @@ export default function UserMenu({
   onNavigate,
 }) {
   const [open, setOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -42,6 +44,14 @@ export default function UserMenu({
       icon: MessageSquare,
       label: "Support Tickets",
       action: () => onNavigate("support"),
+    },
+    {
+      icon: HelpCircle,
+      label: "Help & Guide",
+      action: () => {
+        setShowHelp(true);
+        setOpen(false);
+      },
     },
   ];
 
@@ -350,6 +360,9 @@ export default function UserMenu({
           </button>
         </div>
       )}
+
+      {/* Help Modal */}
+      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 }
