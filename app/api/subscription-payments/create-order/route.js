@@ -29,17 +29,24 @@ async function getContext(req) {
 }
 
 export async function POST(req) {
+  console.log('[create-order] ========== NEW REQUEST ==========');
+  console.log('[create-order] POST /api/subscription-payments/create-order');
   try {
     const ctx = await getContext(req);
-    if (ctx.error) return Response.json({ error: ctx.error }, { status: ctx.status });
+    if (ctx.error) {
+      console.log('[create-order] Auth failed:', ctx.error);
+      return Response.json({ error: ctx.error }, { status: ctx.status });
+    }
 
     const { user } = ctx;
     const body = await req.json();
     const { plan, billingPeriod, couponCode } = body;
 
-    console.log('[create-order] User:', user.id, 'Plan:', plan, 'Period:', billingPeriod);
+    console.log('[create-order] ✓ Auth OK');
+    console.log('[create-order] User:', user.id, '| Plan:', plan, '| Period:', billingPeriod, '| Coupon:', couponCode || 'NONE');
 
     if (!plan || !billingPeriod) {
+      console.log('[create-order] ✗ Missing plan or billingPeriod');
       return Response.json(
         { error: 'Plan and billing period required' },
         { status: 400 }
@@ -47,13 +54,15 @@ export async function POST(req) {
     }
 
     // Get organization
+    console.log('[create-order] Fetching organization for user:', user.id);
     const { data: org, error: orgError } = await sb
       .from('organizations')
       .select('*')
       .eq('owner_id', user.id)
       .single();
 
-    console.log('[create-order] Org lookup:', org?.id || 'NOT FOUND', orgError?.message);
+    if (orgError) console.log('[create-order] Org error:', orgError.message);
+    console.log('[create-order] Org found:', org?.id || 'NOT FOUND');
 
     if (!org) {
       return Response.json({ error: 'Organization not found' }, { status: 404 });
@@ -113,13 +122,15 @@ export async function POST(req) {
     }
 
     const finalAmount = Math.max(0, amount - discountAmount);
+    console.log('[create-order] Final amount after discount:', finalAmount, '| Discount:', discountAmount);
 
     // Create Razorpay order via API
     // Receipt must be max 40 chars, so use short format
-    const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
+    const timestamp = Date.now().toString().slice(-8);
     const receipt = `${org.id.slice(0, 20)}_${timestamp}`.slice(0, 40);
 
-    console.log('[create-order] Receipt:', receipt, 'Length:', receipt.length);
+    console.log('[create-order] Creating Razorpay order...');
+    console.log('[create-order] Receipt:', receipt, '| KeyID check:', RAZORPAY_KEY_ID ? '✓ SET' : '✗ MISSING');
 
     const response = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
@@ -142,11 +153,15 @@ export async function POST(req) {
     const razorpayOrder = await response.json();
 
     if (!response.ok) {
+      console.log('[create-order] ✗ Razorpay error:', response.status, razorpayOrder.error || razorpayOrder);
       return Response.json({ error: razorpayOrder.error || 'Failed to create order' }, { status: 400 });
     }
 
+    console.log('[create-order] ✓ Razorpay order created:', razorpayOrder.id);
+
     // Store payment record
-    const { data: payment } = await sb
+    console.log('[create-order] Storing payment record in DB...');
+    const { data: payment, error: paymentError } = await sb
       .from('subscription_payments')
       .insert({
         organization_id: org.id,
@@ -161,6 +176,13 @@ export async function POST(req) {
       .select()
       .single();
 
+    if (paymentError) {
+      console.log('[create-order] ✗ Payment record error:', paymentError.message);
+    } else {
+      console.log('[create-order] ✓ Payment record saved:', payment?.id);
+    }
+
+    console.log('[create-order] ✓ RETURNING SUCCESS');
     return Response.json({
       orderId: razorpayOrder.id,
       amount: finalAmount,
@@ -176,7 +198,8 @@ export async function POST(req) {
       }
     });
   } catch (error) {
-    console.error('Payment creation error:', error);
+    console.error('[create-order] ✗ EXCEPTION:', error.message);
+    console.error('[create-order] Stack:', error.stack);
     return Response.json(
       { error: error.message },
       { status: 500 }

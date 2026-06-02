@@ -12,6 +12,10 @@ export default function BillingDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    console.log('[BillingDashboard] selectedPlan changed to:', selectedPlan);
+  }, [selectedPlan]);
+
   const plans = [
     {
       id: 'starter',
@@ -47,6 +51,7 @@ export default function BillingDashboard() {
   ];
 
   useEffect(() => {
+    console.log('[BillingDashboard] Component mounted');
     fetchOrgStatus();
   }, []);
 
@@ -76,15 +81,24 @@ export default function BillingDashboard() {
   };
 
   const handleUpgrade = async () => {
-    if (!selectedPlan) return;
+    console.log('[BillingDashboard] handleUpgrade called, selectedPlan:', selectedPlan);
+    if (!selectedPlan) {
+      console.log('[BillingDashboard] No plan selected, returning');
+      return;
+    }
+    console.log('[BillingDashboard] Setting loading to true');
     setLoading(true);
     try {
+      console.log('[BillingDashboard] Getting session...');
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('[BillingDashboard] Session:', session?.user?.email || 'NO SESSION');
       if (!session?.access_token) {
+        console.log('[BillingDashboard] No access token');
         setError('Authentication required');
         setLoading(false);
         return;
       }
+      console.log('[BillingDashboard] Session OK, proceeding...');
 
       // Calculate amount
       const planDetails = plans.find(p => p.id === selectedPlan);
@@ -134,7 +148,7 @@ export default function BillingDashboard() {
       }
 
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: orderData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         order_id: orderData.orderId,
         amount: orderData.amount,
         currency: 'INR',
@@ -191,12 +205,15 @@ export default function BillingDashboard() {
   };
 
   if (loading || !org) {
+    console.log('[BillingDashboard] Still loading or no org - loading:', loading, 'org:', org?.name || 'NONE');
     return (
       <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
+
+  console.log('[BillingDashboard] Rendering main content - selectedPlan:', selectedPlan, 'loading:', loading);
 
   const daysRemaining = org.trialDaysRemaining || 0;
   const isOnTrial = org.status === 'trial';
@@ -270,7 +287,10 @@ export default function BillingDashboard() {
           return (
             <div
               key={plan.id}
-              onClick={() => setSelectedPlan(plan.id)}
+              onClick={() => {
+                console.log('[BillingDashboard] Plan card clicked:', plan.id);
+                setSelectedPlan(plan.id);
+              }}
               className={`relative rounded-2xl p-6 cursor-pointer transition-all duration-300 ${
                 isSelected
                   ? 'ring-2 ring-blue-500 shadow-2xl scale-105'
@@ -347,7 +367,10 @@ export default function BillingDashboard() {
 
       {/* CTA Button */}
       <button
-        onClick={handleUpgrade}
+        onClick={() => {
+          console.log('[BillingDashboard] Button clicked! selectedPlan:', selectedPlan, 'loading:', loading);
+          handleUpgrade();
+        }}
         disabled={!selectedPlan || loading}
         className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg transition-all flex items-center justify-center gap-2 text-lg shadow-lg hover:shadow-xl"
       >
