@@ -12,34 +12,37 @@ export default function AdminPage() {
   const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
-    console.log('[admin] Checking auth state...');
+    const checkAuth = async () => {
+      try {
+        console.log('[admin] Checking auth...');
 
-    // Use auth state listener for reliable session tracking
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('[admin] Auth state changed:', {
-          event,
-          hasSession: !!session,
-          userEmail: session?.user?.email,
-          adminEmails: ADMIN_EMAILS,
-          isAdmin: session?.user?.email ? ADMIN_EMAILS.map(e => e.toLowerCase()).includes(session.user.email.toLowerCase()) : false
+        // Get current session
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+
+        console.log('[admin] Session check:', {
+          hasSession: !!currentSession,
+          userEmail: currentSession?.user?.email,
+          error: error?.message
         });
 
-        if (session?.user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(session.user.email.toLowerCase())) {
-          setSession(session);
+        if (currentSession?.user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(currentSession.user.email.toLowerCase())) {
+          console.log('[admin] Access granted for:', currentSession.user.email);
+          setSession(currentSession);
           setAccessDenied(false);
         } else {
+          console.log('[admin] Access denied for:', currentSession?.user?.email);
           setAccessDenied(true);
           setSession(null);
         }
-
+      } catch (err) {
+        console.error('[admin] Auth error:', err);
+        setAccessDenied(true);
+      } finally {
         setLoading(false);
       }
-    );
-
-    return () => {
-      subscription?.unsubscribe();
     };
+
+    checkAuth();
   }, []);
 
   if (loading) {

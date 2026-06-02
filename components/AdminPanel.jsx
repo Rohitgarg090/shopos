@@ -180,11 +180,19 @@ export default function AdminPanel({ session }) {
   const api = {
     get: async (url) => {
       const token = session?.access_token;
+      console.log(`[api.get] ${url} - Token present: ${!!token}`);
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
+      console.log(`[api.get] ${url} - Status: ${res.status}`);
+      if (!res.ok) {
+        const errorData = await res.text();
+        console.error(`[api.get] ${url} - Error:`, errorData);
+        throw new Error(`HTTP ${res.status}: ${errorData}`);
+      }
+      const data = await res.json();
+      console.log(`[api.get] ${url} - Data:`, data);
+      return data;
     },
     post: async (url, body) => {
       const token = session?.access_token;
@@ -218,24 +226,26 @@ export default function AdminPanel({ session }) {
     try {
       setLoading(true);
       console.log('Fetching admin data...');
-      const [orgsRes, analyticsRes, announcementsRes, ticketsRes, demoRes] = await Promise.all([
+      const [orgsRes, analyticsRes, announcementsRes, ticketsRes] = await Promise.all([
         api.get('/api/admin/organizations'),
         api.get('/api/admin/analytics'),
         api.get('/api/admin/announcements'),
         api.get('/api/admin/support'),
-        api.get('/api/demo-request'),
       ]);
-
-      console.log('Orgs Response:', orgsRes);
-      console.log('Analytics Response:', analyticsRes);
-      console.log('Tickets Response:', ticketsRes);
-      console.log('Demo Requests Response:', demoRes);
 
       setOrganizations(orgsRes.organizations || []);
       setAnalytics(analyticsRes);
       setAnnouncements(announcementsRes.announcements || []);
       setSupportTickets(ticketsRes.tickets || []);
-      setDemoRequests(demoRes.requests || []);
+
+      // Fetch demo requests separately to avoid blocking other data
+      try {
+        const demoRes = await api.get('/api/demo-request');
+        setDemoRequests(demoRes.requests || []);
+      } catch (error) {
+        console.error('Error fetching demo requests:', error);
+        setDemoRequests([]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -244,8 +254,16 @@ export default function AdminPanel({ session }) {
   };
 
   useEffect(() => {
+    console.log('[AdminPanel] Session:', {
+      hasSession: !!session,
+      hasAccessToken: !!session?.access_token,
+      userEmail: session?.user?.email,
+      sessionKeys: session ? Object.keys(session) : []
+    });
     if (session?.access_token) {
       fetchData();
+    } else {
+      console.warn('[AdminPanel] No access token available');
     }
   }, [session?.access_token]);
 

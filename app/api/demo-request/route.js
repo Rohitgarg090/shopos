@@ -161,12 +161,17 @@ export async function GET(req) {
     const authHeader = req.headers.get('authorization');
     const token = authHeader?.split('Bearer ')[1];
 
+    console.log('[demo-request] GET - Auth header present:', !!authHeader);
+
     if (!token) {
+      console.log('[demo-request] GET - No token provided');
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Verify admin
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    console.log('[demo-request] GET - User check:', { hasUser: !!user, email: user?.email, error: userError?.message });
 
     if (userError || !user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -176,15 +181,20 @@ export async function GET(req) {
       .split(',')
       .map(e => e.trim().toLowerCase());
 
+    console.log('[demo-request] GET - Admin check:', { email: user.email, adminEmails, isAdmin: adminEmails.includes((user.email || '').toLowerCase()) });
+
     if (!adminEmails.includes((user.email || '').toLowerCase())) {
       return Response.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Get demo requests
+    console.log('[demo-request] GET - Fetching demo requests');
     const { data: requests, error: fetchError } = await supabase
       .from('demo_requests')
       .select('*')
       .order('created_at', { ascending: false });
+
+    console.log('[demo-request] GET - Query result:', { count: requests?.length, error: fetchError?.message });
 
     if (fetchError) {
       return Response.json({ error: fetchError.message }, { status: 500 });
