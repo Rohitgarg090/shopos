@@ -8,7 +8,7 @@ import dynamic from "next/dynamic";
 const LandingPage = dynamic(() => import("./landing/page"), { ssr: false });
 
 export default function PageWrapper() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
