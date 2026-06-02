@@ -68,9 +68,7 @@ export default function AdminPage() {
           This admin panel is restricted to authorized administrators only.
         </div>
         <div style={{ fontSize: 11, color: '#64748B', maxWidth: 400, textAlign: 'center', marginTop: 8 }}>
-          📧 Authorized emails: rohitgarg090@gmail.com, info@shopos.co.in
-          <br/>
-          Make sure you're logged in with one of these emails.
+          Please log in with your authorized admin account to continue.
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <a
