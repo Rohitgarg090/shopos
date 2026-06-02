@@ -1,15 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 import AdminPanel from '@/components/AdminPanel';
 
 const ADMIN_EMAILS = ['rohitgarg090@gmail.com', 'info@shopos.co.in'];
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 export default function AdminPage() {
   const [session, setSession] = useState(null);
@@ -17,22 +12,34 @@ export default function AdminPage() {
   const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
-    const getSession = async () => {
-      const {
-        data: { session: ses },
-      } = await supabase.auth.getSession();
+    console.log('[admin] Checking auth state...');
 
-      if (ses?.user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(ses.user.email.toLowerCase())) {
-        setSession(ses);
-      } else {
-        console.log('[admin] Access denied. User email:', ses?.user?.email, 'Admin emails:', ADMIN_EMAILS);
-        setAccessDenied(true);
+    // Use auth state listener for reliable session tracking
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('[admin] Auth state changed:', {
+          event,
+          hasSession: !!session,
+          userEmail: session?.user?.email,
+          adminEmails: ADMIN_EMAILS,
+          isAdmin: session?.user?.email ? ADMIN_EMAILS.map(e => e.toLowerCase()).includes(session.user.email.toLowerCase()) : false
+        });
+
+        if (session?.user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(session.user.email.toLowerCase())) {
+          setSession(session);
+          setAccessDenied(false);
+        } else {
+          setAccessDenied(true);
+          setSession(null);
+        }
+
+        setLoading(false);
       }
+    );
 
-      setLoading(false);
+    return () => {
+      subscription?.unsubscribe();
     };
-
-    getSession();
   }, []);
 
   if (loading) {
