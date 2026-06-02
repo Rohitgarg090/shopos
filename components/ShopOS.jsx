@@ -230,18 +230,15 @@ export default function ShopOS(){
   const[showTrialExtend,setShowTrialExtend]=useState(false);
   const[showUpgradeBlock,setShowUpgradeBlock]=useState(false);
   const[showBillingPopup,setShowBillingPopup]=useState(false);
+  const[showSupport,setShowSupport]=useState(false);
   const[announcements,setAnnouncements]=useState([]);
   const[dismissedAnnouncements,setDismissedAnnouncements]=useState(()=>isBR?JSON.parse(localStorage.getItem('dismissed_announcements')||'[]'):[]);
   const ww=useWW();const mob=ww<768;const tab=ww<1024;
 
   const handleNavigation = useCallback((p) => {
-    console.log('[ShopOS] handleNavigation called with:', p);
     if(p==='settings') setPage('settings');
     else if(p==='labels') setPage('labels');
-    else if(p==='support') {
-      console.log('[ShopOS] Setting page to support');
-      setPage('support');
-    }
+    else if(p==='support') setShowSupport(true);
     else if(p==='profile') alert('Profile editing coming soon');
     else if(p==='billing') setShowBillingPopup(true);
     else if(p==='help') alert('Help & Support coming soon');
@@ -489,16 +486,6 @@ export default function ShopOS(){
       {page==='ledger'&&<Ledger B={B} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
       {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
-      {page==='support'&&(
-        <div style={{padding:40,textAlign:'center',color:'#1A1A18',background:'#F5F4F0',borderRadius:8,maxWidth:500,margin:'0 auto',marginTop:40}}>
-          <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>Support & Help</div>
-          <p style={{marginBottom:16,color:'#666'}}>For support tickets and assistance, please email us at:</p>
-          <a href="mailto:support@shopos.co.in" style={{fontSize:14,fontWeight:600,color:'#1B5E8A',textDecoration:'none',display:'inline-block',padding:'10px 20px',background:'#E3EFF8',borderRadius:6}}>
-            support@shopos.co.in
-          </a>
-          <p style={{marginTop:20,fontSize:12,color:'#888'}}>Our team will respond within 24 hours.</p>
-        </div>
-      )}
     </div>
 
     {/* Trial Extension Modal */}
@@ -523,6 +510,23 @@ export default function ShopOS(){
       onClose={()=>setShowBillingPopup(false)}
       onNavigateToBilling={()=>setPage('settings')}
     />
+
+    {/* Support Modal */}
+    {showSupport && (
+      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
+        <div style={{background:'#fff',borderRadius:12,padding:40,maxWidth:450,boxShadow:'0 20px 60px rgba(0,0,0,0.3)',textAlign:'center'}}>
+          <div style={{fontSize:24,fontWeight:700,color:'#1A1A18',marginBottom:16}}>Support & Help</div>
+          <p style={{fontSize:14,color:'#666',marginBottom:20}}>For support tickets and assistance, please email us at:</p>
+          <a href="mailto:support@shopos.co.in" style={{fontSize:14,fontWeight:600,color:'#fff',textDecoration:'none',display:'inline-block',padding:'12px 24px',background:'#1B5E8A',borderRadius:8,marginBottom:24}}>
+            support@shopos.co.in
+          </a>
+          <p style={{fontSize:12,color:'#888',marginBottom:24}}>Our team will respond within 24 hours.</p>
+          <button onClick={()=>setShowSupport(false)} style={{padding:'10px 20px',background:'#F5F4F0',color:'#1A1A18',border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,fontSize:13}}>
+            Close
+          </button>
+        </div>
+      </div>
+    )}
   </div>;}
 
 /* ── DASHBOARD ── */
