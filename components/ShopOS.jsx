@@ -476,7 +476,16 @@ export default function ShopOS(){
       {page==='ledger'&&<Ledger B={B} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
       {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
-      {page==='support'&&<SupportTickets mob={mob}/>}
+      {page==='support'&&(
+        <div style={{padding:40,textAlign:'center',color:'#1A1A18',background:'#F5F4F0',borderRadius:8,maxWidth:500,margin:'0 auto',marginTop:40}}>
+          <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>Support & Help</div>
+          <p style={{marginBottom:16,color:'#666'}}>For support tickets and assistance, please email us at:</p>
+          <a href="mailto:support@shopos.co.in" style={{fontSize:14,fontWeight:600,color:'#1B5E8A',textDecoration:'none',display:'inline-block',padding:'10px 20px',background:'#E3EFF8',borderRadius:6}}>
+            support@shopos.co.in
+          </a>
+          <p style={{marginTop:20,fontSize:12,color:'#888'}}>Our team will respond within 24 hours.</p>
+        </div>
+      )}
     </div>
 
     {/* Trial Extension Modal */}
