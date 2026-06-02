@@ -21,11 +21,11 @@ export async function GET(req) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get support tickets for this firm
+    // Get support tickets for this organization
     const { data: tickets, error } = await supabase
       .from('support_tickets')
       .select('*')
-      .eq('firm_id', firmId)
+      .eq('organization_id', firmId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -69,8 +69,8 @@ export async function POST(req) {
     const { data: ticket, error } = await supabase
       .from('support_tickets')
       .insert({
-        firm_id: firmId,
-        user_id: user.id,
+        organization_id: firmId,
+        created_by: user.id,
         title,
         description,
         category: category || 'general',
