@@ -5,15 +5,74 @@ import { useState } from 'react';
 
 export default function LandingPage() {
   const [showInterestModal, setShowInterestModal] = useState(false);
-  const [email, setEmail] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    contact_number: '',
+    city: '',
+    company_name: '',
+    message: '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleShowInterest = (e) => {
+  const handleShowInterest = async (e) => {
     e.preventDefault();
-    if (email) {
-      alert(`Thanks for your interest! We'll contact you at ${email}`);
-      setEmail('');
-      setShowInterestModal(false);
+    setError('');
+    setLoading(true);
+
+    // Validate required fields
+    if (!formData.name || !formData.email || !formData.contact_number || !formData.city) {
+      setError('Please fill in all required fields');
+      setLoading(false);
+      return;
     }
+
+    try {
+      const response = await fetch('/api/demo-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to submit request');
+        setLoading(false);
+        return;
+      }
+
+      setSuccess(true);
+      setFormData({
+        name: '',
+        email: '',
+        contact_number: '',
+        city: '',
+        company_name: '',
+        message: '',
+      });
+
+      // Close modal after 3 seconds
+      setTimeout(() => {
+        setShowInterestModal(false);
+        setSuccess(false);
+      }, 3000);
+    } catch (err) {
+      setError('An error occurred. Please try again.');
+      console.error('Error submitting demo request:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   return (
@@ -499,34 +558,144 @@ export default function LandingPage() {
 
       {/* Show Interest Modal */}
       {showInterestModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
-            <h3 className="text-2xl font-bold mb-4">Schedule a Demo</h3>
-            <p className="text-slate-400 mb-6">
-              See ShopOS in action. Our team will help you get started.
-            </p>
-            <form onSubmit={handleShowInterest} className="space-y-4">
-              <input
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-              />
-              <button
-                type="submit"
-                className="w-full px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg font-bold hover:from-cyan-600 hover:to-blue-700 transition"
-              >
-                Get Demo Link
-              </button>
-            </form>
-            <button
-              onClick={() => setShowInterestModal(false)}
-              className="mt-4 w-full text-slate-400 hover:text-white transition"
-            >
-              Close
-            </button>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 max-w-md w-full my-8">
+            {success ? (
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">✅</div>
+                <h3 className="text-2xl font-bold mb-2">Thank You!</h3>
+                <p className="text-slate-400">
+                  Your demo request has been received. Our team will contact you shortly at <strong>{formData.contact_number}</strong>.
+                </p>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-2xl font-bold mb-2">Schedule a Demo</h3>
+                <p className="text-slate-400 text-sm mb-6">
+                  See ShopOS in action. Fill in your details and we'll reach out soon.
+                </p>
+
+                {error && (
+                  <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 text-red-200 rounded-lg text-sm">
+                    {error}
+                  </div>
+                )}
+
+                <form onSubmit={handleShowInterest} className="space-y-3">
+                  {/* Name */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Name <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      placeholder="Your full name"
+                      value={formData.name}
+                      onChange={handleFormChange}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Email <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      placeholder="your@email.com"
+                      value={formData.email}
+                      onChange={handleFormChange}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Contact Number */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Contact Number <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      name="contact_number"
+                      placeholder="+91 98765 43210"
+                      value={formData.contact_number}
+                      onChange={handleFormChange}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+                    />
+                  </div>
+
+                  {/* City */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      City <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="city"
+                      placeholder="e.g., Mumbai"
+                      value={formData.city}
+                      onChange={handleFormChange}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Company Name (Optional) */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Company Name <span className="text-slate-500">(Optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="company_name"
+                      placeholder="Your company name"
+                      value={formData.company_name}
+                      onChange={handleFormChange}
+                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Message (Optional) */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">
+                      Message <span className="text-slate-500">(Optional)</span>
+                    </label>
+                    <textarea
+                      name="message"
+                      placeholder="Tell us about your business needs..."
+                      value={formData.message}
+                      onChange={handleFormChange}
+                      rows="2"
+                      className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm resize-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg font-bold hover:from-cyan-600 hover:to-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-4"
+                  >
+                    {loading ? 'Submitting...' : 'Schedule Demo'}
+                  </button>
+                </form>
+
+                <button
+                  onClick={() => {
+                    setShowInterestModal(false);
+                    setError('');
+                  }}
+                  className="mt-3 w-full text-slate-400 hover:text-white transition text-sm"
+                >
+                  Close
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
