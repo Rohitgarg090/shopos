@@ -212,7 +212,7 @@ export default function ShopOS(){
   const[page,setPage]=useState(()=>isBR?sessionStorage.getItem('shopos_page')||'dash':'dash');
   const[theme,setTheme]=useState(()=>isBR?localStorage.getItem('shopos_theme')||'minimal':'minimal');
   // Persist page across Fast Refresh in dev
-  useEffect(()=>{console.log('[ShopOS] Page changed to:', page);if(isBR)sessionStorage.setItem('shopos_page',page);},[page]);
+  useEffect(()=>{console.log('[ShopOS] useEffect triggered - Page changed to:', page, 'isBR:', isBR);if(isBR)sessionStorage.setItem('shopos_page',page);},[page]);
   useEffect(()=>{if(isBR)localStorage.setItem('shopos_theme',theme);_theme=theme;},[theme]);
   const[P,setP]=useState([]);const[C,setC]=useState([]);const[B,setB]=useState([]);const[Py,setPy]=useState([]);const[Ret,setRet]=useState([]);
   const[BS,setBS]=useState([]);const[SS,setSS]=useState([]);
@@ -452,7 +452,7 @@ export default function ShopOS(){
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:8}}>
         <FirmDropdown activeFirm={activeFirm} firms={firms} onSwitch={switchFirm} onAdd={()=>setPage('team')} onRefresh={refreshFirms}/>
-        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={p=>{console.log('[ShopOS] Navigation:', p);if(p==='settings')setPage('settings');else if(p==='labels')setPage('labels');else if(p==='support'){console.log('[ShopOS] Setting page to support');setPage('support');}else if(p==='profile')alert('Profile editing coming soon');else if(p==='billing')setShowBillingPopup(true);else if(p==='help')alert('Help & Support coming soon');}}/>
+        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={p=>{console.log('[ShopOS] Navigation:', p, 'Current page:', page);if(p==='settings')setPage('settings');else if(p==='labels')setPage('labels');else if(p==='support'){console.log('[ShopOS] Before setPage, page is:', page);setPage('support');console.log('[ShopOS] After setPage');}else if(p==='profile')alert('Profile editing coming soon');else if(p==='billing')setShowBillingPopup(true);else if(p==='help')alert('Help & Support coming soon');}}/>
       </div>
     </nav>}
 
