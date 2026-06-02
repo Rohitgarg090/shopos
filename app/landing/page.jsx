@@ -28,7 +28,7 @@ export default function LandingPage() {
             <a href="#features" className="text-slate-400 hover:text-white transition">Features</a>
             <a href="#how-it-works" className="text-slate-400 hover:text-white transition">How It Works</a>
             <a href="#pricing" className="text-slate-400 hover:text-white transition">Pricing</a>
-            <a href="/auth" className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition">Login</a>
+            <a href="/auth?mode=login" className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition">Login</a>
           </div>
         </div>
       </nav>
@@ -53,7 +53,7 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col md:flex-row gap-4 justify-center mb-16">
-            <Link href="/auth">
+            <Link href="/auth?mode=signup">
               <button className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 rounded-lg font-bold text-lg transition transform hover:scale-105 shadow-lg shadow-cyan-500/50">
                 Start Free Trial (14 days) →
               </button>
@@ -411,13 +411,15 @@ export default function LandingPage() {
                   <span className="text-slate-400">{plan.period}</span>
                 </div>
 
-                <button className={`w-full py-3 rounded-lg font-bold mb-6 transition ${
-                  plan.popular
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
-                    : 'bg-slate-700 hover:bg-slate-600'
-                }`}>
-                  {plan.cta}
-                </button>
+                <Link href={plan.cta === 'Get Started' ? '/auth?mode=signup' : '#contact'}>
+                  <button className={`w-full py-3 rounded-lg font-bold mb-6 transition ${
+                    plan.popular
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
+                      : 'bg-slate-700 hover:bg-slate-600'
+                  }`}>
+                    {plan.cta}
+                  </button>
+                </Link>
 
                 <div className="space-y-3">
                   {plan.features.map((feature, fidx) => (
@@ -441,7 +443,7 @@ export default function LandingPage() {
             Join 1000+ businesses already using ShopOS. 14-day free trial. No credit card required.
           </p>
           <div className="flex flex-col md:flex-row gap-4 justify-center">
-            <Link href="/auth">
+            <Link href="/auth?mode=signup">
               <button className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 rounded-lg font-bold text-lg transition transform hover:scale-105 shadow-lg shadow-cyan-500/50">
                 Start Free Trial Now →
               </button>

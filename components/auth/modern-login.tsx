@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Button from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ interface ModernLoginProps {
 }
 
 export default function ModernLogin({ onLogin }: ModernLoginProps) {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -19,6 +21,18 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"in" | "up" | "forgot">("in");
+
+  // Read mode from URL query parameters
+  useEffect(() => {
+    const urlMode = searchParams.get("mode");
+    if (urlMode === "signup" || urlMode === "up") {
+      setMode("up");
+    } else if (urlMode === "login" || urlMode === "in") {
+      setMode("in");
+    } else if (urlMode === "forgot") {
+      setMode("forgot");
+    }
+  }, [searchParams]);
   const [forgotStep, setForgotStep] = useState<"email" | "otp" | "reset">("email");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
