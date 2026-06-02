@@ -452,7 +452,7 @@ export default function ShopOS(){
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:8}}>
         <FirmDropdown activeFirm={activeFirm} firms={firms} onSwitch={switchFirm} onAdd={()=>setPage('team')} onRefresh={refreshFirms}/>
-        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={p=>{if(p==='settings')setPage('settings');else if(p==='labels')setPage('labels');else if(p==='support')setPage('support');else if(p==='profile')alert('Profile editing coming soon');else if(p==='billing')setShowBillingPopup(true);else if(p==='help')alert('Help & Support coming soon');}}/>
+        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={p=>{console.log('[ShopOS] Navigation:', p);if(p==='settings')setPage('settings');else if(p==='labels')setPage('labels');else if(p==='support'){console.log('[ShopOS] Setting page to support');setPage('support');}else if(p==='profile')alert('Profile editing coming soon');else if(p==='billing')setShowBillingPopup(true);else if(p==='help')alert('Help & Support coming soon');}}/>
       </div>
     </nav>}
 
