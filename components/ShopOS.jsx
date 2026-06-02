@@ -212,7 +212,7 @@ export default function ShopOS(){
   const[page,setPage]=useState(()=>isBR?sessionStorage.getItem('shopos_page')||'dash':'dash');
   const[theme,setTheme]=useState(()=>isBR?localStorage.getItem('shopos_theme')||'minimal':'minimal');
   // Persist page across Fast Refresh in dev
-  useEffect(()=>{if(isBR)sessionStorage.setItem('shopos_page',page);},[page]);
+  useEffect(()=>{console.log('[ShopOS] Page changed to:', page);if(isBR)sessionStorage.setItem('shopos_page',page);},[page]);
   useEffect(()=>{if(isBR)localStorage.setItem('shopos_theme',theme);_theme=theme;},[theme]);
   const[P,setP]=useState([]);const[C,setC]=useState([]);const[B,setB]=useState([]);const[Py,setPy]=useState([]);const[Ret,setRet]=useState([]);
   const[BS,setBS]=useState([]);const[SS,setSS]=useState([]);
