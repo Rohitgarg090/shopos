@@ -7,26 +7,21 @@ const supabase = createClient(
 
 async function ctx(req) {
   const token = req.headers.get('authorization')?.split('Bearer ')[1];
+  const orgId = req.headers.get('x-firm-id');
   const {
     data: { user },
   } = await supabase.auth.getUser(token);
 
-  if (!user) return { error: 'Unauthorized', status: 401 };
+  if (!user || !orgId) return { error: 'Unauthorized', status: 401 };
 
-  const { data: org } = await supabase
-    .from('organizations')
-    .select('*')
-    .eq('owner_id', user.id)
-    .single();
-
-  return { user, org, supabase };
+  return { user, orgId, supabase };
 }
 
 // Get messages for ticket (used by SupportTickets component to fetch messages)
 export async function GET(req, { params }) {
   try {
-    const { user, org, supabase: sb } = await ctx(req);
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const { user, orgId, supabase: sb } = await ctx(req);
+    if (!user || !orgId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id: ticketId } = params;
 
@@ -35,7 +30,7 @@ export async function GET(req, { params }) {
       .from('support_tickets')
       .select('*')
       .eq('id', ticketId)
-      .eq('organization_id', org.id)
+      .eq('organization_id', orgId)
       .single();
 
     if (!ticket) {
@@ -90,8 +85,8 @@ export async function GET(req, { params }) {
 // Add message to support ticket
 export async function POST(req, { params }) {
   try {
-    const { user, org, supabase: sb } = await ctx(req);
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const { user, orgId, supabase: sb } = await ctx(req);
+    if (!user || !orgId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id: ticketId } = params;
     const { message } = await req.json();
@@ -105,7 +100,7 @@ export async function POST(req, { params }) {
       .from('support_tickets')
       .select('*')
       .eq('id', ticketId)
-      .eq('organization_id', org.id)
+      .eq('organization_id', orgId)
       .single();
 
     if (!ticket) {

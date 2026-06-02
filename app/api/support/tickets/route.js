@@ -21,7 +21,38 @@ export async function GET(req) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get support tickets for this organization
+    // Check if fetching a single ticket with details
+    const url = new URL(req.url);
+    const ticketId = url.searchParams.get('id');
+
+    if (ticketId) {
+      // Fetch single ticket with messages
+      const { data: ticket, error: ticketError } = await supabase
+        .from('support_tickets')
+        .select('*')
+        .eq('id', ticketId)
+        .eq('organization_id', firmId)
+        .single();
+
+      if (ticketError || !ticket) {
+        return Response.json({ error: 'Ticket not found' }, { status: 404 });
+      }
+
+      // Fetch messages for this ticket
+      const { data: messages, error: msgError } = await supabase
+        .from('ticket_messages')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true });
+
+      if (!msgError) {
+        ticket.messages = messages || [];
+      }
+
+      return Response.json({ success: true, ticket });
+    }
+
+    // Get all support tickets for this organization
     const { data: tickets, error } = await supabase
       .from('support_tickets')
       .select('*')
@@ -32,7 +63,18 @@ export async function GET(req) {
       return Response.json({ error: error.message }, { status: 500 });
     }
 
-    return Response.json({ tickets: tickets || [] });
+    // For list view, fetch message counts for each ticket
+    const ticketsWithCounts = await Promise.all(
+      (tickets || []).map(async (ticket) => {
+        const { count } = await supabase
+          .from('ticket_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('ticket_id', ticket.id);
+        return { ...ticket, messages: Array(count || 0) };
+      })
+    );
+
+    return Response.json({ tickets: ticketsWithCounts || [] });
   } catch (error) {
     console.error('[support] GET tickets error:', error);
     return Response.json(
