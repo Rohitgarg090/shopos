@@ -8,10 +8,44 @@ const BL='#1B5E8A',BLL='#E3EFF8',AMB='#B8690A',AMBL='#FDF0E0',GR='#2E6B1F',GRL='
 const fmt=n=>'Rs.'+Number(n||0).toFixed(2);
 
 const getToken=async()=>{const{data:{session}}=await supabase.auth.getSession();return session?.access_token||'';};
-const getFirmId=()=>{try{const f=JSON.parse(localStorage.getItem('shopos_firm')||'{}');return f.id||'';}catch{return'';}};
+const getFirmId=()=>{
+  try{
+    // Try multiple storage keys
+    let firmId = localStorage.getItem('activeFirmId');
+    if(!firmId) {
+      const f=JSON.parse(localStorage.getItem('shopos_firm')||'{}');
+      firmId = f?.id || f;
+    }
+    console.log('[SupportTickets] Firm ID:', firmId);
+    return firmId || '';
+  }catch(e){
+    console.error('[SupportTickets] Error getting firm ID:', e);
+    return '';
+  }
+};
 const api={
-  get:async u=>{const token=await getToken();const firmId=getFirmId();const res=await fetch(u,{headers:{'Authorization':'Bearer '+token,'x-firm-id':firmId}});if(!res.ok)throw new Error(res.statusText);return res.json();},
-  post:async(u,b)=>{const token=await getToken();const firmId=getFirmId();const res=await fetch(u,{method:'POST',headers:{'Authorization':'Bearer '+token,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify(b)});if(!res.ok)throw new Error(res.statusText);return res.json();},
+  get:async u=>{
+    const token=await getToken();
+    const firmId=getFirmId();
+    console.log('[SupportTickets] API GET', u, 'with token:', !!token, 'firmId:', firmId);
+    if(!token || !firmId) {
+      throw new Error('Missing token or firm ID');
+    }
+    const res=await fetch(u,{headers:{'Authorization':'Bearer '+token,'x-firm-id':firmId}});
+    if(!res.ok) {
+      const err=await res.text();
+      throw new Error(`API error: ${res.status} - ${err}`);
+    }
+    return res.json();
+  },
+  post:async(u,b)=>{
+    const token=await getToken();
+    const firmId=getFirmId();
+    if(!token || !firmId) throw new Error('Missing token or firm ID');
+    const res=await fetch(u,{method:'POST',headers:{'Authorization':'Bearer '+token,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify(b)});
+    if(!res.ok) throw new Error(res.statusText);
+    return res.json();
+  },
 };
 
 export default function SupportTickets({mob}){
@@ -32,7 +66,9 @@ export default function SupportTickets({mob}){
 
   const fetchTickets=async()=>{
     try{
+      console.log('[SupportTickets] Fetching tickets...');
       const res=await api.get('/api/support/tickets');
+      console.log('[SupportTickets] Tickets response:', res);
       const ticketsList=res.tickets||[];
       setTickets(ticketsList);
       if(view==='detail'&&selectedTicket){
@@ -40,7 +76,8 @@ export default function SupportTickets({mob}){
         if(updated) setSelectedTicket(updated);
       }
     }catch(err){
-      console.error('Failed to fetch tickets:',err);
+      console.error('[SupportTickets] Failed to fetch tickets:',err);
+      setTickets([]);
     }finally{
       setLoading(false);
     }
