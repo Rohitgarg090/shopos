@@ -8,38 +8,37 @@ const BL='#1B5E8A',BLL='#E3EFF8',AMB='#B8690A',AMBL='#FDF0E0',GR='#2E6B1F',GRL='
 const fmt=n=>'Rs.'+Number(n||0).toFixed(2);
 
 const getToken=async()=>{const{data:{session}}=await supabase.auth.getSession();return session?.access_token||'';};
-const getFirmId=()=>{
+
+const getOrganizationId=async()=>{
   try{
-    // Get firm ID from sessionStorage first (most reliable)
-    let firmId = sessionStorage.getItem('shopos_firm_id');
+    // Get user first
+    const{data:{user}}=await supabase.auth.getUser();
+    if(!user) return '';
 
-    // Fallback to localStorage
-    if(!firmId) {
-      firmId = localStorage.getItem('activeFirmId');
-    }
+    // Query organizations table to find user's organization
+    const{data}=await supabase
+      .from('organizations')
+      .select('id')
+      .eq('owner_id',user.id)
+      .single();
 
-    // Fallback to parsing firm object
-    if(!firmId) {
-      const f=JSON.parse(localStorage.getItem('shopos_firm')||'{}');
-      firmId = f?.id;
-    }
-
-    console.log('[SupportTickets] Firm ID:', firmId);
-    return firmId || '';
+    const orgId = data?.id || '';
+    console.log('[SupportTickets] Organization ID:', orgId);
+    return orgId;
   }catch(e){
-    console.error('[SupportTickets] Error getting firm ID:', e);
+    console.error('[SupportTickets] Error getting organization ID:', e);
     return '';
   }
 };
 const api={
   get:async u=>{
     const token=await getToken();
-    const firmId=getFirmId();
-    console.log('[SupportTickets] API GET', u, 'with token:', !!token, 'firmId:', firmId);
-    if(!token || !firmId) {
-      throw new Error('Missing token or firm ID');
+    const orgId=await getOrganizationId();
+    console.log('[SupportTickets] API GET', u, 'with token:', !!token, 'orgId:', orgId);
+    if(!token || !orgId) {
+      throw new Error('Missing token or organization ID');
     }
-    const res=await fetch(u,{headers:{'Authorization':'Bearer '+token,'x-firm-id':firmId}});
+    const res=await fetch(u,{headers:{'Authorization':'Bearer '+token,'x-firm-id':orgId}});
     if(!res.ok) {
       const err=await res.text();
       throw new Error(`API error: ${res.status} - ${err}`);
@@ -48,9 +47,9 @@ const api={
   },
   post:async(u,b)=>{
     const token=await getToken();
-    const firmId=getFirmId();
-    if(!token || !firmId) throw new Error('Missing token or firm ID');
-    const res=await fetch(u,{method:'POST',headers:{'Authorization':'Bearer '+token,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify(b)});
+    const orgId=await getOrganizationId();
+    if(!token || !orgId) throw new Error('Missing token or organization ID');
+    const res=await fetch(u,{method:'POST',headers:{'Authorization':'Bearer '+token,'x-firm-id':orgId,'Content-Type':'application/json'},body:JSON.stringify(b)});
     if(!res.ok) throw new Error(res.statusText);
     return res.json();
   },
