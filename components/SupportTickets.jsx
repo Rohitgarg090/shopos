@@ -49,6 +49,7 @@ const api={
 };
 
 export default function SupportTickets({mob}){
+  console.log('[SupportTickets] Component rendering - mob:', mob);
   const[view,setView]=useState('list'); // list | create | detail
   const[tickets,setTickets]=useState([]);
   const[selectedTicket,setSelectedTicket]=useState(null);
