@@ -10,12 +10,20 @@ const fmt=n=>'Rs.'+Number(n||0).toFixed(2);
 const getToken=async()=>{const{data:{session}}=await supabase.auth.getSession();return session?.access_token||'';};
 const getFirmId=()=>{
   try{
-    // Try multiple storage keys
-    let firmId = localStorage.getItem('activeFirmId');
+    // Get firm ID from sessionStorage first (most reliable)
+    let firmId = sessionStorage.getItem('shopos_firm_id');
+
+    // Fallback to localStorage
+    if(!firmId) {
+      firmId = localStorage.getItem('activeFirmId');
+    }
+
+    // Fallback to parsing firm object
     if(!firmId) {
       const f=JSON.parse(localStorage.getItem('shopos_firm')||'{}');
-      firmId = f?.id || f;
+      firmId = f?.id;
     }
+
     console.log('[SupportTickets] Firm ID:', firmId);
     return firmId || '';
   }catch(e){
