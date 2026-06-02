@@ -1,12 +1,44 @@
 import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Helper function to send email via Resend API
+async function sendEmail({ to, subject, html }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('[demo-request] Resend API key not configured');
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+        to,
+        subject,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('[demo-request] Resend API error:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[demo-request] Email sending error:', error);
+    return false;
+  }
+}
 
 export async function POST(req) {
   try {
@@ -67,60 +99,47 @@ export async function POST(req) {
 
     // Send email to admin
     console.log('[demo-request] Sending email to admin...');
-    try {
-      await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
-        to: 'rohitgarg090@gmail.com',
-        subject: `🎉 New Demo Request from ${name}`,
-        html: `
-          <h2>New Demo Request</h2>
-          <p><strong>Name:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Contact Number:</strong> ${contact_number}</p>
-          <p><strong>City:</strong> ${city}</p>
-          ${company_name ? `<p><strong>Company:</strong> ${company_name}</p>` : ''}
-          ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
-          <p><strong>Request ID:</strong> ${demoRequest.id}</p>
-          <p><strong>Time:</strong> ${new Date().toLocaleString('en-IN')}</p>
-          <hr>
-          <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/admin/demo-requests">View in Admin Panel</a></p>
-        `,
-      });
-      console.log('[demo-request] Email sent successfully');
-    } catch (emailError) {
-      console.error('[demo-request] Email sending failed:', emailError);
-      // Don't fail the request if email fails
-    }
+    await sendEmail({
+      to: 'rohitgarg090@gmail.com',
+      subject: `🎉 New Demo Request from ${name}`,
+      html: `
+        <h2>New Demo Request</h2>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Contact Number:</strong> ${contact_number}</p>
+        <p><strong>City:</strong> ${city}</p>
+        ${company_name ? `<p><strong>Company:</strong> ${company_name}</p>` : ''}
+        ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
+        <p><strong>Request ID:</strong> ${demoRequest.id}</p>
+        <p><strong>Time:</strong> ${new Date().toLocaleString('en-IN')}</p>
+        <hr>
+        <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/admin/demo-requests">View in Admin Panel</a></p>
+      `,
+    });
 
     // Send confirmation email to user
     console.log('[demo-request] Sending confirmation email to user...');
-    try {
-      await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
-        to: email,
-        subject: 'Demo Request Received - ShopOS',
-        html: `
-          <h2>Thank you for your interest in ShopOS! 🎉</h2>
-          <p>Hi ${name},</p>
-          <p>We've received your demo request and our team will reach out to you shortly at <strong>${contact_number}</strong>.</p>
-          <p>In the meantime, here's what you can do:</p>
-          <ul>
-            <li><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}">Start your free trial immediately</a></li>
-            <li>Explore our features with 14 days free access</li>
-            <li>No credit card required</li>
-          </ul>
-          <p><strong>Request Details:</strong></p>
-          <ul>
-            <li>Request ID: ${demoRequest.id}</li>
-            <li>Received at: ${new Date().toLocaleString('en-IN')}</li>
-          </ul>
-          <p>Best regards,<br>ShopOS Team</p>
-        `,
-      });
-      console.log('[demo-request] Confirmation email sent to user');
-    } catch (emailError) {
-      console.error('[demo-request] Confirmation email failed:', emailError);
-    }
+    await sendEmail({
+      to: email,
+      subject: 'Demo Request Received - ShopOS',
+      html: `
+        <h2>Thank you for your interest in ShopOS! 🎉</h2>
+        <p>Hi ${name},</p>
+        <p>We've received your demo request and our team will reach out to you shortly at <strong>${contact_number}</strong>.</p>
+        <p>In the meantime, here's what you can do:</p>
+        <ul>
+          <li><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}">Start your free trial immediately</a></li>
+          <li>Explore our features with 14 days free access</li>
+          <li>No credit card required</li>
+        </ul>
+        <p><strong>Request Details:</strong></p>
+        <ul>
+          <li>Request ID: ${demoRequest.id}</li>
+          <li>Received at: ${new Date().toLocaleString('en-IN')}</li>
+        </ul>
+        <p>Best regards,<br>ShopOS Team</p>
+      `,
+    });
 
     return Response.json({
       success: true,
