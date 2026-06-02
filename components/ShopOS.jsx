@@ -234,6 +234,19 @@ export default function ShopOS(){
   const[dismissedAnnouncements,setDismissedAnnouncements]=useState(()=>isBR?JSON.parse(localStorage.getItem('dismissed_announcements')||'[]'):[]);
   const ww=useWW();const mob=ww<768;const tab=ww<1024;
 
+  const handleNavigation = useCallback((p) => {
+    console.log('[ShopOS] handleNavigation called with:', p);
+    if(p==='settings') setPage('settings');
+    else if(p==='labels') setPage('labels');
+    else if(p==='support') {
+      console.log('[ShopOS] Setting page to support');
+      setPage('support');
+    }
+    else if(p==='profile') alert('Profile editing coming soon');
+    else if(p==='billing') setShowBillingPopup(true);
+    else if(p==='help') alert('Help & Support coming soon');
+  }, []);
+
   useEffect(()=>{
     // Detect private browsing mode and force logout
     const detectPrivate=async()=>{
@@ -452,7 +465,7 @@ export default function ShopOS(){
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:8}}>
         <FirmDropdown activeFirm={activeFirm} firms={firms} onSwitch={switchFirm} onAdd={()=>setPage('team')} onRefresh={refreshFirms}/>
-        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={p=>{console.log('[ShopOS] Navigation:', p, 'Current page:', page);if(p==='settings')setPage('settings');else if(p==='labels')setPage('labels');else if(p==='support'){console.log('[ShopOS] Before setPage, page is:', page);setPage('support');console.log('[ShopOS] After setPage');}else if(p==='profile')alert('Profile editing coming soon');else if(p==='billing')setShowBillingPopup(true);else if(p==='help')alert('Help & Support coming soon');}}/>
+        <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={handleNavigation}/>
       </div>
     </nav>}
 
