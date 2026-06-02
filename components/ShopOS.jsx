@@ -511,19 +511,15 @@ export default function ShopOS(){
       onNavigateToBilling={()=>setPage('settings')}
     />
 
-    {/* Support Modal */}
+    {/* Support Tickets Full Page */}
     {showSupport && (
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
-        <div style={{background:'#fff',borderRadius:12,padding:40,maxWidth:450,boxShadow:'0 20px 60px rgba(0,0,0,0.3)',textAlign:'center'}}>
-          <div style={{fontSize:24,fontWeight:700,color:'#1A1A18',marginBottom:16}}>Support & Help</div>
-          <p style={{fontSize:14,color:'#666',marginBottom:20}}>For support tickets and assistance, please email us at:</p>
-          <a href="mailto:support@shopos.co.in" style={{fontSize:14,fontWeight:600,color:'#fff',textDecoration:'none',display:'inline-block',padding:'12px 24px',background:'#1B5E8A',borderRadius:8,marginBottom:24}}>
-            support@shopos.co.in
-          </a>
-          <p style={{fontSize:12,color:'#888',marginBottom:24}}>Our team will respond within 24 hours.</p>
-          <button onClick={()=>setShowSupport(false)} style={{padding:'10px 20px',background:'#F5F4F0',color:'#1A1A18',border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,fontSize:13}}>
-            Close
-          </button>
+      <div style={{position:'fixed',inset:0,background:'#fff',overflow:'auto',zIndex:9998}}>
+        <div style={{padding:20,borderBottom:'1px solid #E3E1D9',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#F5F4F0'}}>
+          <h1 style={{margin:0,fontSize:20,fontWeight:700,color:'#1A1A18'}}>Support Tickets</h1>
+          <button onClick={()=>setShowSupport(false)} style={{background:'none',border:'none',fontSize:24,cursor:'pointer',color:'#888'}}>×</button>
+        </div>
+        <div style={{maxWidth:1200,margin:'0 auto',padding:20}}>
+          <SupportTickets mob={mob} onClose={()=>setShowSupport(false)} />
         </div>
       </div>
     )}
