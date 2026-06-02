@@ -22,9 +22,10 @@ export default function AdminPage() {
         data: { session: ses },
       } = await supabase.auth.getSession();
 
-      if (ses?.user?.email && ADMIN_EMAILS.includes(ses.user.email)) {
+      if (ses?.user?.email && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(ses.user.email.toLowerCase())) {
         setSession(ses);
       } else {
+        console.log('[admin] Access denied. User email:', ses?.user?.email, 'Admin emails:', ADMIN_EMAILS);
         setAccessDenied(true);
       }
 
@@ -60,26 +61,47 @@ export default function AdminPage() {
         color: '#F8FAFC',
         flexDirection: 'column',
         gap: 16,
+        padding: 20,
       }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Access Denied</div>
-        <div style={{ fontSize: 12, color: '#94A3B8' }}>
-          This admin panel is restricted to authorized administrators.
+        <div style={{ fontSize: 18, fontWeight: 600 }}>⛔ Access Denied</div>
+        <div style={{ fontSize: 12, color: '#94A3B8', maxWidth: 400, textAlign: 'center' }}>
+          This admin panel is restricted to authorized administrators only.
         </div>
-        <a
-          href="/"
-          style={{
-            marginTop: 16,
-            padding: '8px 16px',
-            background: '#6366F1',
-            color: '#fff',
-            borderRadius: 6,
-            textDecoration: 'none',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        >
-          Back to App
-        </a>
+        <div style={{ fontSize: 11, color: '#64748B', maxWidth: 400, textAlign: 'center', marginTop: 8 }}>
+          📧 Authorized emails: rohitgarg090@gmail.com, info@shopos.co.in
+          <br/>
+          Make sure you're logged in with one of these emails.
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <a
+            href="/auth?mode=login"
+            style={{
+              padding: '8px 16px',
+              background: '#6366F1',
+              color: '#fff',
+              borderRadius: 6,
+              textDecoration: 'none',
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Login with Admin Email
+          </a>
+          <a
+            href="/"
+            style={{
+              padding: '8px 16px',
+              background: '#475569',
+              color: '#fff',
+              borderRadius: 6,
+              textDecoration: 'none',
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Back Home
+          </a>
+        </div>
       </div>
     );
   }
