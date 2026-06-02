@@ -1,18 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
-
-const ADMIN_EMAILS = ['rohitgarg090@gmail.com'];
+import { isAdminEmail, getSafeErrorMessage, validateInput } from '@/lib/security';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const VALID_STATUSES = ['trial', 'active', 'suspended'];
+const VALID_PLANS = ['starter', 'business', 'pro', 'free'];
+const MAX_TRIAL_DAYS = 30;
+
 async function verifyAdmin(token) {
   const {
     data: { user },
   } = await supabase.auth.getUser(token);
 
-  if (!user || !ADMIN_EMAILS.includes(user.email)) {
+  if (!user || !isAdminEmail(user.email)) {
     return null;
   }
 
@@ -92,7 +95,7 @@ export async function GET(req, { params }) {
     });
   } catch (error) {
     console.error('GET /admin/organizations/[id] error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: getSafeErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -108,6 +111,23 @@ export async function PATCH(req, { params }) {
     const { id } = params;
     const { status, plan, trialDaysToAdd, notes } = await req.json();
 
+    // Validate input
+    const errors = validateInput(
+      { status, plan, trialDaysToAdd },
+      {
+        status: { allowedValues: VALID_STATUSES },
+        plan: { allowedValues: VALID_PLANS },
+        trialDaysToAdd: {
+          minValue: 1,
+          maxValue: MAX_TRIAL_DAYS,
+        },
+      }
+    );
+
+    if (errors) {
+      return Response.json({ error: 'Validation failed', details: errors }, { status: 400 });
+    }
+
     const { data: org, error: fetchError } = await supabase
       .from('organizations')
       .select('*')
@@ -121,12 +141,12 @@ export async function PATCH(req, { params }) {
     const updateData = {};
 
     // Handle status update
-    if (status) {
+    if (status && VALID_STATUSES.includes(status)) {
       updateData.status = status;
     }
 
     // Handle plan change
-    if (plan) {
+    if (plan && VALID_PLANS.includes(plan)) {
       updateData.plan = plan;
       // Activate org if changing to a paid plan
       if (plan !== 'trial') {
@@ -135,7 +155,7 @@ export async function PATCH(req, { params }) {
     }
 
     // Handle trial extension
-    if (trialDaysToAdd) {
+    if (trialDaysToAdd && trialDaysToAdd > 0 && trialDaysToAdd <= MAX_TRIAL_DAYS) {
       const currentTrialEnds = org.trial_ends_at
         ? new Date(org.trial_ends_at)
         : new Date();
@@ -160,7 +180,7 @@ export async function PATCH(req, { params }) {
       .single();
 
     if (error) {
-      return Response.json({ error: error.message }, { status: 500 });
+      return Response.json({ error: getSafeErrorMessage(error) }, { status: 500 });
     }
 
     let updateUserEmail = 'N/A';
@@ -199,7 +219,7 @@ export async function PATCH(req, { params }) {
     });
   } catch (error) {
     console.error('PATCH /admin/organizations/[id] error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: getSafeErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -221,12 +241,12 @@ export async function DELETE(req, { params }) {
       .eq('id', id);
 
     if (error) {
-      return Response.json({ error: error.message }, { status: 500 });
+      return Response.json({ error: getSafeErrorMessage(error) }, { status: 500 });
     }
 
     return Response.json({ success: true, message: 'Organization deleted' });
   } catch (error) {
     console.error('DELETE /admin/organizations/[id] error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: getSafeErrorMessage(error) }, { status: 500 });
   }
 }

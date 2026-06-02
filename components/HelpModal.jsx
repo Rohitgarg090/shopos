@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { X, ChevronDown, Play, BookOpen, Lightbulb, HelpCircle } from 'lucide-react';
+import Portal from '@/components/Portal';
 
 const BL='#1B5E8A', BLL='#E3EFF8', BORD='#E3E1D9', MUT='#888', TXT='#1A1A18', BG='#F5F4F0', GR='#2E6B1F';
 
@@ -260,7 +261,8 @@ export default function HelpModal({ isOpen, onClose }) {
   };
 
   return (
-    <div style={modalOverlayStyle} onClick={handleBackdropClick}>
+    <Portal>
+      <div style={modalOverlayStyle} onClick={handleBackdropClick}>
       <style>{`
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -475,5 +477,6 @@ export default function HelpModal({ isOpen, onClose }) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

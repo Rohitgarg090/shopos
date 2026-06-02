@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import AdminPanel from '@/components/AdminPanel';
 
-const ADMIN_EMAILS = ['rohitgarg090@gmail.com'];
+const ADMIN_EMAILS = ['rohitgarg090@gmail.com', 'info@shopos.co.in'];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,

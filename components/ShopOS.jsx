@@ -8,6 +8,9 @@ import TrialExtensionModal from '@/components/TrialExtensionModal';
 import UpgradeBlockModal from '@/components/UpgradeBlockModal';
 import BillingPopup from '@/components/BillingPopup';
 import SupportTickets from '@/components/SupportTickets';
+import InvoiceHelp from '@/components/PageHelpGuides/InvoiceHelp';
+import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
+import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
 
 /* ── constants ── */
 const CATS=['All','Kids','Girls','Men','Women','Jeans','Tops','Jackets','Hosiery','Woollen','Suits','Others'];
@@ -149,6 +152,11 @@ function FirmDropdown({activeFirm,firms,onSwitch,onAdd,onRefresh}){
         <div style={_theme==='modern'?{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.6)',textTransform:'uppercase',letterSpacing:'.6px',marginBottom:2}:{fontSize:10,fontWeight:700,color:MUT,textTransform:'uppercase',letterSpacing:'.6px',marginBottom:2}}>Current Firm</div>
         <div style={_theme==='modern'?{fontWeight:700,color:'rgba(255,255,255,0.95)',fontSize:13}:{fontWeight:700,color:BL,fontSize:13}}>{activeFirm?.name}</div>
         <div style={_theme==='modern'?{fontSize:11,color:'rgba(255,255,255,0.7)'}:{fontSize:11,color:MUT}}>Your role: <strong style={_theme==='modern'?{color:'#60a5fa'}:{color:ROLE_C[activeFirm?.role]||MUT}}>{activeFirm?.role}</strong></div>
+        {activeFirm?.id&&<div style={{marginTop:4,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+          <span style={{fontSize:10,color:_theme==='modern'?'rgba(255,255,255,0.45)':MUT}}>Firm ID:</span>
+          <code style={{fontSize:10,fontFamily:'monospace',color:_theme==='modern'?'rgba(255,255,255,0.7)':'#444',letterSpacing:'0.2px'}}>{activeFirm.id.slice(0,8)}...</code>
+          <button style={{fontSize:9,padding:'1px 7px',borderRadius:4,border:'none',background:_theme==='modern'?'rgba(255,255,255,0.15)':'#e8f0fb',color:_theme==='modern'?'rgba(255,255,255,0.8)':BL,cursor:'pointer',fontWeight:600}} onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(activeFirm.id);}}>Copy full</button>
+        </div>}
       </div>
       {/* Other firms */}
       {firms.filter(f=>f.id!==activeFirm?.id).length>0&&<div style={_theme==='modern'?{borderBottom:'1px solid rgba(255,255,255,0.1)'}:{borderBottom:'0.5px solid '+BORD}}>
@@ -218,6 +226,7 @@ export default function ShopOS(){
   const[firmLoading,setFirmLoading]=useState(true);
   const[vBill,setVBill]=useState(null);
   const[org,setOrg]=useState(null);
+  const[pendingRequest,setPendingRequest]=useState(null);
   const[showTrialExtend,setShowTrialExtend]=useState(false);
   const[showUpgradeBlock,setShowUpgradeBlock]=useState(false);
   const[showBillingPopup,setShowBillingPopup]=useState(false);
@@ -225,7 +234,39 @@ export default function ShopOS(){
   const[dismissedAnnouncements,setDismissedAnnouncements]=useState(()=>isBR?JSON.parse(localStorage.getItem('dismissed_announcements')||'[]'):[]);
   const ww=useWW();const mob=ww<768;const tab=ww<1024;
 
-  useEffect(()=>{supabase.auth.getSession().then(({data:{session}})=>{setSes(session);setAl(false);});const{data:{subscription}}=supabase.auth.onAuthStateChange((event,s)=>{if(event==='SIGNED_OUT'){setSes(null);}else if(s){setSes(s);}});return()=>subscription.unsubscribe();},[]);
+  useEffect(()=>{
+    // Detect private browsing mode and force logout
+    const detectPrivate=async()=>{
+      try{
+        const test='__private_mode_test__';
+        const storage=window.localStorage;
+        storage.setItem(test,'1');
+        storage.removeItem(test);
+        return false; // Not private
+      }catch(e){
+        return true; // Private mode detected (localStorage write failed)
+      }
+    };
+
+    (async()=>{
+      const isPrivate=await detectPrivate();
+      const {data:{session}}=await supabase.auth.getSession();
+      if(isPrivate&&session){
+        // Clear session in private mode for isolation
+        await supabase.auth.signOut();
+        setSes(null);
+        setAl(false);
+      } else {
+        setSes(session);
+        setAl(false);
+      }
+      const{data:{subscription}}=supabase.auth.onAuthStateChange((event,s)=>{
+        if(event==='SIGNED_OUT'){setSes(null);}
+        else if(s){setSes(s);}
+      });
+      return()=>subscription.unsubscribe();
+    })();
+  },[]);
 
   // ── Prevent page reload when tab loses/regains focus ──
   useEffect(()=>{
@@ -279,7 +320,7 @@ export default function ShopOS(){
     // First load firms, then load data for active firm
     if(dataLoaded.current)return; // block TOKEN_REFRESHED re-runs
     dataLoaded.current=true;
-    api.get('/api/firms').then(fs=>{
+    api.get('/api/firms').then(async fs=>{
       const list=Array.isArray(fs)?fs:[];
       setFirms(list);
       // Restore last active firm from sessionStorage, fallback to first
@@ -293,6 +334,15 @@ export default function ShopOS(){
         loadFirmData(active.id);
       } else {
         setLd(false);setFirmLoading(false);
+        // Check if user has a pending/rejected join request
+        try{
+          const token=(await supabase.auth.getSession()).data.session?.access_token;
+          if(token){
+            const r=await fetch('/api/firm-requests/me',{headers:{Authorization:`Bearer ${token}`}});
+            const d=await r.json();
+            setPendingRequest(d.request||null);
+          }
+        }catch(e){setPendingRequest(null);}
       }
     });
   },[ses]);
@@ -340,15 +390,31 @@ export default function ShopOS(){
   const nextInv=async()=>{const res=await api.post('/api/next-invoice',{});return res.invoiceNo||'';};
   const logout=async()=>{await supabase.auth.signOut();dataLoaded.current=false;setSes(null);};
 
-  const TABS=[['dash','Dashboard'],['analytics','Analytics'],['catalog','Catalog'],['scan','Scan Bill'],['pos','POS/Sell'],['cust','Customers'],['bills','Bills'],['suppliers','Suppliers'],['returns','Returns'],['bank','Bank'],['ledger','Ledger'],['team','Team']];
+  const ALL_TABS=[['dash','Dashboard'],['analytics','Analytics'],['catalog','Catalog'],['scan','Scan Bill'],['pos','POS/Sell'],['cust','Customers'],['bills','Bills'],['suppliers','Suppliers'],['returns','Returns'],['bank','Bank'],['ledger','Ledger'],['team','Team']];
+  // Role-based tab access
+  const TAB_ACCESS={
+    owner:['dash','analytics','catalog','scan','pos','cust','bills','suppliers','returns','bank','ledger','team','settings'],
+    manager:['dash','analytics','catalog','scan','pos','cust','bills','suppliers','returns','bank','ledger'],
+    accountant:['dash','analytics','catalog','scan','cust','bank','ledger'],
+    staff:['dash','catalog','scan','pos','cust']
+  };
+  const TABS=ALL_TABS.filter(([t])=>TAB_ACCESS[activeFirm?.role]?.includes(t)||!activeFirm);
   const ICONS={dash:'Dashboard',catalog:'Catalog',scan:'Scan',labels:'Labels',pos:'Sell',cust:'Customers',bills:'Bills',returns:'Returns',ledger:'Ledger',settings:'Settings'};
 
   if(al)return<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',gap:10,fontFamily:'Inter,sans-serif',color:BL}}><Spin/>Loading...</div>;
   if(!ses)return<ModernLogin onLogin={s=>setSes(s)}/>;
   if(ld)return<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',gap:10,fontFamily:'Inter,sans-serif',color:BL}}><Spin/>Loading ShopOS...</div>;
 
-  // No firm yet — show setup screen
+  // Prevent access to restricted tabs based on role
+  if(activeFirm&&!TAB_ACCESS[activeFirm.role]?.includes(page)){
+    setPage('dash');
+  }
+
+  // No firm yet — check for pending join request first
   if(!firmLoading&&firms.length===0){
+    if(pendingRequest){
+      return<PendingApprovalScreen request={pendingRequest} onLogout={logout}/>;
+    }
     return<NoFirmSetup ses={ses} onCreated={async f=>{setFirms([f]);setActiveFirmPersist(f);await loadFirmData(f.id);}}/>;
   }
 
@@ -409,7 +475,7 @@ export default function ShopOS(){
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={B} Py={Py} firm={firm} mob={mob} gk={()=>firm?.geminiKey||''}/>}
       {page==='ledger'&&<Ledger B={B} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
-      {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org}/>}
+      {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
       {page==='support'&&<SupportTickets mob={mob}/>}
     </div>
 
@@ -1164,7 +1230,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,mob,onDone}){
     }} onClose={()=>setShowCamera(false)}/>}
     <div style={{...S.card,padding:'10px 18px',marginBottom:12,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
       {steps.map(([s,n,l],i)=><><div key={s} style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:24,height:24,borderRadius:'50%',background:i<=cur?BL:'#eee',color:i<=cur?'#fff':MUT,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800}}>{n}</div><span style={{fontSize:12,fontWeight:i===cur?700:500,color:i===cur?BL:MUT}}>{l}</span></div>{i<2&&<div key={'d'+i} style={{flex:1,height:'0.5px',background:i<cur?BL:BORD,minWidth:10}}/>}</>)}
-      {(sel||isRel)&&<div style={{marginLeft:'auto',padding:'3px 10px',background:isRel?AMBL:BLL,borderRadius:6,fontSize:11,color:isRel?AMB:BL,fontWeight:600}}>{isRel?'Walk-in '+(rn||''):sel?.name}</div>}
+      {(sel||isRel)&&<div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}}><div style={{padding:'3px 10px',background:isRel?AMBL:BLL,borderRadius:6,fontSize:11,color:isRel?AMB:BL,fontWeight:600}}>{isRel?'Walk-in '+(rn||''):sel?.name}</div><button onClick={()=>{setSel(null);setIsRel(false);setRn('');setRi('');setStep('cust');}} style={{...S.btn('def',true),fontSize:10,padding:'3px 8px'}}>Change</button></div>}
     </div>{toast}
     {step==='cust'&&<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:14}}>
       <div style={S.card}>
@@ -1501,20 +1567,23 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,mob}){
     if(!phone){showT('No phone number for customer','err');return;}
     const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);
     const bal=b.total-paid;
+    setPdfBusy(true);
     try{
-      await api.post('/api/send-notification',{
-        type:'invoice',
-        channel:'whatsapp',
-        billId:b.id,
-        recipients:[{
-          mobile:phone,
-          name:b.customerName,
-          customerId:b.customerId,
-          vars:{name:b.customerName,invoiceNo:b.invoiceNo||'#'+b.id,amount:fmt(b.total),firmName:firm.name,balance:fmt(bal)}
-        }]
+      // Try Twilio first
+      const res=await api.post('/api/whatsapp/send',{
+        customerNumber:phone,
+        invoiceNo:b.invoiceNo||'#'+b.id,
+        amount:fmt(b.total),
+        firmName:firm.name
       });
-      showT('Invoice sent via WhatsApp!');
+      if(res.success){
+        showT('Invoice sent to '+phone+' via WhatsApp!');
+      }else{
+        throw new Error(res.error||'Failed to send');
+      }
     }catch(e){
+      console.log('[whatsapp] Twilio error, falling back to link: '+e.message);
+      // Fallback: open WhatsApp link
       const ph=(phone||'').replace(/[^0-9]/g,'');
       const lines=['Dear '+b.customerName+',','',firm.name+' Invoice Details:','Invoice No: '+(b.invoiceNo||'#'+b.id),'Date: '+new Date(b.date).toLocaleDateString('en-IN'),'Total Amount: '+fmt(b.total)];
       if(paid>0){lines.push('Paid: '+fmt(paid));lines.push('Balance Due: '+fmt(bal));}
@@ -1523,7 +1592,8 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,mob}){
       const msg=lines.join('\n');
       const url='https://wa.me/'+(ph?'91'+ph:'')+'?text='+encodeURIComponent(msg);
       window.open(url,'_blank');
-    }
+      showT('Opened WhatsApp - please share invoice manually');
+    }finally{setPdfBusy(false);}
   };
 
   const whatsappReminder=async b=>{
@@ -1598,7 +1668,9 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,mob}){
   };
   const updatePay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   return<div>
-    <div style={S.h2}>Bills & Invoices</div>{toast}
+    <div style={{...S.h2, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+      <div style={{display:'flex',alignItems:'center',gap:12}}><span>Bills & Invoices</span><InvoiceHelp /><PaymentHelp /></div>
+    </div>{toast}
     <div style={{...S.card,padding:0,marginBottom:14,overflowX:'auto'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?500:700}}>
         <thead><tr>{['Invoice','Date','Customer','Pcs','Total','Paid','Status','Transport & LR','Actions'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
@@ -2161,17 +2233,22 @@ function NotificationHistory({customerId,customerName}){
 
 function BroadcastModal({firm,C,B,Py,onClose,onSent}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
-  const[filter,setFilter]=useState('all');const[selected,setSelected]=useState(new Set());const[msg,setMsg]=useState('');const[sending,setSending]=useState(false);const[toast,showT]=useToast();
+  const[filter,setFilter]=useState('all');const[selected,setSelected]=useState(new Set());const[msg,setMsg]=useState('');const[image,setImage]=useState(null);const[imagePreview,setImagePreview]=useState('');const[sending,setSending]=useState(false);const[toast,showT]=useToast();
   const options={all:{label:'All Customers',count:C.length},balance:{label:'Customers with Balance',count:C.filter(c=>{const cb=B.filter(b=>b.customerId===c.id);const tp=Py.filter(p=>cb.some(b=>b.id===p.billId)).reduce((s,p)=>s+p.amount,0);return(c.openingBalance||0)+(cb.reduce((s,b)=>s+b.total,0))-tp>0;}).length}};
   const filtered=filter==='all'?C:filter==='balance'?C.filter(c=>{const cb=B.filter(b=>b.customerId===c.id);const tp=Py.filter(p=>cb.some(b=>b.id===p.billId)).reduce((s,p)=>s+p.amount,0);return(c.openingBalance||0)+(cb.reduce((s,b)=>s+b.total,0))-tp>0;}):[];
+  const handleImageChange=e=>{const file=e.target.files?.[0];if(!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)){showT('Only JPG, PNG, WebP allowed','err');return;}if(file.size>5242880){showT('Image too large (max 5MB)','err');return;}const reader=new FileReader();reader.onload=ev=>{setImagePreview(ev.target?.result);setImage(file);};reader.readAsDataURL(file);};
   const send=async()=>{
     if(!msg.trim()){showT('Enter a message','err');return;}
     if(selected.size===0){showT('Select customers','err');return;}
     setSending(true);
     try{
       const recipients=Array.from(selected).map(id=>{const c=C.find(x=>x.id===id);return{mobile:c.phone,name:c.name,customerId:id,vars:{name:c.name,firmName:firm.name}};});
-      const res=await api.post('/api/send-notification',{type:'broadcast',channel:'whatsapp',customMessage:msg,recipients});
-      if(res.success){showT(`Sent to ${res.count} customers!`);setMsg('');setSelected(new Set());onSent();}else{showT('Failed to send: '+res.error,'err');}
+      let imageBase64='';
+      if(image){
+        imageBase64=imagePreview.split(',')[1];
+      }
+      const res=await api.post('/api/send-notification',{type:'broadcast',channel:'whatsapp',customMessage:msg,image:imageBase64||null,recipients});
+      if(res.success){showT(`Sent to ${res.count} customers!`);setMsg('');setImage(null);setImagePreview('');setSelected(new Set());onSent();}else{showT('Failed to send: '+res.error,'err');}
     }catch(e){showT('Error: '+e.message,'err');}finally{setSending(false);}
   };
   return<Modal title='📢 Send Broadcast Message' onClose={onClose} wide>
@@ -2197,6 +2274,21 @@ function BroadcastModal({firm,C,B,Py,onClose,onSent}){
     <div style={{marginBottom:12}}>
       <div style={S.h3}>Message</div>
       <textarea style={{...S.inp,resize:'vertical',fontSize:12}} rows={4} value={msg} onChange={e=>setMsg(e.target.value)} placeholder='Enter your broadcast message...'/>
+    </div>
+    <div style={{marginBottom:12}}>
+      <div style={S.h3}>Image (Optional)</div>
+      <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+        <label style={{...S.btn('def'),cursor:'pointer',padding:'8px 12px',fontSize:12,whiteSpace:'nowrap'}}>
+          📸 Choose Image
+          <input type='file' accept='image/jpeg,image/png,image/webp' onChange={handleImageChange} style={{display:'none'}}/>
+        </label>
+        {imagePreview&&<div style={{flex:1}}>
+          <div style={{fontSize:11,color:MUT,marginBottom:4}}>Preview:</div>
+          <img src={imagePreview} style={{maxWidth:'100%',maxHeight:120,borderRadius:6,border:'1px solid '+BORD}}/>
+          <button onClick={()=>{setImage(null);setImagePreview('');}} style={{...S.btn('dan',true),fontSize:10,marginTop:4,padding:'2px 8px'}}>Remove</button>
+        </div>}
+      </div>
+      <div style={{fontSize:11,color:MUT,marginTop:6}}>Max 5MB • JPG, PNG, WebP</div>
     </div>
     <div style={{display:'flex',gap:8}}><button style={S.btn('pri')} onClick={send} disabled={sending}>{sending?'Sending...':'Send to '+selected.size+' customer'+(selected.size!==1?'s':'')}</button><button style={S.btn()} onClick={onClose}>Cancel</button></div>
   </Modal>;
@@ -2240,7 +2332,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
   const sorted=enriched.sort((a,b)=>{let aVal=a[sortBy],bVal=b[sortBy];if(typeof aVal==='string')aVal=aVal.toLowerCase();if(typeof bVal==='string')bVal=bVal.toLowerCase();const cmp=aVal<bVal?-1:aVal>bVal?1:0;return sortOrder==='asc'?cmp:-cmp;});
   const total=sorted.length;const pages=Math.ceil(total/itemsPerPage);const start=(currentPage-1)*itemsPerPage;const paginated=sorted.slice(start,start+itemsPerPage);
   return<div>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,gap:8,flexWrap:'wrap'}}><div style={S.h2}>Customer Master</div><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button style={{...S.btn('pur'),...{background:PURL,color:PUR,border:'0.5px solid #c0a0e0'}}} onClick={()=>setBroadcastShow(true)}>📢 Send Broadcast</button><button style={S.btn('pri')} onClick={openNew}>+ Add Customer</button></div></div>{toast}
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,gap:8,flexWrap:'wrap'}}><div style={{display:'flex',alignItems:'center',gap:12}}><div style={S.h2}>Customer Master</div><CustomerHelp /></div><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button style={{...S.btn('pur'),...{background:PURL,color:PUR,border:'0.5px solid #c0a0e0'}}} onClick={()=>setBroadcastShow(true)}>📢 Send Broadcast</button><button style={S.btn('pri')} onClick={openNew}>+ Add Customer</button></div></div>{toast}
     {showColConfig&&<div style={{position:'fixed',inset:0,zIndex:40}} onClick={()=>setShowColConfig(false)}/>}
     {showColConfig&&<div style={{position:'absolute',top:'calc(100% + 8px)',right:0,background:'#fff',border:'0.5px solid '+BORD,borderRadius:6,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',minWidth:200,zIndex:50,maxHeight:'60vh',overflowY:'auto'}}>
       {[['name','Name'],['phone','Mobile'],['shop','Shop'],['email','Email'],['gst','GSTIN'],['address','Address'],['openingBal','Opening Bal'],['bills','Bills'],['totalBilled','Total Billed'],['paid','Paid'],['balance','Balance']].map(([k,l])=>(
@@ -2667,7 +2759,7 @@ function SecurityTab({ses}){
   </div>;
 }
 
-function Settings({firm,saveFirm,ses,mob,theme,setTheme,org}){
+function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
   const[f,setF]=useState(firm);const[saved,setSaved]=useState(false);const[logoUploading,setLogoUploading]=useState(false);
   const[settingsTab,setSettingsTab]=useState('account');
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
@@ -2708,6 +2800,14 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org}){
       <div>
         <div style={S.card}>
           <div style={S.h3}>Firm / Shop Details</div>
+          {activeFirm?.id&&<div style={{background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:8,padding:'10px 14px',marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#1D4ED8',marginBottom:4,textTransform:'uppercase',letterSpacing:'0.5px'}}>Firm ID — Share with staff to let them request access</div>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <code style={{fontSize:12,fontFamily:'monospace',color:'#1E3A5F',background:'#DBEAFE',padding:'3px 8px',borderRadius:5,userSelect:'all',letterSpacing:'0.3px'}}>{activeFirm.id}</code>
+              <button style={{fontSize:11,padding:'3px 10px',borderRadius:5,border:'1px solid #93C5FD',background:'#fff',color:'#1D4ED8',cursor:'pointer',fontWeight:600}} onClick={()=>{navigator.clipboard.writeText(activeFirm.id);}} title='Copy Firm ID'>Copy</button>
+            </div>
+            <div style={{fontSize:11,color:'#3B82F6',marginTop:4}}>Staff enter this ID when registering on the login page</div>
+          </div>}
           <Fld label='Firm Name *'><input style={S.inp} value={f.name} onChange={e=>up('name')(e.target.value)} placeholder='Your Firm Name'/></Fld>
           <Fld label='Business Type'><input style={S.inp} value={f.shoptype||''} onChange={e=>up('shoptype')(e.target.value)} placeholder='Wholesale Clothing'/></Fld>
           <Fld label='GSTIN'><input style={S.inp} value={f.gstin||''} onChange={e=>up('gstin')(e.target.value)} placeholder='23AAAAA0000A1Z5'/></Fld>
@@ -2814,6 +2914,45 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org}){
     {settingsTab==='security'&&<SecurityTab ses={ses}/>}
   </div>;}
 
+/* ── PENDING APPROVAL SCREEN ── */
+function PendingApprovalScreen({request,onLogout}){
+  const isPending=request.status==='pending';
+  const bgGrad='linear-gradient(145deg,#0d1f3c,#1B3A6B)';
+  const cardBg='rgba(255,255,255,.08)';
+  const border='1px solid rgba(255,255,255,.12)';
+  return<div style={{minHeight:'100vh',background:bgGrad,display:'flex',alignItems:'center',justifyContent:'center',padding:16,fontFamily:'Inter,sans-serif'}}>
+    <div style={{background:cardBg,backdropFilter:'blur(20px)',borderRadius:18,padding:32,width:'100%',maxWidth:440,border,textAlign:'center'}}>
+      <div style={{fontSize:40,fontWeight:800,color:'#fff',letterSpacing:'-2px',marginBottom:4}}>SHOP<span style={{color:'#F5A732'}}>OS</span></div>
+      <div style={{marginTop:24,marginBottom:20}}>
+        <div style={{fontSize:48,marginBottom:12}}>{isPending?'⏳':'❌'}</div>
+        <div style={{fontSize:18,fontWeight:700,color:'#fff',marginBottom:8}}>
+          {isPending?'Awaiting Approval':'Request Rejected'}
+        </div>
+        <div style={{color:'rgba(255,255,255,.65)',fontSize:14,lineHeight:1.6}}>
+          {isPending
+            ?<>Your request to join <strong style={{color:'#F5A732'}}>{request.firmName||'the firm'}</strong> is pending. The firm owner will review and approve your access.</>
+            :<>Your request to join <strong style={{color:'#F5A732'}}>{request.firmName||'the firm'}</strong> was not approved. Please contact the firm admin for assistance.</>
+          }
+        </div>
+      </div>
+      <div style={{background:'rgba(255,255,255,.05)',borderRadius:10,padding:'12px 16px',marginBottom:20,textAlign:'left'}}>
+        <div style={{color:'rgba(255,255,255,.4)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',marginBottom:6}}>Request Details</div>
+        <div style={{color:'rgba(255,255,255,.7)',fontSize:13,lineHeight:1.8}}>
+          <div>Firm: <span style={{color:'#fff'}}>{request.firmName||request.firm_id}</span></div>
+          <div>Requested: <span style={{color:'#fff'}}>{new Date(request.requested_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span></div>
+          {request.status==='rejected'&&request.notes&&<div>Reason: <span style={{color:'#ffa0a0'}}>{request.notes}</span></div>}
+        </div>
+      </div>
+      {isPending&&<div style={{color:'rgba(255,255,255,.45)',fontSize:12,marginBottom:20}}>
+        Once approved, sign out and sign back in to access your dashboard.
+      </div>}
+      <button onClick={onLogout} style={{width:'100%',padding:'11px',background:'rgba(255,255,255,.1)',color:'#fff',border:'1px solid rgba(255,255,255,.2)',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer'}}>
+        Sign Out
+      </button>
+    </div>
+  </div>;
+}
+
 /* ── NO FIRM SETUP ── */
 function NoFirmSetup({ses,onCreated}){
   const[name,setName]=useState('');const[busy,setBusy]=useState(false);const[err,setErr]=useState('');
@@ -2852,11 +2991,14 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
   const[members,setMembers]=useState([]);const[loading,setLoading]=useState(false);
   const[inviteEmail,setInviteEmail]=useState('');const[inviteRole,setInviteRole]=useState('staff');
   const[newFirmName,setNewFirmName]=useState('');const[toast,showT]=useToast();
-  const[tab,setTab]=useState('members'); // 'members' | 'firms'
+  const[tab,setTab]=useState('members'); // 'members' | 'firms' | 'requests'
+  const[joinRequests,setJoinRequests]=useState([]);const[reqLoading,setReqLoading]=useState(false);
+  const[reqRoles,setReqRoles]=useState({}); // { [requestId]: role }
   const ROLES=[['owner','Owner — full access, can manage team & settings'],['manager','Manager — all ops except billing settings'],['accountant','Accountant — view/add payments & ledger, no billing'],['staff','Staff — POS, catalog, scan. No financials']];
   const ROLE_COLORS={owner:'blue',manager:'green',accountant:'amber',staff:'gray'};
 
   useEffect(()=>{if(activeFirm&&tab==='members')loadMembers();},[activeFirm?.id,tab]);
+  useEffect(()=>{if(activeFirm&&tab==='requests'&&canManage)loadJoinRequests();},[activeFirm?.id,tab]);
 
   const loadMembers=async()=>{
     setLoading(true);
@@ -2883,6 +3025,33 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
     setMembers(ms=>ms.filter(m=>m.id!==memberId));showT('Member removed');
   };
 
+  const loadJoinRequests=async()=>{
+    setReqLoading(true);
+    try{
+      const d=await api.get('/api/firm-requests?firmId='+activeFirm.id+'&status=pending');
+      setJoinRequests(Array.isArray(d)?d:[]);
+    }catch(e){setJoinRequests([]);}
+    setReqLoading(false);
+  };
+
+  const approveRequest=async(reqId)=>{
+    const role=reqRoles[reqId]||'staff';
+    try{
+      await api.patch('/api/firm-requests/'+reqId,{status:'approved',role});
+      showT('Request approved! Member added as '+role);
+      setJoinRequests(rs=>rs.filter(r=>r.id!==reqId));
+    }catch(e){showT(e.message||'Failed to approve','err');}
+  };
+
+  const rejectRequest=async(reqId)=>{
+    if(!confirm('Reject this join request?'))return;
+    try{
+      await api.patch('/api/firm-requests/'+reqId,{status:'rejected'});
+      showT('Request rejected');
+      setJoinRequests(rs=>rs.filter(r=>r.id!==reqId));
+    }catch(e){showT(e.message||'Failed to reject','err');}
+  };
+
   const createFirm=async()=>{
     if(!newFirmName){showT('Enter firm name','err');return;}
     const res=await api.post('/api/firms',{name:newFirmName});
@@ -2906,8 +3075,9 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
       </div>
     </div>
 
-    <div style={{display:'flex',gap:6,marginBottom:14}}>
-      {[['members','Team Members'],['firms','My Firms']].map(([t,l])=><button key={t} onClick={()=>setTab(t)} style={{padding:'7px 16px',borderRadius:7,border:'0.5px solid '+(tab===t?BL:BORD),background:tab===t?BL:'#fff',color:tab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
+    <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
+      {[['members','Team Members'],['firms','My Firms'],...(canManage?[['requests','Join Requests'+(joinRequests.length?` (${joinRequests.length})`:'')]]:[])]
+        .map(([t,l])=><button key={t} onClick={()=>setTab(t)} style={{padding:'7px 16px',borderRadius:7,border:'0.5px solid '+(tab===t?BL:BORD),background:tab===t?BL:'#fff',color:tab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
     </div>
 
     {/* ── MEMBERS TAB ── */}
@@ -2952,6 +3122,45 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
         </div>
         <button style={S.btn('pri')} onClick={invite}>Send Invite</button>
       </div>}
+    </div>}
+
+    {/* ── JOIN REQUESTS TAB ── */}
+    {tab==='requests'&&canManage&&<div>
+      <div style={{...S.card,padding:0}}>
+        <div style={{padding:'12px 16px',borderBottom:'0.5px solid '+BORD,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={S.h3}>Pending Join Requests for {activeFirm?.name}</div>
+          <button style={S.btn('gho',true)} onClick={loadJoinRequests}>Refresh</button>
+        </div>
+        {reqLoading?<MT msg='Loading...'/>:joinRequests.length===0
+          ?<MT msg='No pending join requests'/>
+          :<table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead><tr>{['Name','Email','Requested','Assign Role','Actions'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {joinRequests.map(r=><tr key={r.id}>
+                <td style={S.td}><div style={{fontWeight:600,color:TXT}}>{r.name||'—'}</div></td>
+                <td style={S.td}>{r.email}</td>
+                <td style={{...S.td,fontSize:10,color:MUT}}>{new Date(r.requested_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</td>
+                <td style={S.td}>
+                  <select style={{...S.inp,fontSize:11,padding:'3px 6px',width:'auto'}}
+                    value={reqRoles[r.id]||'staff'}
+                    onChange={e=>setReqRoles(prev=>({...prev,[r.id]:e.target.value}))}>
+                    <option value='staff'>Staff</option>
+                    <option value='manager'>Manager</option>
+                    <option value='owner'>Owner</option>
+                  </select>
+                </td>
+                <td style={{...S.td,display:'flex',gap:6}}>
+                  <button style={S.btn('pri',true)} onClick={()=>approveRequest(r.id)}>Approve</button>
+                  <button style={S.btn('dan',true)} onClick={()=>rejectRequest(r.id)}>Reject</button>
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        }
+      </div>
+      <div style={{marginTop:10,padding:'10px 14px',background:'#EFF6FF',borderRadius:8,fontSize:12,color:'#1D4ED8',border:'0.5px solid #BFDBFE'}}>
+        Share your <strong>Firm ID</strong> with staff so they can request access during registration: <code style={{background:'#DBEAFE',padding:'1px 6px',borderRadius:4,fontSize:11,userSelect:'all'}}>{activeFirm?.id}</code>
+      </div>
     </div>}
 
     {/* ── FIRMS TAB ── */}

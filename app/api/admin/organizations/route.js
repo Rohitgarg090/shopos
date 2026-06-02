@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-
-const ADMIN_EMAILS = ['rohitgarg090@gmail.com'];
+import { isAdminEmail, generateSecurePassword, getSafeErrorMessage } from '@/lib/security';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -12,18 +11,11 @@ async function verifyAdmin(token) {
     data: { user },
   } = await supabase.auth.getUser(token);
 
-  if (!user || !ADMIN_EMAILS.includes(user.email)) {
+  if (!user || !isAdminEmail(user.email)) {
     return null;
   }
 
   return user;
-}
-
-function generatePassword() {
-  const names = ['Sharma', 'Patel', 'Kumar', 'Singh', 'Verma', 'Gupta'];
-  const name = names[Math.floor(Math.random() * names.length)];
-  const num = Math.floor(1000 + Math.random() * 9000);
-  return `${name}@${num}`;
 }
 
 export async function GET(req) {
@@ -89,7 +81,7 @@ export async function GET(req) {
     return Response.json({ organizations: enriched });
   } catch (error) {
     console.error('GET /admin/organizations error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: getSafeErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -111,8 +103,8 @@ export async function POST(req) {
       );
     }
 
-    // 1. Generate temp password
-    const tempPassword = generatePassword();
+    // 1. Generate temp password (secure random)
+    const tempPassword = generateSecurePassword();
 
     // 2. Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -122,7 +114,7 @@ export async function POST(req) {
     });
 
     if (authError) {
-      return Response.json({ error: authError.message }, { status: 400 });
+      return Response.json({ error: getSafeErrorMessage(authError) }, { status: 400 });
     }
 
     const userId = authData.user.id;
@@ -234,6 +226,6 @@ export async function POST(req) {
     });
   } catch (error) {
     console.error('POST /admin/organizations error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: getSafeErrorMessage(error) }, { status: 500 });
   }
 }

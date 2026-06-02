@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Button from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Input from "@/components/ui/input";
-import { Mail, Lock, Loader2 } from "lucide-react";
+import { Mail, Lock, Loader2, User, Building2 } from "lucide-react";
 
 interface ModernLoginProps {
   onLogin: (session: any) => void;
@@ -14,6 +14,8 @@ interface ModernLoginProps {
 export default function ModernLogin({ onLogin }: ModernLoginProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [firmId, setFirmId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"in" | "up" | "forgot">("in");
@@ -28,29 +30,33 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
       return;
     }
 
+    if (mode === "up" && (!name || !firmId)) {
+      setError("Name and Firm ID are required to register");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
-      const redirectTo = window.location.origin + "/auth/callback";
-      const res =
-        mode === "in"
-          ? await supabase.auth.signInWithPassword({ email, password })
-          : await supabase.auth.signUp({
-              email,
-              password,
-              options: { emailRedirectTo: redirectTo },
-            });
-
-      if (res.error) throw res.error;
-
-      if (mode === "up" && !res.data.session) {
-        setError("Account created! Check email to confirm then sign in.");
+      if (mode === "in") {
+        const res = await supabase.auth.signInWithPassword({ email, password });
+        if (res.error) throw res.error;
+        onLogin(res.data.session);
+      } else {
+        // Controlled registration: validate firm + create join request
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, name, firmId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        setError(data.message || "Request submitted! Sign in and you'll see the pending status.");
         setMode("in");
-        return;
+        setName("");
+        setFirmId("");
       }
-
-      onLogin(res.data.session);
     } catch (e: any) {
       setError(e.message || "Authentication failed");
     } finally {
@@ -151,9 +157,11 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
         {/* Login Card */}
         <Card variant="glass" className="border border-white/10 backdrop-blur-xl">
           <CardHeader className="pb-6">
-            <CardTitle className="text-2xl">Welcome</CardTitle>
+            <CardTitle className="text-2xl">{mode === "up" ? "Request Access" : "Welcome"}</CardTitle>
             <p className="text-sm text-slate-400 mt-2">
-              Sign in to access your dashboard
+              {mode === "up"
+                ? "Provide your Firm ID — your admin will approve your access"
+                : "Sign in to access your dashboard"}
             </p>
           </CardHeader>
 
@@ -190,6 +198,39 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                   {forgotStep === "reset" && "Enter your new password"}
                 </p>
               </div>
+            )}
+
+            {/* Name + Firm ID — only for Register mode */}
+            {mode === "up" && (
+              <>
+                <div className="mb-4">
+                  <Input
+                    type="text"
+                    label="Full Name"
+                    placeholder="Your full name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    icon={<User size={18} />}
+                    variant="glass"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="mb-4">
+                  <Input
+                    type="text"
+                    label="Firm ID"
+                    placeholder="Get this from your firm admin"
+                    value={firmId}
+                    onChange={(e) => setFirmId(e.target.value.trim())}
+                    icon={<Building2 size={18} />}
+                    variant="glass"
+                    disabled={loading}
+                  />
+                  <p className="text-xs text-slate-500 mt-1 pl-1">
+                    Ask your firm owner or manager for the Firm ID
+                  </p>
+                </div>
+              </>
             )}
 
             {/* Email Input - Show for Sign In, Register, and Forgot Email step */}
@@ -276,11 +317,9 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
             {error && (
               <div
                 className={`mb-6 p-3 rounded-lg text-sm font-medium ${
-                  error.includes("successful") || error.includes("sent")
+                  error.includes("successful") || error.includes("sent") || error.includes("submitted") || error.includes("created") || error.includes("Request")
                     ? "bg-green-500/20 text-green-300 border border-green-500/30"
-                    : error.includes("created")
-                      ? "bg-green-500/20 text-green-300 border border-green-500/30"
-                      : "bg-red-500/20 text-red-300 border border-red-500/30"
+                    : "bg-red-500/20 text-red-300 border border-red-500/30"
                 }`}
               >
                 {error}
@@ -304,7 +343,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
               ) : mode === "in" ? (
                 "Sign In"
               ) : mode === "up" ? (
-                "Create Account"
+                "Submit Request"
               ) : forgotStep === "email" ? (
                 "Send OTP"
               ) : forgotStep === "otp" ? (

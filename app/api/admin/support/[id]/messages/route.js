@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const ADMIN_EMAILS = ['rohitgarg090@gmail.com'];
+const ADMIN_EMAILS = ['rohitgarg090@gmail.com', 'info@shopos.co.in'];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -44,7 +44,7 @@ export async function GET(req, { params }) {
     const enriched = await Promise.all(
       messages.map(async (msg) => {
         let senderName = 'System';
-        let senderEmail = 'system@shopos.in';
+        let senderEmail = 'info@shopos.co.in';
 
         try {
           if (msg.sender_id) {

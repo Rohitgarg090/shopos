@@ -6,7 +6,7 @@ const supabase = createClient(
 );
 
 // Check if user is admin (hardcoded for now, can be improved)
-const ADMIN_EMAILS = ['rohitgarg090@gmail.com']; // Your email
+const ADMIN_EMAILS = ['rohitgarg090@gmail.com', 'info@shopos.co.in']; // Your email
 
 async function ctx(req) {
   const token = req.headers.get('authorization')?.split('Bearer ')[1];

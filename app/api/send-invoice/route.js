@@ -169,7 +169,7 @@ export async function POST(req) {
   if (!toEmail) return NextResponse.json({ error: 'No email address provided' }, { status: 400 });
   if (!process.env.RESEND_API_KEY) return NextResponse.json({ error: 'RESEND_API_KEY not set in environment variables' }, { status: 500 });
 
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'info@shopos.co.in';
   const invoiceNo = bill.invoiceNo || ('#' + bill.id);
   const date = new Date(bill.date).toLocaleDateString('en-IN');
   const fmt = n => 'Rs.' + Number(n || 0).toFixed(2);
@@ -193,10 +193,16 @@ export async function POST(req) {
     </div>`;
 
   try {
-    console.log('[send-invoice] calling Resend API...');
-    // When using onboarding@resend.dev, cannot use display name format
-    const isDefaultSender = fromEmail === 'onboarding@resend.dev' || fromEmail.endsWith('@resend.dev');
+    console.log('\n📧 [send-invoice] Starting invoice email send');
+    console.log('[send-invoice] toEmail:', toEmail);
+    console.log('[send-invoice] fromEmail from env:', fromEmail);
+
+    // When using default domain email, cannot use display name format (Resend limitation)
+    const isDefaultSender = fromEmail === 'info@shopos.co.in' || fromEmail.endsWith('@resend.dev');
     const fromField = isDefaultSender ? fromEmail : `${firm.name} <${fromEmail}>`;
+
+    console.log('[send-invoice] isDefaultSender:', isDefaultSender);
+    console.log('[send-invoice] fromField:', fromField);
 
     const payload = {
       from: fromField,
@@ -208,7 +214,8 @@ export async function POST(req) {
     if (firm.senderEmail && !isDefaultSender) payload.reply_to = firm.senderEmail;
     if (firm.email && !isDefaultSender) payload.reply_to = firm.email;
 
-    console.log('[send-invoice] payload from:', fromField, 'to:', toEmail);
+    console.log('[send-invoice] Payload summary:', {from: payload.from, to: payload.to, subject: payload.subject, hasHtml: !!payload.html});
+    console.log('[send-invoice] Calling Resend API at https://api.resend.com/emails');
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -220,10 +227,19 @@ export async function POST(req) {
     });
 
     const data = await res.json();
-    console.log('[send-invoice] Resend response:', res.status, JSON.stringify(data));
-    if (!res.ok) return NextResponse.json({ error: data.message || data.name || JSON.stringify(data) }, { status: res.status });
+    console.log('[send-invoice] Resend response status:', res.status);
+    console.log('[send-invoice] Resend response data:', JSON.stringify(data, null, 2));
+
+    if (!res.ok) {
+      console.log('[send-invoice] ❌ Resend API error - status:', res.status);
+      return NextResponse.json({ error: data.message || data.name || JSON.stringify(data) }, { status: res.status });
+    }
+
+    console.log('[send-invoice] ✅ Email sent successfully, ID:', data.id);
     return NextResponse.json({ success: true, id: data.id });
   } catch (e) {
+    console.error('[send-invoice] ❌ Exception:', e.message);
+    console.error('[send-invoice] Stack:', e.stack);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
