@@ -567,6 +567,10 @@ function Dashboard({P,B,C,Py,mob,firm}){
         <div style={{fontSize:11,color:c+'88',marginTop:3}}>{sub}</div>
       </div>)}
     </div>
+
+    {mob&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14,padding:'12px 0'}}>
+      {[{l:'📄 Invoice',a:'pos'},{l:'💰 Payment',a:'payment'},{l:'📲 Reminder',a:'reminder'},{l:'👥 Customers',a:'customers'}].map(({l,a})=><button key={a} onClick={()=>{/* These will be wired to navigation in main ShopOS */}} style={{padding:'12px 8px',background:BL,color:'#fff',border:'none',borderRadius:10,fontWeight:600,fontSize:13,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 2px 8px rgba(27,94,138,0.2)'}} onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 12px rgba(27,94,138,0.3)'} onMouseLeave={e=>e.currentTarget.style.boxShadow='0 2px 8px rgba(27,94,138,0.2)'}>{l}</button>)}
+    </div>}
     {!mob&&<div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:14,marginBottom:14}}>
       <div style={S.card}>
         <div style={S.h3}>Monthly Sales — Last 6 Months</div>
