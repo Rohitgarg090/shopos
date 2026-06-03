@@ -8,6 +8,7 @@ import TrialExtensionModal from '@/components/TrialExtensionModal';
 import UpgradeBlockModal from '@/components/UpgradeBlockModal';
 import BillingPopup from '@/components/BillingPopup';
 import SupportTickets from '@/components/SupportTickets';
+import QRScanner from '@/components/QRScanner';
 import InvoiceHelp from '@/components/PageHelpGuides/InvoiceHelp';
 import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
