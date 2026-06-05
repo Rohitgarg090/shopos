@@ -478,21 +478,23 @@ export default function ShopOS(){
     </nav>}
 
     {/* Mobile header with Firm Switcher & Quick Actions */}
-    {mob&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',background:'#fff',borderBottom:'0.5px solid '+BORD,position:'sticky',top:announcements.length>0?56:0,zIndex:99,gap:8}}>
-      <span style={{fontSize:14,fontWeight:700,color:BL,marginRight:4}}>SHOP<span style={{color:AMB}}>OS</span></span>
-      <div style={{display:'flex',alignItems:'center',gap:6,flex:1}}>
-        <button onClick={()=>setShowQRScanner(true)} style={{padding:'6px 10px',background:'transparent',border:'0.5px solid '+BORD,borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:600,color:BL,display:'flex',alignItems:'center',gap:4}} title="Scan Customer QR">
+    {mob&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 12px',background:'#fff',borderBottom:'0.5px solid '+BORD,position:'sticky',top:announcements.length>0?56:0,zIndex:99,gap:8,flexWrap:'wrap',minHeight:48}}>
+      <span style={{fontSize:13,fontWeight:700,color:BL}}>SHOP<span style={{color:AMB}}>OS</span></span>
+      <div style={{display:'flex',alignItems:'center',gap:4,flex:1,minWidth:0}}>
+        <button onClick={()=>setShowQRScanner(true)} style={{padding:'6px 8px',background:'transparent',border:'0.5px solid '+BORD,borderRadius:6,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',minWidth:32,minHeight:32}} title="Scan QR">
           📱
         </button>
-        <button onClick={()=>setShowStockCheck(true)} style={{padding:'6px 10px',background:'transparent',border:'0.5px solid '+BORD,borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:600,color:BL,display:'flex',alignItems:'center',gap:4}} title="Check Stock">
+        <button onClick={()=>setShowStockCheck(true)} style={{padding:'6px 8px',background:'transparent',border:'0.5px solid '+BORD,borderRadius:6,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',minWidth:32,minHeight:32}} title="Stock">
           📦
         </button>
-        <FirmSwitcher
-          firms={firms}
-          activeFirm={activeFirm}
-          onSelectFirm={switchFirm}
-          onCreateFirm={()=>setPage('team')}
-        />
+        <div style={{flex:1,minWidth:0}}>
+          <FirmSwitcher
+            firms={firms}
+            activeFirm={activeFirm}
+            onSelectFirm={switchFirm}
+            onCreateFirm={()=>setPage('team')}
+          />
+        </div>
       </div>
       <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={handleNavigation}/>
     </div>}
@@ -503,7 +505,7 @@ export default function ShopOS(){
     </nav>}
 
     <div style={{padding:mob?12:16,maxWidth:1240,margin:'0 auto'}}>
-      {page==='dash'&&<Dashboard P={P} B={B} C={C} Py={Py} mob={mob} firm={firm}/>
+      {page==='dash'&&<Dashboard P={P} B={B} C={C} Py={Py} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
       }{page==='analytics'&&<Analytics P={P} B={B} C={C} Py={Py} Ret={Ret} mob={mob}/>}
       {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}
       {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} mob={mob}/>}
@@ -629,7 +631,7 @@ export default function ShopOS(){
   </div>;}
 
 /* ── DASHBOARD ── */
-function Dashboard({P,B,C,Py,mob,firm}){
+function Dashboard({P,B,C,Py,mob,firm,setPage,setShowSupport}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[searchQ,setSearchQ]=useState('');const[searchRes,setSearchRes]=useState([]);const[searching,setSrching]=useState(false);
   const gk=()=>firm?.geminiKey||'';
@@ -672,7 +674,7 @@ function Dashboard({P,B,C,Py,mob,firm}){
     </div>
 
     {mob&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14,padding:'12px 0'}}>
-      {[{l:'📄 Invoice',a:'pos'},{l:'💰 Payment',a:'payment'},{l:'📲 Reminder',a:'reminder'},{l:'👥 Customers',a:'customers'}].map(({l,a})=><button key={a} onClick={()=>{/* These will be wired to navigation in main ShopOS */}} style={{padding:'12px 8px',background:BL,color:'#fff',border:'none',borderRadius:10,fontWeight:600,fontSize:13,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 2px 8px rgba(27,94,138,0.2)'}} onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 12px rgba(27,94,138,0.3)'} onMouseLeave={e=>e.currentTarget.style.boxShadow='0 2px 8px rgba(27,94,138,0.2)'}>{l}</button>)}
+      {[{l:'📄 Invoice',a:()=>setPage('pos')},{l:'💰 Payment',a:()=>setPage('bills')},{l:'📲 Support',a:()=>setShowSupport(true)},{l:'👥 Customers',a:()=>setPage('cust')}].map(({l,a})=><button key={l} onClick={a} style={{padding:'12px 8px',background:BL,color:'#fff',border:'none',borderRadius:10,fontWeight:600,fontSize:13,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 2px 8px rgba(27,94,138,0.2)'}} onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 12px rgba(27,94,138,0.3)'} onMouseLeave={e=>e.currentTarget.style.boxShadow='0 2px 8px rgba(27,94,138,0.2)'}>{l}</button>)}
     </div>}
     {!mob&&<div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:14,marginBottom:14}}>
       <div style={S.card}>
