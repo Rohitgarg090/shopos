@@ -493,6 +493,7 @@ export default function ShopOS(){
             activeFirm={activeFirm}
             onSelectFirm={switchFirm}
             onCreateFirm={()=>setPage('team')}
+            mobile={mob}
           />
         </div>
       </div>
@@ -504,7 +505,7 @@ export default function ShopOS(){
       {TABS.slice(0,8).map(([p,l])=><button key={p} onClick={()=>setPage(p)} style={{flex:'0 0 auto',padding:'8px 12px',border:'none',borderRadius:0,background:'transparent',color:page===p?BL:MUT,cursor:'pointer',fontSize:10,fontWeight:page===p?700:500,display:'flex',flexDirection:'column',alignItems:'center',gap:2,minWidth:60,borderTop:page===p?'2px solid '+BL:'2px solid transparent'}}>{l}</button>)}
     </nav>}
 
-    <div style={{padding:mob?12:16,maxWidth:1240,margin:'0 auto'}}>
+    <div style={{padding:mob?12:16,maxWidth:1240,margin:'0 auto',marginTop:mob?48:0,paddingBottom:mob?70:0}}>
       {page==='dash'&&<Dashboard P={P} B={B} C={C} Py={Py} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
       }{page==='analytics'&&<Analytics P={P} B={B} C={C} Py={Py} Ret={Ret} mob={mob}/>}
       {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}

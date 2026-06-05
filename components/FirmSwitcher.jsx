@@ -4,7 +4,7 @@ import { ChevronDown, Building2, Plus } from 'lucide-react';
 
 const BL = '#1B5E8A', BLL = '#E3EFF8', BORD = '#E3E1D9', MUT = '#888', TXT = '#1A1A18', BG = '#F5F4F0', GR = '#2E6B1F';
 
-export default function FirmSwitcher({ firms, activeFirm, onSelectFirm, onCreateFirm }) {
+export default function FirmSwitcher({ firms, activeFirm, onSelectFirm, onCreateFirm, mobile = false }) {
   const [open, setOpen] = useState(false);
 
   if (!firms || firms.length === 0) {
@@ -16,16 +16,19 @@ export default function FirmSwitcher({ firms, activeFirm, onSelectFirm, onCreate
   const S_btn = {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '8px 12px',
+    gap: mobile ? 0 : 8,
+    padding: mobile ? '6px 8px' : '8px 12px',
     border: '0.5px solid ' + BORD,
     borderRadius: 8,
     background: '#fff',
     cursor: 'pointer',
-    fontSize: 13,
+    fontSize: mobile ? 11 : 13,
     fontWeight: 600,
     color: TXT,
     transition: 'all 0.2s',
+    minWidth: mobile ? 32 : 'auto',
+    minHeight: mobile ? 32 : 'auto',
+    justifyContent: 'center',
   };
 
   return (
@@ -36,12 +39,17 @@ export default function FirmSwitcher({ firms, activeFirm, onSelectFirm, onCreate
         style={S_btn}
         onMouseEnter={(e) => e.currentTarget.style.background = BG}
         onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+        title={current?.name || 'Select Firm'}
       >
-        <Building2 size={16} />
-        <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {current?.name || 'Select Firm'}
-        </span>
-        <ChevronDown size={14} style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0)' }} />
+        <Building2 size={mobile ? 14 : 16} />
+        {!mobile && (
+          <>
+            <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {current?.name || 'Select Firm'}
+            </span>
+            <ChevronDown size={14} style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0)' }} />
+          </>
+        )}
       </button>
 
       {/* Dropdown Menu */}
