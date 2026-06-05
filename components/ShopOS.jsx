@@ -9,6 +9,10 @@ import UpgradeBlockModal from '@/components/UpgradeBlockModal';
 import BillingPopup from '@/components/BillingPopup';
 import SupportTickets from '@/components/SupportTickets';
 import QRScanner from '@/components/QRScanner';
+import PhotoInvoice from '@/components/PhotoInvoice';
+import InvoicePreview from '@/components/InvoicePreview';
+import StockCheck from '@/components/StockCheck';
+import FirmSwitcher from '@/components/FirmSwitcher';
 import InvoiceHelp from '@/components/PageHelpGuides/InvoiceHelp';
 import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
@@ -232,6 +236,12 @@ export default function ShopOS(){
   const[showUpgradeBlock,setShowUpgradeBlock]=useState(false);
   const[showBillingPopup,setShowBillingPopup]=useState(false);
   const[showSupport,setShowSupport]=useState(false);
+  const[showQRScanner,setShowQRScanner]=useState(false);
+  const[showPhotoInvoice,setShowPhotoInvoice]=useState(false);
+  const[showStockCheck,setShowStockCheck]=useState(false);
+  const[showLedgerShare,setShowLedgerShare]=useState(false);
+  const[showInvoicePreview,setShowInvoicePreview]=useState(false);
+  const[previewInvoice,setPreviewInvoice]=useState(null);
   const[announcements,setAnnouncements]=useState([]);
   const[dismissedAnnouncements,setDismissedAnnouncements]=useState(()=>isBR?JSON.parse(localStorage.getItem('dismissed_announcements')||'[]'):[]);
   const ww=useWW();const mob=ww<768;const tab=ww<1024;
@@ -521,6 +531,78 @@ export default function ShopOS(){
         </div>
         <div style={{maxWidth:1200,margin:'0 auto',padding:20}}>
           <SupportTickets mob={mob} onClose={()=>setShowSupport(false)} />
+        </div>
+      </div>
+    )}
+
+    {/* QR Scanner Modal */}
+    {showQRScanner && (
+      <QRScanner
+        customers={C}
+        onSelectCustomer={(cust) => {
+          console.log('[ShopOS] Selected customer:', cust.name);
+          setPage('pos');
+          setShowQRScanner(false);
+        }}
+        onClose={() => setShowQRScanner(false)}
+      />
+    )}
+
+    {/* Photo Invoice Modal */}
+    {showPhotoInvoice && (
+      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'flex-end',zIndex:9998}}>
+        <div style={{width:'100%',maxWidth:600,background:'#fff',borderRadius:mob?'20px 20px 0 0':12,maxHeight:'90vh',overflowY:'auto',padding:16}}>
+          <PhotoInvoice
+            firmGeminiKey={firm?.geminiKey}
+            onItemsExtracted={(items) => {
+              console.log('[ShopOS] Photo items extracted:', items);
+              setShowPhotoInvoice(false);
+              // Items will be used in POS flow
+            }}
+            onClose={() => setShowPhotoInvoice(false)}
+          />
+        </div>
+      </div>
+    )}
+
+    {/* Stock Check Modal */}
+    {showStockCheck && (
+      <StockCheck
+        products={P}
+        mobile={mob}
+        onSelectItem={(item) => {
+          console.log('[ShopOS] Selected item:', item.name, 'qty:', item.qty);
+          // Add to cart in POS flow
+          setShowStockCheck(false);
+        }}
+        onClose={() => setShowStockCheck(false)}
+      />
+    )}
+
+    {/* Invoice Preview Modal */}
+    {showInvoicePreview && previewInvoice && (
+      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'flex-end',zIndex:9998}}>
+        <div style={{width:'100%',maxWidth:600,background:'#fff',borderRadius:mob?'20px 20px 0 0':12,maxHeight:'90vh',overflowY:'auto'}}>
+          <InvoicePreview
+            invoice={previewInvoice}
+            mobile={mob}
+            onSendWhatsApp={() => {
+              console.log('[ShopOS] Send invoice via WhatsApp');
+              // Call send-invoice WhatsApp API
+            }}
+            onSendEmail={() => {
+              console.log('[ShopOS] Send invoice via Email');
+              // Call send-invoice email API
+            }}
+            onPrint={() => {
+              window.print();
+            }}
+            onDownload={() => {
+              console.log('[ShopOS] Download invoice as PDF');
+              // Generate PDF
+            }}
+            onClose={() => setShowInvoicePreview(false)}
+          />
         </div>
       </div>
     )}
