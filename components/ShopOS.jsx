@@ -477,6 +477,26 @@ export default function ShopOS(){
       </div>
     </nav>}
 
+    {/* Mobile header with Firm Switcher & Quick Actions */}
+    {mob&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',background:'#fff',borderBottom:'0.5px solid '+BORD,position:'sticky',top:announcements.length>0?56:0,zIndex:99,gap:8}}>
+      <span style={{fontSize:14,fontWeight:700,color:BL,marginRight:4}}>SHOP<span style={{color:AMB}}>OS</span></span>
+      <div style={{display:'flex',alignItems:'center',gap:6,flex:1}}>
+        <button onClick={()=>setShowQRScanner(true)} style={{padding:'6px 10px',background:'transparent',border:'0.5px solid '+BORD,borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:600,color:BL,display:'flex',alignItems:'center',gap:4}} title="Scan Customer QR">
+          📱
+        </button>
+        <button onClick={()=>setShowStockCheck(true)} style={{padding:'6px 10px',background:'transparent',border:'0.5px solid '+BORD,borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:600,color:BL,display:'flex',alignItems:'center',gap:4}} title="Check Stock">
+          📦
+        </button>
+        <FirmSwitcher
+          firms={firms}
+          activeFirm={activeFirm}
+          onSelectFirm={switchFirm}
+          onCreateFirm={()=>setPage('team')}
+        />
+      </div>
+      <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={handleNavigation}/>
+    </div>}
+
     {/* Mobile bottom tab bar */}
     {mob&&<nav style={_theme==='modern'?{position:'fixed',bottom:0,left:0,right:0,background:'rgba(255,255,255,0.85)',backdropFilter:'blur(20px)',borderTop:'1px solid rgba(148,163,184,0.15)',display:'flex',zIndex:200,overflowX:'auto'}:{position:'fixed',bottom:0,left:0,right:0,background:'#fff',borderTop:'0.5px solid '+BORD,display:'flex',zIndex:200,overflowX:'auto'}} className='np'>
       {TABS.slice(0,8).map(([p,l])=><button key={p} onClick={()=>setPage(p)} style={{flex:'0 0 auto',padding:'8px 12px',border:'none',borderRadius:0,background:'transparent',color:page===p?BL:MUT,cursor:'pointer',fontSize:10,fontWeight:page===p?700:500,display:'flex',flexDirection:'column',alignItems:'center',gap:2,minWidth:60,borderTop:page===p?'2px solid '+BL:'2px solid transparent'}}>{l}</button>)}
