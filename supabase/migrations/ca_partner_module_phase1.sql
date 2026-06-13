@@ -56,15 +56,10 @@ create table if not exists ca_client_links (
   status text default 'pending' check (status in ('pending', 'accepted', 'rejected')),
   invited_at timestamptz default now(),
   accepted_at timestamptz,
-  created_by uuid not null references auth.users(id),  -- shop owner who sent invite
+  created_by uuid not null references auth.users(id),
   updated_at timestamptz default now(),
 
-  unique(ca_id, firm_id),
-  constraint firm_belongs_to_owner check (
-    created_by in (
-      select user_id from public.firms where id = firm_id
-    )
-  )
+  unique(ca_id, firm_id)
 );
 
 alter table ca_client_links enable row level security;
