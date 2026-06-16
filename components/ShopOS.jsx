@@ -1678,7 +1678,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,mob}){
   const[pdfBusy,setPdfBusy]=useState(false);const[ewayBill,setEwayBill]=useState(null);const[ewbLoading,setEwbLoading]=useState(null);
   useEffect(()=>{if(initBill){setVid(initBill.id);onClearInit&&setTimeout(onClearInit,100);}},[initBill?.id]);
   const bill=B.find(b=>b.id===vid)||initBill;
-  const print=()=>{if(!bill)return;const w=window.open('','_blank');w.document.write('<html><head><title>Invoice '+(bill.invoiceNo||bill.id)+'</title><style>body{margin:0}@media print{@page{margin:8mm}}</style></head><body>');w.document.write(document.getElementById('invoice-print')?.innerHTML||'');w.document.write('</body></html>');w.document.close();w.print();};
+  const print=()=>{if(!bill)return;const w=window.open('','_blank');const invHtml=document.getElementById('invoice-print')?.outerHTML||'';w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice '+(bill.invoiceNo||bill.id)+'</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;background:#fff}@media print{body{margin:0;padding:0}@page{margin:8mm;size:A4}}</style></head><body>'+invHtml+'</body></html>');w.document.close();setTimeout(()=>w.print(),500);};
   const downloadPDF=async()=>{if(!bill)return;setPdfBusy(true);try{const pdf=await makePDF('invoice-print');pdf?.save('Invoice-'+(bill.invoiceNo||bill.id)+'.pdf');}catch(e){showT('PDF failed: '+e.message,'err');}finally{setPdfBusy(false)}};
   const emailBill=async b=>{
     const cust=C.find(c=>c.id===b.customerId);
