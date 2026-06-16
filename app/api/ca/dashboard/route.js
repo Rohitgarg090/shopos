@@ -50,7 +50,7 @@ export async function GET(req) {
       .select(`
         id,
         firm_id,
-        firms(id, name, gstin)
+        firms(id, name)
       `)
       .eq('ca_id', caData.id)
       .eq('status', 'accepted');
@@ -138,7 +138,6 @@ export async function GET(req) {
           return {
             firmId: link.firm_id,
             firmName: link.firms?.name || 'Unknown',
-            firmGSTIN: link.firms?.gstin || 'N/A',
             salesCount: salesCount || 0,
             purchasesCount: purchasesCount || 0,
             lastInvoiceDate: lastInvoice?.date || null,

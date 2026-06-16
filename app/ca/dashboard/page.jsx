@@ -226,9 +226,6 @@ export default function CADashboard() {
                       <h3 className="text-lg font-semibold text-gray-900">
                         {client.firmName}
                       </h3>
-                      <p className="text-xs text-gray-500 mt-1">
-                        GSTIN: {client.firmGSTIN}
-                      </p>
                     </div>
                     <input
                       type="checkbox"
