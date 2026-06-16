@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 
 const ADMIN_EMAILS = ['rohitgarg090@gmail.com', 'info@shopos.co.in'];

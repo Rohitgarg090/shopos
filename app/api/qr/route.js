@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // QR code proxy — avoids CORS issue in html2canvas PDF generation
 import { NextResponse } from 'next/server';
 

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import twilio from 'twilio';
 import { validatePhoneNumber, sanitizeText, getSafeErrorMessage } from '@/lib/security';
 
