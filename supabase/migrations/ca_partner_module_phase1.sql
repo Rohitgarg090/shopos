@@ -140,7 +140,7 @@ create table if not exists ca_reminder_logs (
   id uuid primary key default gen_random_uuid(),
   ca_id uuid not null references ca_partners(id) on delete cascade,
   firm_id uuid not null references public.firms(id) on delete cascade,
-  client_id uuid references public.customers(id),  -- optional, for per-client tracking
+  client_id text references public.customers(id),
   message_type text check (message_type in ('whatsapp', 'email')),
   recipient_phone text,
   recipient_email text,

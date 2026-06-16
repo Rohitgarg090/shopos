@@ -7,7 +7,7 @@ const supabase = createClient(
 
 export async function POST(req) {
   try {
-    const { email, password, name, phone, firmName, gstin, pan } = await req.json();
+    const { email, password, name, phone, firmName, gstin, pan, address, city, state } = await req.json();
 
     // Validation
     if (!email || !password || !name || !phone) {
@@ -68,6 +68,9 @@ export async function POST(req) {
         firm_name: firmName || null,
         gstin: gstin || null,
         pan: pan || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
       })
       .select()
       .single();
