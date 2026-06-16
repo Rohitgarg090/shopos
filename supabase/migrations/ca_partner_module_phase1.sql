@@ -96,7 +96,7 @@ create table if not exists ca_annotations (
   id uuid primary key default gen_random_uuid(),
   ca_id uuid not null references ca_partners(id) on delete cascade,
   firm_id uuid not null references public.firms(id) on delete cascade,
-  bill_id uuid not null references public.bills(id) on delete cascade,
+  bill_id integer not null references public.bills(id) on delete cascade,
   annotation text not null,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
