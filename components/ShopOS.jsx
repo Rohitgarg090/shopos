@@ -1002,7 +1002,7 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
               <div><label style={S.lbl}>Article No</label><input style={{...S.inp,fontSize:12,fontFamily:'DM Mono,monospace',fontWeight:700,color:BL}} value={item.articleNo||''} onChange={e=>upd(i,'articleNo',e.target.value)} placeholder='code'/></div>
               <div><label style={S.lbl}>Product Name</label><input style={{...S.inp,fontSize:12,fontWeight:600}} value={item.name} onChange={e=>upd(i,'name',e.target.value)}/></div>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 55px 80px 70px',gap:6,marginBottom:6}}>
+            <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 55px 80px 70px 60px',gap:6,marginBottom:6}}>
               <div><label style={S.lbl}>Sizes</label><input style={{...S.inp,fontSize:12}} value={item.sizes||''} onChange={e=>upd(i,'sizes',e.target.value)} placeholder='M,L,XL or Free Size'/></div>
               <div><label style={S.lbl}>Qty</label><input style={{...S.inp,fontSize:12,textAlign:'right'}} type='number' min='1' value={item.qty} onChange={e=>upd(i,'qty',+e.target.value)}/></div>
               <div><label style={S.lbl}>{markupPct?'Sell Price':'Price'}</label>
@@ -1011,8 +1011,12 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
                   {markupPct&&item._costPrice&&<div style={{fontSize:9,color:MUT,textAlign:'right',marginTop:1}}>cost: {fmt(item._costPrice)}</div>}
                 </div>
               </div>
+              {!mob&&<div><label style={S.lbl}>HSN</label><input style={{...S.inp,fontSize:12,fontFamily:'DM Mono,monospace',fontWeight:600}} value={item.hsn||''} onChange={e=>upd(i,'hsn',e.target.value)} placeholder='6203'/></div>}
               <div><label style={S.lbl}>QR Labels</label><input style={{...S.inp,fontSize:12,textAlign:'right'}} type='number' min='1' value={item.qrCount||item.qty} onChange={e=>upd(i,'qrCount',+e.target.value)}/></div>
             </div>
+            {mob&&<div style={{marginBottom:6}}>
+              <label style={S.lbl}>HSN Code</label><input style={{...S.inp,fontSize:12,fontFamily:'DM Mono,monospace',fontWeight:600}} value={item.hsn||''} onChange={e=>upd(i,'hsn',e.target.value)} placeholder='6203 (e.g., 6203 for jeans, 6204 for shirts)'/>
+            </div>}
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:5}}>
               <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                 <select style={{...S.inp,width:'auto',fontSize:11,padding:'2px 6px'}} value={item.cat||'Others'} onChange={e=>upd(i,'cat',e.target.value)}>{CATS.filter(c=>c!=='All').map(c=><option key={c}>{c}</option>)}</select>
