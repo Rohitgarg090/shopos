@@ -16,7 +16,39 @@ export async function POST(req) {
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!c.firmId) return NextResponse.json({ error: 'Firm ID required' }, { status: 400 });
 
-  const { data, error } = await c.sb.rpc('get_next_invoice_number', { p_user_id: c.user.id, p_firm_id: c.firmId });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ invoiceNo: data });
+  try {
+    // Get the highest invoice number for this firm
+    const { data: bills, error: billsError } = await c.sb
+      .from('bills')
+      .select('invoice_no')
+      .eq('firm_id', c.firmId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (billsError) {
+      console.error('[next-invoice] Bills query error:', billsError);
+      throw billsError;
+    }
+
+    // Extract numeric part and increment
+    let nextNo = 1;
+    if (bills && bills.length > 0 && bills[0].invoice_no) {
+      const lastInvoiceNo = bills[0].invoice_no;
+      // Extract number from invoice_no (e.g., "INV-001" -> 1, "001" -> 1)
+      const match = lastInvoiceNo.match(/(\d+)$/);
+      if (match) {
+        nextNo = parseInt(match[1]) + 1;
+      }
+    }
+
+    // Format: pad with zeros (e.g., 001, 002, 100)
+    const invoiceNo = String(nextNo).padStart(3, '0');
+    return NextResponse.json({ invoiceNo });
+  } catch (error) {
+    console.error('[next-invoice] Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to generate invoice number' },
+      { status: 500 }
+    );
+  }
 }
