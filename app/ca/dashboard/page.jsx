@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
+import ExportModal from '../components/ExportModal';
+import BulkRemindersModal from '../components/BulkRemindersModal';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -17,6 +19,8 @@ export default function CADashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [selectedClients, setSelectedClients] = useState(new Set());
   const [monthYear, setMonthYear] = useState('');
+  const [exportModal, setExportModal] = useState(null);
+  const [remindersModal, setRemindersModal] = useState(false);
 
   useEffect(() => {
     const today = new Date();
@@ -186,10 +190,21 @@ export default function CADashboard() {
 
                 {selectedClients.size > 0 && (
                   <>
-                    <button className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">
+                    <button
+                      onClick={() => {
+                        // Show export modal for first selected client
+                        const firstSelected = Array.from(selectedClients)[0];
+                        const client = dashboard.clients.find(c => c.firmId === firstSelected);
+                        setExportModal(client);
+                      }}
+                      className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors"
+                    >
                       📥 Export ({selectedClients.size})
                     </button>
-                    <button className="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors">
+                    <button
+                      onClick={() => setRemindersModal(true)}
+                      className="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
+                    >
                       💬 Send Reminder ({selectedClients.size})
                     </button>
                   </>
@@ -268,10 +283,23 @@ export default function CADashboard() {
 
                   {/* Actions */}
                   <div className="grid grid-cols-2 gap-2">
-                    <button className="px-3 py-2 text-xs font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md transition-colors">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExportModal(client);
+                      }}
+                      className="px-3 py-2 text-xs font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md transition-colors"
+                    >
                       📥 Export
                     </button>
-                    <button className="px-3 py-2 text-xs font-medium bg-green-50 hover:bg-green-100 text-green-700 rounded-md transition-colors">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedClients(new Set([client.firmId]));
+                        setRemindersModal(true);
+                      }}
+                      className="px-3 py-2 text-xs font-medium bg-green-50 hover:bg-green-100 text-green-700 rounded-md transition-colors"
+                    >
                       💬 Remind
                     </button>
                   </div>
@@ -281,6 +309,28 @@ export default function CADashboard() {
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      {exportModal && (
+        <ExportModal
+          firmId={exportModal.firmId}
+          firmName={exportModal.firmName}
+          onClose={() => setExportModal(null)}
+        />
+      )}
+
+      {remindersModal && (
+        <BulkRemindersModal
+          selectedFirmIds={selectedClients}
+          firmNames={dashboard?.clients
+            ?.filter(c => selectedClients.has(c.firmId))
+            ?.map(c => c.firmName) || []}
+          onClose={() => {
+            setRemindersModal(false);
+            setSelectedClients(new Set());
+          }}
+        />
+      )}
     </div>
   );
 }
