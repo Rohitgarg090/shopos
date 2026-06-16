@@ -86,7 +86,7 @@ export async function POST(req) {
     const monthEndStr = monthEnd.toISOString().split('T')[0];
 
     // Get all bills for the month (purchase bills based on customer_id being null or supplier fields)
-    const { data: bills, error: billsError } = await supabase
+    let { data: bills, error: billsError } = await supabase
       .from('bills')
       .select(`
         id,
