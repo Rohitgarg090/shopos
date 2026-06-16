@@ -110,6 +110,51 @@ export async function POST(req) {
       .order('date', { ascending: true });
 
     if (billsError) {
+      console.error('[export-purchase-register] Bills query error:', billsError);
+      if (billsError.message?.includes('hsn_code')) {
+        // Fallback: query without hsn_code if column doesn't exist yet
+        const { data: fallbackBills, error: fallbackError } = await supabase
+          .from('bills')
+          .select(`
+            id,
+            invoice_no,
+            date,
+            total,
+            supplier_name,
+            supplier_gstin,
+            items:bill_items(
+              name,
+              gst_rate,
+              qty,
+              rate
+            )
+          `)
+          .eq('firm_id', firmId)
+          .eq('is_purchase', true)
+          .gte('date', monthStartStr)
+          .lte('date', monthEndStr)
+          .order('date', { ascending: true });
+
+        if (fallbackError) {
+          return Response.json(
+            { error: `Database error: ${fallbackError.message}` },
+            { status: 500 }
+          );
+        }
+        // Add placeholder hsn_code for fallback data
+        bills = fallbackBills?.map(bill => ({
+          ...bill,
+          items: bill.items?.map(item => ({ ...item, hsn_code: null }))
+        })) || [];
+      } else {
+        return Response.json(
+          { error: billsError.message || 'Failed to fetch bills' },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (billsError) {
       return Response.json(
         { error: billsError.message },
         { status: 500 }
