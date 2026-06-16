@@ -125,7 +125,7 @@ create policy "ca_can_create_annotations" on ca_annotations
 create policy "owner_sees_ca_annotations" on ca_annotations
   for select using (
     firm_id in (
-      select id from public.firms where user_id = auth.uid()
+      select id from public.firms where owner_id = auth.uid()
     )
   );
 
@@ -162,7 +162,7 @@ create policy "ca_sees_own_reminder_logs" on ca_reminder_logs
 -- Shop owner sees reminders sent to their firm
 create policy "owner_sees_reminders_to_firm" on ca_reminder_logs
   for select using (
-    firm_id in (select id from public.firms where user_id = auth.uid())
+    firm_id in (select id from public.firms where owner_id = auth.uid())
   );
 
 create index idx_ca_reminder_logs_ca_id on ca_reminder_logs(ca_id);
