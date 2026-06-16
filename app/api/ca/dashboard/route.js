@@ -56,8 +56,9 @@ export async function GET(req) {
       .eq('status', 'accepted');
 
     if (linksError) {
+      console.error('[ca-dashboard] Links query error:', linksError);
       return Response.json(
-        { error: linksError.message },
+        { error: `Database error: ${linksError.message}` },
         { status: 500 }
       );
     }
@@ -71,32 +72,49 @@ export async function GET(req) {
     // For each firm, calculate metrics
     const clients = await Promise.all(
       (links || []).map(async (link) => {
-        // Count sales (non-purchase bills)
-        const { count: salesCount } = await supabase
-          .from('bills')
-          .select('id', { count: 'exact', head: true })
-          .eq('firm_id', link.firm_id)
-          .neq('is_purchase', true)
-          .gte('date', monthStart.toISOString().split('T')[0])
-          .lte('date', monthEnd.toISOString().split('T')[0]);
+        try {
+          // Count sales (non-purchase bills)
+          const { count: salesCount, error: salesError } = await supabase
+            .from('bills')
+            .select('id', { count: 'exact', head: true })
+            .eq('firm_id', link.firm_id)
+            .neq('is_purchase', true)
+            .gte('date', monthStart.toISOString().split('T')[0])
+            .lte('date', monthEnd.toISOString().split('T')[0]);
 
-        // Count purchases (purchase bills)
-        const { count: purchasesCount } = await supabase
-          .from('bills')
-          .select('id', { count: 'exact', head: true })
-          .eq('firm_id', link.firm_id)
-          .eq('is_purchase', true)
-          .gte('date', monthStart.toISOString().split('T')[0])
-          .lte('date', monthEnd.toISOString().split('T')[0]);
+          if (salesError) {
+            console.error('[ca-dashboard] Sales count error:', salesError);
+            throw salesError;
+          }
 
-        // Get last invoice date
-        const { data: lastInvoice } = await supabase
-          .from('bills')
-          .select('date')
-          .eq('firm_id', link.firm_id)
-          .order('date', { ascending: false })
-          .limit(1)
-          .single();
+          // Count purchases (purchase bills)
+          const { count: purchasesCount, error: purchasesError } = await supabase
+            .from('bills')
+            .select('id', { count: 'exact', head: true })
+            .eq('firm_id', link.firm_id)
+            .eq('is_purchase', true)
+            .gte('date', monthStart.toISOString().split('T')[0])
+            .lte('date', monthEnd.toISOString().split('T')[0]);
+
+          if (purchasesError) {
+            console.error('[ca-dashboard] Purchases count error:', purchasesError);
+            throw purchasesError;
+          }
+
+          // Get last invoice date
+          const { data: lastInvoice, error: invoiceError } = await supabase
+            .from('bills')
+            .select('date')
+            .eq('firm_id', link.firm_id)
+            .order('date', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (invoiceError && invoiceError.code !== 'PGRST116') {
+            // PGRST116 is "no rows returned" which is okay
+            console.error('[ca-dashboard] Last invoice error:', invoiceError);
+            throw invoiceError;
+          }
 
         // Calculate status
         const hasSales = (salesCount || 0) > 0;
@@ -117,16 +135,20 @@ export async function GET(req) {
           }
         }
 
-        return {
-          firmId: link.firm_id,
-          firmName: link.firms?.name || 'Unknown',
-          firmGSTIN: link.firms?.gstin || 'N/A',
-          salesCount: salesCount || 0,
-          purchasesCount: purchasesCount || 0,
-          lastInvoiceDate: lastInvoice?.date || null,
-          status,
-          monthYear,
-        };
+          return {
+            firmId: link.firm_id,
+            firmName: link.firms?.name || 'Unknown',
+            firmGSTIN: link.firms?.gstin || 'N/A',
+            salesCount: salesCount || 0,
+            purchasesCount: purchasesCount || 0,
+            lastInvoiceDate: lastInvoice?.date || null,
+            status,
+            monthYear,
+          };
+        } catch (err) {
+          console.error('[ca-dashboard] Error processing firm:', link.firm_id, err);
+          throw err;
+        }
       })
     );
 
