@@ -68,19 +68,44 @@ export async function GET(req) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const monthYear = now.toISOString().substring(0, 7); // YYYY-MM
+    const monthStartStr = monthStart.toISOString().split('T')[0];
+    const monthEndStr = monthEnd.toISOString().split('T')[0];
 
     // For each firm, calculate metrics
     const clients = await Promise.all(
       (links || []).map(async (link) => {
         try {
-          // For now, just use placeholder values
-          // The bills table may have RLS policies that restrict CA access
-          const salesCount = 0;
-          const purchasesCount = 0;
-          const lastInvoice = null;
+          // Count all bills for this firm in current month
+          const { count: totalBills, error: billsCountError } = await supabase
+            .from('bills')
+            .select('id', { count: 'exact', head: true })
+            .eq('firm_id', link.firm_id)
+            .gte('created_at', monthStartStr)
+            .lte('created_at', monthEndStr);
 
-          // TODO: Once we confirm bills table RLS policies for CA, implement proper counting
-          // For now, CA dashboard shows client list with basic metrics
+          if (billsCountError) {
+            console.error('[ca-dashboard] Bills count error:', billsCountError);
+            throw billsCountError;
+          }
+
+          const salesCount = totalBills || 0;
+          const purchasesCount = 0; // TODO: distinguish purchase vs sales bills
+
+          // Get last invoice date
+          const { data: lastInvoiceData, error: invoiceError } = await supabase
+            .from('bills')
+            .select('created_at')
+            .eq('firm_id', link.firm_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (invoiceError && invoiceError.code !== 'PGRST116') {
+            console.error('[ca-dashboard] Last invoice error:', invoiceError);
+            throw invoiceError;
+          }
+
+          const lastInvoice = lastInvoiceData;
 
         // Calculate status
         const hasSales = (salesCount || 0) > 0;

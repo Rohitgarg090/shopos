@@ -85,29 +85,30 @@ export async function POST(req) {
     const monthStartStr = monthStart.toISOString().split('T')[0];
     const monthEndStr = monthEnd.toISOString().split('T')[0];
 
-    // Get all purchase bills for the month
+    // Get all bills for the month (purchase bills based on customer_id being null or supplier fields)
     const { data: bills, error: billsError } = await supabase
       .from('bills')
       .select(`
         id,
         invoice_no,
-        date,
+        created_at,
         total,
-        supplier_name,
-        supplier_gstin,
-        items:bill_items(
+        subtotal,
+        customer_name,
+        customer_gst,
+        bill_items(
           name,
-          hsn_code,
+          hsn,
           gst_rate,
           qty,
-          rate
+          rate,
+          gst_amt
         )
       `)
       .eq('firm_id', firmId)
-      .eq('is_purchase', true)
-      .gte('date', monthStartStr)
-      .lte('date', monthEndStr)
-      .order('date', { ascending: true });
+      .gte('created_at', monthStartStr)
+      .lte('created_at', monthEndStr)
+      .order('created_at', { ascending: true });
 
     if (billsError) {
       console.error('[export-purchase-register] Bills query error:', billsError);
@@ -166,17 +167,17 @@ export async function POST(req) {
 
     if (bills && bills.length > 0) {
       bills.forEach(bill => {
-        const billDate = new Date(bill.date).toLocaleDateString('en-IN');
+        const billDate = new Date(bill.created_at).toLocaleDateString('en-IN');
         const invoiceNo = bill.invoice_no || bill.id.substring(0, 8);
-        const supplierName = escapeCSV(bill.supplier_name || 'Unknown');
-        const supplierGSTIN = escapeCSV(bill.supplier_gstin || 'N/A');
+        const supplierName = escapeCSV(bill.customer_name || 'Unknown');
+        const supplierGSTIN = escapeCSV(bill.customer_gst || 'N/A');
 
         // If bill has items, create one row per HSN code (grouped)
         const itemsByHSN = {};
 
-        if (bill.items && bill.items.length > 0) {
-          bill.items.forEach(item => {
-            const hsn = item.hsn_code || 'N/A';
+        if (bill.bill_items && bill.bill_items.length > 0) {
+          bill.bill_items.forEach(item => {
+            const hsn = item.hsn || 'N/A';
             if (!itemsByHSN[hsn]) {
               itemsByHSN[hsn] = {
                 description: item.name || '',
@@ -189,7 +190,8 @@ export async function POST(req) {
             }
             const lineValue = (item.qty || 0) * (item.rate || 0);
             itemsByHSN[hsn].totalValue += lineValue;
-            const gstAmount = lineValue * (item.gst_rate || 18) / 100;
+            // Use actual gst_amt if available, otherwise calculate
+            const gstAmount = item.gst_amt || (lineValue * (item.gst_rate || 18) / 100);
             // Default: intra-state (CGST + SGST), can be updated for inter-state
             itemsByHSN[hsn].cgst += gstAmount / 2;
             itemsByHSN[hsn].sgst += gstAmount / 2;
@@ -198,7 +200,7 @@ export async function POST(req) {
           // No items, use bill total
           itemsByHSN['N/A'] = {
             description: 'Consolidated',
-            totalValue: bill.total || 0,
+            totalValue: bill.subtotal || bill.total || 0,
             igst: 0,
             cgst: 0,
             sgst: 0,

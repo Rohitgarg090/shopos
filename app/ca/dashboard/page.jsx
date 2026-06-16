@@ -257,19 +257,13 @@ export default function CADashboard() {
                   {/* Metrics */}
                   <div className="space-y-3 mb-4 pb-4 border-b border-gray-200">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Sales</span>
+                      <span className="text-gray-600">Bills</span>
                       <span className="font-semibold text-gray-900">
                         {client.salesCount}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Purchases</span>
-                      <span className="font-semibold text-gray-900">
-                        {client.purchasesCount}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Last Invoice</span>
+                      <span className="text-gray-600">Last Bill</span>
                       <span className="font-semibold text-gray-900">
                         {client.lastInvoiceDate
                           ? new Date(client.lastInvoiceDate).toLocaleDateString('en-IN')
