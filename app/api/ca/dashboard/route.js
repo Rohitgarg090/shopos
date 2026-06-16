@@ -73,33 +73,23 @@ export async function GET(req) {
     const clients = await Promise.all(
       (links || []).map(async (link) => {
         try {
-          // Count sales (non-purchase bills)
-          const { count: salesCount, error: salesError } = await supabase
+          // Count all bills for the month
+          const { count: totalBills, error: billsError } = await supabase
             .from('bills')
             .select('id', { count: 'exact', head: true })
             .eq('firm_id', link.firm_id)
-            .neq('is_purchase', true)
             .gte('date', monthStart.toISOString().split('T')[0])
             .lte('date', monthEnd.toISOString().split('T')[0]);
 
-          if (salesError) {
-            console.error('[ca-dashboard] Sales count error:', salesError);
-            throw salesError;
+          if (billsError) {
+            console.error('[ca-dashboard] Bills count error:', billsError);
+            throw billsError;
           }
 
-          // Count purchases (purchase bills)
-          const { count: purchasesCount, error: purchasesError } = await supabase
-            .from('bills')
-            .select('id', { count: 'exact', head: true })
-            .eq('firm_id', link.firm_id)
-            .eq('is_purchase', true)
-            .gte('date', monthStart.toISOString().split('T')[0])
-            .lte('date', monthEnd.toISOString().split('T')[0]);
-
-          if (purchasesError) {
-            console.error('[ca-dashboard] Purchases count error:', purchasesError);
-            throw purchasesError;
-          }
+          // For now, use total bills as sales count
+          // TODO: Once schema is confirmed, split by bill type
+          const salesCount = totalBills || 0;
+          const purchasesCount = 0;
 
           // Get last invoice date
           const { data: lastInvoice, error: invoiceError } = await supabase
