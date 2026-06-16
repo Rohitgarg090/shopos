@@ -50,8 +50,7 @@ export async function GET(req) {
       .select(`
         id,
         firm_id,
-        firms(id, name, gstin),
-        customers(id)
+        firms(id, name, gstin)
       `)
       .eq('ca_id', caData.id)
       .eq('status', 'accepted');
