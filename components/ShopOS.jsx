@@ -1524,11 +1524,12 @@ function Invoice({bill,firm,payments=[]}){
       </td>
     </tr></tbody></table>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8,fontSize:11}}>
-      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{['#','Description','Art.No','Cat','Size','Qty','Rate','GST%','CGST','SGST','Total'].map(h=><th key={h} style={{padding:'4px 5px',textAlign:'left',fontSize:9,fontWeight:600}}>{h}</th>)}</tr></thead>
+      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','CGST','SGST','Total'].map(h=><th key={h} style={{padding:'4px 5px',textAlign:'left',fontSize:9,fontWeight:600}}>{h}</th>)}</tr></thead>
       <tbody>{(bill.items||[]).map((item,i)=><tr key={i} style={{background:i%2===0?'#fafafa':'#fff'}}>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{i+1}</td>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',fontWeight:600}}>{item.name}<div style={{fontSize:8,color:'#888',fontFamily:'monospace'}}>{item.sku}</div></td>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700}}>{item.articleNo||'-'}</td>
+        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700}}>{item.hsn||'-'}</td>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{item.cat}</td>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{item.size}</td>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{item.qty}</td>
