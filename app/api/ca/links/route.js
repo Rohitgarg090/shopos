@@ -111,7 +111,7 @@ export async function POST(req) {
       .from('firms')
       .select('id')
       .eq('id', firmId)
-      .eq('user_id', user.id)
+      .eq('owner_id', user.id)
       .single();
 
     if (!firmData) {
