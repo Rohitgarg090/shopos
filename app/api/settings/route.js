@@ -79,6 +79,7 @@ export async function POST(req) {
   const b = await req.json();
 
   // Map camelCase to snake_case for database fields
+  // Only include fields that exist in firm_settings table
   const fieldMap = {
     name: 'name',
     shoptype: 'shoptype',
@@ -102,12 +103,9 @@ export async function POST(req) {
     geminiKey: 'gemini_key',
     ewbUsername: 'ewb_username',
     ewbPassword: 'ewb_password',
-    msg91Key: 'msg91_key',
-    msg91SmsTemplate: 'msg91_sms_template',
-    msg91WaTemplate: 'msg91_wa_template',
-    interestEnabled: 'interest_enabled',
-    interestOnOpeningBalance: 'interest_on_opening_balance',
-    notifEnabled: 'notif_enabled',
+    // Note: Exclude these fields if they don't exist in schema:
+    // msg91Key, msg91SmsTemplate, msg91WaTemplate, interestEnabled,
+    // interestOnOpeningBalance, notifEnabled
   };
 
   const fields = {};
@@ -140,13 +138,15 @@ export async function POST(req) {
 
   // Step 2: Update or insert
   if (primaryRow?.id) {
-    // UPDATE the primary row - only update the fields being changed, preserve system columns
+    // UPDATE the primary row - only update the fields being changed
     const updateFields = { ...fields, updated_at: new Date().toISOString() };
     console.log('[settings] Updating row', primaryRow.id, 'with fields:', updateFields);
-    ({ data, error } = await c.sb.from('firm_settings')
+    const result = await c.sb.from('firm_settings')
       .update(updateFields)
       .eq('id', primaryRow.id)
-      .select().single());
+      .select();
+    error = result.error;
+    data = result.data ? result.data[0] : null; // Get first row from array
     if (error) {
       console.error('[settings] Update error:', error.message);
     }
@@ -158,9 +158,11 @@ export async function POST(req) {
       ...fields,
     };
     console.log('[settings] Inserting new row:', insertRow);
-    ({ data, error } = await c.sb.from('firm_settings')
+    const result = await c.sb.from('firm_settings')
       .insert([insertRow])
-      .select().single());
+      .select();
+    error = result.error;
+    data = result.data ? result.data[0] : null; // Get first row from array
     if (error) {
       console.error('[settings] Insert error:', error.message);
     }
@@ -170,5 +172,5 @@ export async function POST(req) {
     console.error('[settings] save error:', error.message, 'code:', error.code);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(shape(data));
+  return NextResponse.json(shape(data || {}));
 }
