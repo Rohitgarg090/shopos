@@ -17,6 +17,20 @@ export async function POST(req) {
   if (!c.firmId) return NextResponse.json({ error: 'Firm ID required' }, { status: 400 });
 
   try {
+    // Get firm settings for invoicePrefix
+    const { data: firmData, error: firmError } = await c.sb
+      .from('firms')
+      .select('invoice_prefix')
+      .eq('id', c.firmId)
+      .single();
+
+    if (firmError && firmError.code !== 'PGRST116') {
+      console.error('[next-invoice] Firm query error:', firmError);
+      throw firmError;
+    }
+
+    const invoicePrefix = firmData?.invoice_prefix || 'INV';
+
     // Get the highest invoice number for this firm
     const { data: bills, error: billsError } = await c.sb
       .from('bills')
@@ -34,15 +48,23 @@ export async function POST(req) {
     let nextNo = 1;
     if (bills && bills.length > 0 && bills[0].invoice_no) {
       const lastInvoiceNo = bills[0].invoice_no;
-      // Extract number from invoice_no (e.g., "INV-001" -> 1, "001" -> 1)
+      // Extract number from invoice_no (e.g., "INV-001" -> 1, "inv/2026/001" -> 1)
       const match = lastInvoiceNo.match(/(\d+)$/);
       if (match) {
         nextNo = parseInt(match[1]) + 1;
       }
     }
 
-    // Format: pad with zeros (e.g., 001, 002, 100)
-    const invoiceNo = String(nextNo).padStart(3, '0');
+    // Format: apply prefix + pad with zeros (e.g., "INV-001" or "inv/2026/001")
+    let invoiceNo;
+    if (invoicePrefix.includes('/')) {
+      // Format: "inv/2026/001"
+      invoiceNo = invoicePrefix + '/' + String(nextNo).padStart(3, '0');
+    } else {
+      // Format: "INV-001"
+      invoiceNo = invoicePrefix + '-' + String(nextNo).padStart(3, '0');
+    }
+
     return NextResponse.json({ invoiceNo });
   } catch (error) {
     console.error('[next-invoice] Error:', error);

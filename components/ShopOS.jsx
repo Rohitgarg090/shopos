@@ -127,7 +127,7 @@ function Modal({title,onClose,children,wide}){
     </div>
   </div>;
 }
-function CatTabs({value,onChange,counts}){return<div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>{CATS.map(c=><button key={c} onClick={()=>onChange(c)} style={{padding:'3px 11px',borderRadius:20,border:'0.5px solid '+(value===c?BL:BORD),background:value===c?BL:'#fff',color:value===c?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>{c}{c!=='All'&&counts&&<span style={{opacity:.7,fontSize:9}}> {counts[c]||0}</span>}</button>)}</div>;}
+function CatTabs({value,onChange,counts}){const cats=counts?['All',...Object.keys(counts).sort()]:CATS;return<div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>{cats.map(c=><button key={c} onClick={()=>onChange(c)} style={{padding:'3px 11px',borderRadius:20,border:'0.5px solid '+(value===c?BL:BORD),background:value===c?BL:'#fff',color:value===c?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>{c}{c!=='All'&&counts&&<span style={{opacity:.7,fontSize:9}}> {counts[c]||0}</span>}</button>)}</div>;}
 
 const DEF={name:'Your Firm Name',shoptype:'Wholesale Clothing',gstin:'',address:'Shop Address, City, State',mobile:'',email:'',senderEmail:'',state:'Madhya Pradesh',bankName:'',bankAccount:'',bankIFSC:'',invoicePrefix:'INV',logo:'',emailSubject:'Invoice {invoiceNo} from {firmName}',emailBody:'Dear {customerName},\n\nPlease find your invoice {invoiceNo} dated {date} for {amount}.\n\nThank you for your business!\n\nWarm regards,\n{firmName}\n{mobile}',terms:'1. Goods once sold will not be taken back.\n2. Payment due within 45 days.\n3. Add 18% interest if payment not done in 45 days.\n4. Cheques subject to realisation.\n5. Subject to local jurisdiction.'};
 
@@ -1300,17 +1300,17 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,mob,onDone}){
     let p=P.find(x=>x.sku===searchSku)||(searchArt?P.find(x=>x.articleNo===searchArt&&(!searchSize||x.size===searchSize)):null)||P.find(x=>x.sku===s||x.articleNo===s);
     if(!p){showT('Product not found: '+s,'err');return;}
     if(p.qty===0){showT(p.name+' out of stock!','err');return;}
-    setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst}]});
+    setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.article_no||'',color:p.color||''}]});
     setBc('');showT('Added: '+p.name);
   };
   addBCRef.current=addBC; // keep ref in sync for keydown handler
-  const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst}]});};
+  const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.article_no||'',color:p.color||''}]});};
   const uQty=(id,d)=>setCart(c=>c.map(x=>x.id===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));
   const calc=()=>{let sub=0,gt=0;cart.forEach(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;sub+=base*c.qty;gt+=base*(c.gstRate/100)*c.qty;});const discAmt=+disc||0;if(isRel){const mk=sub*0.1;return{sub,gt:0,mk,disc:0,total:sub+mk};}return{sub,gt,mk:0,disc:discAmt,total:sub+gt-discAmt};};
   const saveCust=async()=>{if(!cForm.name||!cForm.phone){showT('Name & phone required','err');return}const nc=await api.post('/api/customers',cForm);setC(cs=>[nc,...cs]);setSel(nc);setCF({name:'',phone:'',shopname:'',gst:'',addr:'',email:''});setStep('items');setTimeout(()=>bcRef.current?.focus(),200);};
   const genBill=async()=>{const cName=isRel?rn||'Walk-in':sel?.name;if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}setSub(true);
     const{sub,gt,mk,disc:discAmt,total}=calc();const inv=await nextInv();
-    const items=cart.map(c=>{const p=P.find(x=>x.id===c.id);const base=gstMode==='incl'?p.price/(1+p.gst/100):p.price;const ga=isRel?0:base*(p.gst/100)*c.qty;return{name:p.name,sku:p.sku,cat:p.cat,size:p.size,color:p.color||'',articleNo:p.articleNo||'',qty:c.qty,rate:base,gstRate:isRel?0:p.gst,gstAmt:ga,total:isRel?base*c.qty:base*(1+p.gst/100)*c.qty};});
+    const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
     try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber});
     const fp=await api.get('/api/products');setP(Array.isArray(fp)?fp:[]);
     const bill={id:r.id,invoiceNo:inv,date:new Date().toISOString(),customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items:items.map(i=>({...i,gstAmt:i.gstAmt||0})),subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,biltyNo:'',transportName,lrNumber};
@@ -1532,12 +1532,12 @@ function Invoice({bill,firm,payments=[]}){
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700}}>{item.hsn||'-'}</td>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{item.cat}</td>
         <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{item.size}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{item.qty}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt(item.rate)}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'center'}}>{item.gstRate}%</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt(item.gstAmt/2)}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt(item.gstAmt/2)}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right',fontWeight:700}}>{fmt(item.total)}</td>
+        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{item.qty||0}</td>
+        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt(item.rate||0)}</td>
+        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'center'}}>{item.gstRate||0}%</td>
+        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt((item.gstAmt||0)/2)}</td>
+        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt((item.gstAmt||0)/2)}</td>
+        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right',fontWeight:700}}>{fmt(item.total||0)}</td>
       </tr>)}</tbody>
     </table>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8}}><tbody><tr>
