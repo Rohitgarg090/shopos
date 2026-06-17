@@ -53,16 +53,22 @@ export async function GET(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Get settings for THIS user only (exclude default template rows with NULL user_id)
-  let query = c.sb.from('firm_settings').select('*').eq('user_id', c.user.id);
-  if (c.firmId) query = query.eq('firm_id', c.firmId);
-  query = query.order('updated_at', { ascending: false });
+  // Get settings for THIS user - use user_id as primary key (user_id should be unique)
+  // Don't filter by firm_id since it may be NULL in database
+  const { data: allRows, error } = await c.sb
+    .from('firm_settings')
+    .select('*')
+    .eq('user_id', c.user.id)
+    .order('updated_at', { ascending: false });
 
-  const { data: allRows, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[settings] GET error:', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-  // Get only the most recent row (don't merge - could be confusing)
+  // Get only the most recent row
   const row = (allRows || [])[0];
+  console.log('[settings] GET returning row:', row ? `id=${row.id}, name=${row.name}` : 'NO ROW FOUND');
   return NextResponse.json(shape(row || {}));
 }
 
@@ -73,31 +79,57 @@ export async function POST(req) {
   const b = await req.json();
 
   // Map camelCase to snake_case for database fields
-  // Note: column is 'name', not 'firm_name'
   const fieldMap = {
     name: 'name',
+    shoptype: 'shoptype',
     gstin: 'gstin',
     address: 'address',
     mobile: 'mobile',
     email: 'email',
+    senderEmail: 'sender_email',
     state: 'state',
+    stateCode: 'state_code',
     pincode: 'pincode',
+    bankName: 'bank_name',
+    bankAccount: 'bank_account',
+    bankIFSC: 'bank_ifsc',
+    invoicePrefix: 'invoice_prefix',
+    invoiceSeq: 'invoice_seq',
+    logo: 'logo',
+    emailSubject: 'email_subject',
+    emailBody: 'email_body',
     terms: 'terms',
+    geminiKey: 'gemini_key',
+    ewbUsername: 'ewb_username',
+    ewbPassword: 'ewb_password',
+    msg91Key: 'msg91_key',
+    msg91SmsTemplate: 'msg91_sms_template',
+    msg91WaTemplate: 'msg91_wa_template',
+    interestEnabled: 'interest_enabled',
+    interestOnOpeningBalance: 'interest_on_opening_balance',
+    notifEnabled: 'notif_enabled',
   };
 
   const fields = {};
   Object.entries(fieldMap).forEach(([key, dbCol]) => {
-    if (b[key] !== undefined && b[key] !== null && b[key] !== '') {
-      fields[dbCol] = b[key];
+    // Include field if it has a value (for strings, numbers, booleans)
+    // Skip only truly empty/undefined values, but include 0 and false
+    if (b[key] !== undefined && b[key] !== null) {
+      const val = b[key];
+      // Skip empty strings, but keep 0, false, and other falsy values that are defined
+      if (typeof val === 'string' && val === '') {
+        return;
+      }
+      fields[dbCol] = val;
     }
   });
 
-  // Step 1: Get all matching rows to find the primary one
-  let existsQuery = c.sb.from('firm_settings').select('*').eq('user_id', c.user.id);
-  if (c.firmId) existsQuery = existsQuery.eq('firm_id', c.firmId);
-  existsQuery = existsQuery.order('updated_at', { ascending: false });
-
-  const { data: allRows, error: queryError } = await existsQuery;
+  // Step 1: Get all matching rows to find the primary one (use user_id only, not firm_id)
+  const { data: allRows, error: queryError } = await c.sb
+    .from('firm_settings')
+    .select('*')
+    .eq('user_id', c.user.id)
+    .order('updated_at', { ascending: false });
   if (queryError) {
     console.error('[settings] query error:', queryError.message);
     return NextResponse.json({ error: queryError.message }, { status: 500 });
@@ -108,22 +140,30 @@ export async function POST(req) {
 
   // Step 2: Update or insert
   if (primaryRow?.id) {
-    // UPDATE the primary (most recent) row - merge existing data with new updates
-    const mergedFields = { ...primaryRow, ...fields, updated_at: new Date().toISOString() };
+    // UPDATE the primary row - only update the fields being changed, preserve system columns
+    const updateFields = { ...fields, updated_at: new Date().toISOString() };
+    console.log('[settings] Updating row', primaryRow.id, 'with fields:', updateFields);
     ({ data, error } = await c.sb.from('firm_settings')
-      .update(mergedFields)
+      .update(updateFields)
       .eq('id', primaryRow.id)
       .select().single());
+    if (error) {
+      console.error('[settings] Update error:', error.message);
+    }
   } else {
-    // INSERT new row
+    // INSERT new row only if no existing row found
     const insertRow = {
       user_id: c.user.id,
       ...(c.firmId ? { firm_id: c.firmId } : {}),
       ...fields,
     };
+    console.log('[settings] Inserting new row:', insertRow);
     ({ data, error } = await c.sb.from('firm_settings')
       .insert([insertRow])
       .select().single());
+    if (error) {
+      console.error('[settings] Insert error:', error.message);
+    }
   }
 
   if (error) {

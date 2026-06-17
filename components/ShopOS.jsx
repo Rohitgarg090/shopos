@@ -2906,6 +2906,8 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
   const save=()=>{saveFirm(f);setSaved(true);setTimeout(()=>setSaved(false),2500)};
   const handleLogo=e=>{const file=e.target.files[0];if(!file)return;setLogoUploading(true);const r=new FileReader();r.onload=ev=>{setF(x=>({...x,logo:ev.target.result}));setLogoUploading(false);};r.readAsDataURL(file);};
   const removeLogo=()=>setF(x=>({...x,logo:''}));
+  // Sync form state when firm data loads from API
+  useEffect(()=>{if(firm&&firm.name)setF(firm);},[firm]);
   return<div>
     <div style={S.h2}>Settings</div>
     {ses&&<div style={{padding:'7px 12px',background:BLL,borderRadius:7,marginBottom:14,fontSize:12,color:BL}}>Logged in as <strong>{ses.user?.email}</strong></div>}
