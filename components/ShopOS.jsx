@@ -18,8 +18,9 @@ import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
 
 /* ── constants ── */
-// Default generic categories (can be customized per business)
-const CATS=['All','Category A','Category B','Category C','Category D','Category E','Others'];
+// Empty by default - will be populated dynamically from actual products
+// This allows ANY business to use ANY categories: Jeans, AC, Ring, Red chilly, Clothing, etc.
+const CATS=['All'];
 const SIZES=['XS','S','M','L','XL','XXL','3XL','Free Size','28','30','32','34','36','38','40','42'];
 const GST_RATES=[0,5,12,18,28];
 const PAY_MODES=['Cash','Online (UPI)','Cheque'];
@@ -718,7 +719,7 @@ function Catalog({P,setP,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[cat,setCat]=useState('All');const[srch,setSrch]=useState('');const[showF,setShowF]=useState(false);const[eid,setEid]=useState(null);
   const[selected,setSelected]=useState(new Set());
-  const BLK={name:'',cat:'Category A',sub:'',size:'M',color:'',price:'',gst:5,qty:0,hsn:'',articleNo:''};
+  const BLK={name:'',cat:'',sub:'',size:'M',color:'',price:'',gst:5,qty:0,hsn:'',articleNo:''};
   const[form,setF]=useState(BLK);const[sv,setSv]=useState(false);const[toast,showT]=useToast();
   const ff=k=>v=>setF(f=>({...f,[k]:v}));
   const cts=CATS.reduce((a,c)=>{a[c]=P.filter(p=>p.cat===c).length;return a},{});
@@ -757,7 +758,7 @@ function Catalog({P,setP,mob}){
       <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'1fr 1fr 1fr',gap:10}}>
         <Fld label='Product Name *' span2><input style={S.inp} value={form.name} onChange={e=>ff('name')(e.target.value)}/></Fld>
         <Fld label='Article No'><input style={S.inp} value={form.articleNo} onChange={e=>ff('articleNo')(e.target.value)} placeholder='e.g. abc123'/></Fld>
-        <Fld label='Category'><select style={S.inp} value={form.cat} onChange={e=>ff('cat')(e.target.value)}>{CATS.filter(c=>c!=='All').map(c=><option key={c}>{c}</option>)}</select></Fld>
+        <Fld label='Category'><input style={S.inp} placeholder='e.g., Jeans, AC, Ring, Red chilly' value={form.cat} onChange={e=>ff('cat')(e.target.value)}/></Fld>
         <Fld label='Sub-type'><input style={S.inp} value={form.sub} onChange={e=>ff('sub')(e.target.value)} placeholder='T-Shirts...'/></Fld>
         <Fld label='Size'><select style={S.inp} value={form.size} onChange={e=>ff('size')(e.target.value)}>{SIZES.map(s=><option key={s}>{s}</option>)}</select></Fld>
         <Fld label='Color'><input style={S.inp} value={form.color} onChange={e=>ff('color')(e.target.value)} placeholder='Blue...'/></Fld>
@@ -782,7 +783,7 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
   const[toast,showT]=useToast();
   const[supplierBanner,setSupplierBanner]=useState(null);
   const[markupPct,setMarkupPct]=useState('');
-  const[man,setMan]=useState({articleNo:'',name:'',cat:'Category A',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});
+  const[man,setMan]=useState({articleNo:'',name:'',cat:'',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});
   const gk=()=>firm?.geminiKey||(isBR?JSON.parse(localStorage.getItem('shopos_firm')||'{}').geminiKey||'':'');
 
   /* ── apply markup to all items ── */
@@ -851,7 +852,7 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
 
   const upd=(i,k,v)=>setItems(it=>it.map((x,ix)=>ix===i?{...x,[k]:v}:x));
   const rem=i=>setItems(it=>it.filter((_,ix)=>ix!==i));
-  const addMan=()=>{if(!man.name)return;setItems(it=>[...it,{...man,qty:+man.qty,price:+man.price,_costPrice:+man.price,gst:+man.gst,qrCount:+man.qty}]);setMan({articleNo:'',name:'',cat:'Category A',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});};
+  const addMan=()=>{if(!man.name)return;setItems(it=>[...it,{...man,qty:+man.qty,price:+man.price,_costPrice:+man.price,gst:+man.gst,qrCount:+man.qty}]);setMan({articleNo:'',name:'',cat:'',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});};
   const addToCatalog=async()=>{
     let n=0;
     for(const item of items){
@@ -973,7 +974,7 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
           <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:8,marginBottom:10}}>
             <Fld label='Article No'><input style={S.inp} value={man.articleNo} onChange={e=>setMan(m=>({...m,articleNo:e.target.value}))} placeholder='9925'/></Fld>
             <Fld label='Product Name *'><input style={S.inp} value={man.name} onChange={e=>setMan(m=>({...m,name:e.target.value}))} placeholder='PANSARI'/></Fld>
-            <Fld label='Category'><select style={S.inp} value={man.cat} onChange={e=>setMan(m=>({...m,cat:e.target.value}))}>{CATS.filter(c=>c!=='All').map(c=><option key={c}>{c}</option>)}</select></Fld>
+            <Fld label='Category'><input style={S.inp} placeholder='e.g., Jeans, AC, Ring, Red chilly' value={man.cat} onChange={e=>setMan(m=>({...m,cat:e.target.value}))}/></Fld>
             <Fld label='Sizes'><input style={S.inp} value={man.sizes} onChange={e=>setMan(m=>({...m,sizes:e.target.value}))} placeholder='Free Size, M,L,XL, 30,32,34'/></Fld>
             <Fld label='Total Qty'><input style={S.inp} type='number' min='1' value={man.qty} onChange={e=>setMan(m=>({...m,qty:e.target.value}))}/></Fld>
             <Fld label='Price per unit'><input style={S.inp} type='number' value={man.price} onChange={e=>setMan(m=>({...m,price:e.target.value}))} placeholder='0.00'/></Fld>
@@ -1020,7 +1021,7 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
             </div>}
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:5}}>
               <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
-                <select style={{...S.inp,width:'auto',fontSize:11,padding:'2px 6px'}} value={item.cat||'Others'} onChange={e=>upd(i,'cat',e.target.value)}>{CATS.filter(c=>c!=='All').map(c=><option key={c}>{c}</option>)}</select>
+                <input style={{...S.inp,width:'120px',fontSize:11,padding:'2px 6px'}} placeholder='Category' value={item.cat||''} onChange={e=>upd(i,'cat',e.target.value)}/>
                 <select style={{...S.inp,width:70,fontSize:11,padding:'2px 6px'}} value={item.gst} onChange={e=>upd(i,'gst',+e.target.value)}>{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select>
                 {(item.sizes||'').split(',').filter(s=>s.trim()).map(s=><Bdg key={s} c='gray'>{s.trim()}</Bdg>)}
                 <Bdg c={markupPct?'amber':'gray'}>{fmt(item.price)}</Bdg>

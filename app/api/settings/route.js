@@ -53,7 +53,7 @@ export async function GET(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Get all matching rows to merge data from all of them
+  // Get settings for THIS user only (exclude default template rows with NULL user_id)
   let query = c.sb.from('firm_settings').select('*').eq('user_id', c.user.id);
   if (c.firmId) query = query.eq('firm_id', c.firmId);
   query = query.order('updated_at', { ascending: false });
@@ -61,17 +61,9 @@ export async function GET(req) {
   const { data: allRows, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Merge data from all rows (most recent values take precedence)
-  const merged = {};
-  (allRows || []).reverse().forEach(row => {
-    Object.entries(row || {}).forEach(([key, value]) => {
-      if (value !== null && value !== undefined && value !== '') {
-        merged[key] = value;
-      }
-    });
-  });
-
-  return NextResponse.json(shape(merged));
+  // Get only the most recent row (don't merge - could be confusing)
+  const row = (allRows || [])[0];
+  return NextResponse.json(shape(row || {}));
 }
 
 export async function POST(req) {
