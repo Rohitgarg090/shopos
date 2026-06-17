@@ -18,7 +18,8 @@ import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
 
 /* ── constants ── */
-const CATS=['All','Kids','Girls','Men','Women','Jeans','Tops','Jackets','Hosiery','Woollen','Suits','Others'];
+// Default generic categories (can be customized per business)
+const CATS=['All','Category A','Category B','Category C','Category D','Category E','Others'];
 const SIZES=['XS','S','M','L','XL','XXL','3XL','Free Size','28','30','32','34','36','38','40','42'];
 const GST_RATES=[0,5,12,18,28];
 const PAY_MODES=['Cash','Online (UPI)','Cheque'];
@@ -717,7 +718,7 @@ function Catalog({P,setP,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[cat,setCat]=useState('All');const[srch,setSrch]=useState('');const[showF,setShowF]=useState(false);const[eid,setEid]=useState(null);
   const[selected,setSelected]=useState(new Set());
-  const BLK={name:'',cat:'Kids',sub:'',size:'M',color:'',price:'',gst:5,qty:0,hsn:'',articleNo:''};
+  const BLK={name:'',cat:'Category A',sub:'',size:'M',color:'',price:'',gst:5,qty:0,hsn:'',articleNo:''};
   const[form,setF]=useState(BLK);const[sv,setSv]=useState(false);const[toast,showT]=useToast();
   const ff=k=>v=>setF(f=>({...f,[k]:v}));
   const cts=CATS.reduce((a,c)=>{a[c]=P.filter(p=>p.cat===c).length;return a},{});
@@ -781,7 +782,7 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
   const[toast,showT]=useToast();
   const[supplierBanner,setSupplierBanner]=useState(null);
   const[markupPct,setMarkupPct]=useState('');
-  const[man,setMan]=useState({articleNo:'',name:'',cat:'Kids',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});
+  const[man,setMan]=useState({articleNo:'',name:'',cat:'Category A',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});
   const gk=()=>firm?.geminiKey||(isBR?JSON.parse(localStorage.getItem('shopos_firm')||'{}').geminiKey||'':'');
 
   /* ── apply markup to all items ── */
@@ -840,8 +841,8 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
         const parsed=extractJSON(rawTxt);
         if(parsed._truncated)setErr('Response was cut off — recovered '+parsed.items.length+' items. Check for missing items.');
         if(parsed.supplier||parsed.invoiceNo)setSupplierBanner({supplier:parsed.supplier||'',gstin:parsed.supplierGSTIN||'',invoiceNo:parsed.invoiceNo||'',invoiceDate:parsed.invoiceDate||'',place:parsed.place||'',subtotal:+parsed.subtotal||0,discount:+parsed.discount||0,discountPct:+parsed.discountPct||0,cgst:+parsed.cgst||0,sgst:+parsed.sgst||0,igst:+parsed.igst||0,invoiceTotal:+parsed.invoiceTotal||0});
-        const VALID_CATS=['Kids','Girls','Men','Women','Jeans','Tops','Jackets','Hosiery','Woollen','Suits','Others'];
-        const extracted=(parsed.items||[]).map(i=>({articleNo:String(i.articleNo||'').trim(),name:String(i.name||'Unknown').trim(),hsn:String(i.hsn||'').trim(),sizes:String(i.sizes||i.size||'Free Size').trim(),qty:Math.max(1,+i.qty||1),price:+i.price||0,_costPrice:+i.price||0,gst:[0,5,12,18,28].includes(+i.gst)?+i.gst:5,cat:VALID_CATS.includes(i.cat)?i.cat:'Others',color:String(i.color||'').trim(),qrCount:Math.max(1,+i.qty||1)}));
+        // OCR validation - accept extracted category or default to Others
+        const extracted=(parsed.items||[]).map(i=>({articleNo:String(i.articleNo||'').trim(),name:String(i.name||'Unknown').trim(),hsn:String(i.hsn||'').trim(),sizes:String(i.sizes||i.size||'Free Size').trim(),qty:Math.max(1,+i.qty||1),price:+i.price||0,_costPrice:+i.price||0,gst:[0,5,12,18,28].includes(+i.gst)?+i.gst:5,cat:(i.cat&&String(i.cat).trim())||'Others',color:String(i.color||'').trim(),qrCount:Math.max(1,+i.qty||1)}));
         if(extracted.length===0)setErr('No items found. Try a clearer photo or add manually below.');
         else setItems(extracted);
       }catch(e){setErr('Could not read invoice: '+e.message);}finally{setScanning(false);setScanStatus('');}
@@ -850,7 +851,7 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
 
   const upd=(i,k,v)=>setItems(it=>it.map((x,ix)=>ix===i?{...x,[k]:v}:x));
   const rem=i=>setItems(it=>it.filter((_,ix)=>ix!==i));
-  const addMan=()=>{if(!man.name)return;setItems(it=>[...it,{...man,qty:+man.qty,price:+man.price,_costPrice:+man.price,gst:+man.gst,qrCount:+man.qty}]);setMan({articleNo:'',name:'',cat:'Kids',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});};
+  const addMan=()=>{if(!man.name)return;setItems(it=>[...it,{...man,qty:+man.qty,price:+man.price,_costPrice:+man.price,gst:+man.gst,qrCount:+man.qty}]);setMan({articleNo:'',name:'',cat:'Category A',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});};
   const addToCatalog=async()=>{
     let n=0;
     for(const item of items){

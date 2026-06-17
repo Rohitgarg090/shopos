@@ -53,13 +53,25 @@ export async function GET(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Try firm-specific first, fall back to user-only query
+  // Get all matching rows to merge data from all of them
   let query = c.sb.from('firm_settings').select('*').eq('user_id', c.user.id);
   if (c.firmId) query = query.eq('firm_id', c.firmId);
-  
-  const { data, error } = await query.maybeSingle();
+  query = query.order('updated_at', { ascending: false });
+
+  const { data: allRows, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(shape(data || {}));
+
+  // Merge data from all rows (most recent values take precedence)
+  const merged = {};
+  (allRows || []).reverse().forEach(row => {
+    Object.entries(row || {}).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        merged[key] = value;
+      }
+    });
+  });
+
+  return NextResponse.json(shape(merged));
 }
 
 export async function POST(req) {
@@ -67,51 +79,48 @@ export async function POST(req) {
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const b = await req.json();
-  
-  const fields = {
-    name: b.name || '',
-    shoptype: b.shoptype || '',
-    gstin: b.gstin || '',
-    address: b.address || '',
-    mobile: b.mobile || '',
-    email: b.email || '',
-    sender_email: b.senderEmail || '',
-    state: b.state || 'Madhya Pradesh',
-    state_code: b.stateCode || '23',
-    pincode: b.pincode || '',
-    bank_name: b.bankName || '',
-    bank_account: b.bankAccount || '',
-    bank_ifsc: b.bankIFSC || '',
-    invoice_prefix: b.invoicePrefix || 'INV',
-    invoice_seq: b.invoiceSeq || 1,
-    logo: b.logo || '',
-    email_subject: b.emailSubject || '',
-    email_body: b.emailBody || '',
-    terms: b.terms || '',
-    gemini_key: b.geminiKey || '',
-    ewb_username: b.ewbUsername || '',
-    ewb_password: b.ewbPassword || '',
-    interest_enabled: !!b.interestEnabled,
-    interest_on_opening_balance: !!b.interestOnOpeningBalance,
-    msg91_key: b.msg91Key || '',
-    msg91_sms_template: b.msg91SmsTemplate || '',
-    msg91_wa_template: b.msg91WaTemplate || '',
-    notif_enabled: !!b.notifEnabled,
-    updated_at: new Date().toISOString(),
+
+  // Map camelCase to snake_case for database fields
+  // Note: column is 'name', not 'firm_name'
+  const fieldMap = {
+    name: 'name',
+    gstin: 'gstin',
+    address: 'address',
+    mobile: 'mobile',
+    email: 'email',
+    state: 'state',
+    pincode: 'pincode',
+    terms: 'terms',
   };
 
-  // Step 1: check if row exists for this user+firm
-  let existsQuery = c.sb.from('firm_settings').select('id').eq('user_id', c.user.id);
+  const fields = {};
+  Object.entries(fieldMap).forEach(([key, dbCol]) => {
+    if (b[key] !== undefined && b[key] !== null && b[key] !== '') {
+      fields[dbCol] = b[key];
+    }
+  });
+
+  // Step 1: Get all matching rows to find the primary one
+  let existsQuery = c.sb.from('firm_settings').select('*').eq('user_id', c.user.id);
   if (c.firmId) existsQuery = existsQuery.eq('firm_id', c.firmId);
-  const { data: existing } = await existsQuery.maybeSingle();
+  existsQuery = existsQuery.order('updated_at', { ascending: false });
+
+  const { data: allRows, error: queryError } = await existsQuery;
+  if (queryError) {
+    console.error('[settings] query error:', queryError.message);
+    return NextResponse.json({ error: queryError.message }, { status: 500 });
+  }
 
   let data, error;
+  const primaryRow = (allRows || [])[0]; // Most recent row (NEVER delete duplicates - preserve data)
 
-  if (existing?.id) {
-    // UPDATE existing row
+  // Step 2: Update or insert
+  if (primaryRow?.id) {
+    // UPDATE the primary (most recent) row - merge existing data with new updates
+    const mergedFields = { ...primaryRow, ...fields, updated_at: new Date().toISOString() };
     ({ data, error } = await c.sb.from('firm_settings')
-      .update(fields)
-      .eq('id', existing.id)
+      .update(mergedFields)
+      .eq('id', primaryRow.id)
       .select().single());
   } else {
     // INSERT new row
