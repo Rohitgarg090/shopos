@@ -17,19 +17,8 @@ export async function POST(req) {
   if (!c.firmId) return NextResponse.json({ error: 'Firm ID required' }, { status: 400 });
 
   try {
-    // Get firm settings for invoicePrefix
-    const { data: firmData, error: firmError } = await c.sb
-      .from('firms')
-      .select('invoice_prefix')
-      .eq('id', c.firmId)
-      .single();
-
-    if (firmError && firmError.code !== 'PGRST116') {
-      console.error('[next-invoice] Firm query error:', firmError);
-      throw firmError;
-    }
-
-    const invoicePrefix = firmData?.invoice_prefix || 'INV';
+    // Default invoice prefix (invoice_prefix column may not exist yet)
+    const invoicePrefix = 'INV';
 
     // Get the highest invoice number for this firm
     const { data: bills, error: billsError } = await c.sb
