@@ -440,7 +440,7 @@ export default function ShopOS(){
   };
 
   const saveFirm=async f=>{setFirm(f);await api.post('/api/settings',f);};
-  const nextInv=async()=>{const res=await api.post('/api/next-invoice',{});return res.invoiceNo||'';};
+  const nextInv=async()=>{if(!_activeFirmId){throw new Error('Firm not loaded');}const res=await api.post('/api/next-invoice',{});return res.invoiceNo||'';};
   const logout=async()=>{await supabase.auth.signOut();dataLoaded.current=false;setSes(null);};
 
   const ALL_TABS=[['dash','Dashboard'],['analytics','Analytics'],['catalog','Catalog'],['scan','Scan Bill'],['pos','POS/Sell'],['cust','Customers'],['bills','Bills'],['suppliers','Suppliers'],['returns','Returns'],['bank','Bank'],['ledger','Ledger'],['team','Team']];
@@ -543,7 +543,7 @@ export default function ShopOS(){
       {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}
       {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={()=>setShowUpgradeBlock(true)} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
-      {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
+      {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={B} Py={Py} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
@@ -1302,7 +1302,7 @@ function CameraScanner({products,onAddItems,onClose}){
 }
 
 /* ── POS ── */
-function POS({P,setP,C,setC,B,setB,firm,nextInv,mob,onDone}){
+function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[step,setStep]=useState(()=>isBR?sessionStorage.getItem('pos_step')||'cust':'cust');
   const[sel,setSel]=useState(()=>{if(!isBR)return null;try{const s=sessionStorage.getItem('pos_sel');return s?JSON.parse(s):null;}catch{return null;}});
@@ -1377,16 +1377,16 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,mob,onDone}){
     let p=P.find(x=>x.sku===searchSku)||(searchArt?P.find(x=>x.articleNo===searchArt&&(!searchSize||x.size===searchSize)):null)||P.find(x=>x.sku===s||x.articleNo===s);
     if(!p){showT('Product not found: '+s,'err');return;}
     if(p.qty===0){showT(p.name+' out of stock!','err');return;}
-    setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.article_no||'',color:p.color||''}]});
+    setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});
     setBc('');showT('Added: '+p.name);
   };
   addBCRef.current=addBC; // keep ref in sync for keydown handler
-  const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.article_no||'',color:p.color||''}]});};
+  const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});};
   const uQty=(id,d)=>setCart(c=>c.map(x=>x.id===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));
   const calc=()=>{let sub=0,gt=0;cart.forEach(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;sub+=base*c.qty;gt+=base*(c.gstRate/100)*c.qty;});const discAmt=+disc||0;if(isRel){const mk=sub*0.1;return{sub,gt:0,mk,disc:0,total:sub+mk};}return{sub,gt,mk:0,disc:discAmt,total:sub+gt-discAmt};};
   const saveCust=async()=>{if(!cForm.name||!cForm.phone){showT('Name & phone required','err');return}const nc=await api.post('/api/customers',cForm);setC(cs=>[nc,...cs]);setSel(nc);setCF({name:'',phone:'',shopname:'',gst:'',addr:'',email:''});setStep('items');setTimeout(()=>bcRef.current?.focus(),200);};
   const genBill=async()=>{const cName=isRel?rn||'Walk-in':sel?.name;if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}setSub(true);
-    const{sub,gt,mk,disc:discAmt,total}=calc();const inv=await nextInv();
+    const{sub,gt,mk,disc:discAmt,total}=calc();const inv=await(getNextInvoiceNo||nextInv)();
     const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
     try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber});
     const fp=await api.get('/api/products');setP(Array.isArray(fp)?fp:[]);
@@ -1600,21 +1600,35 @@ function Invoice({bill,firm,payments=[]}){
         </div>
       </td>
     </tr></tbody></table>
-    <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8,fontSize:11}}>
-      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','CGST','SGST','Total'].map(h=><th key={h} style={{padding:'4px 5px',textAlign:'left',fontSize:9,fontWeight:600}}>{h}</th>)}</tr></thead>
+    <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8,fontSize:11,tableLayout:'fixed'}}>
+      <colgroup>
+        <col style={{width:'2%'}}/>
+        <col style={{width:'15%'}}/>
+        <col style={{width:'4%'}}/>
+        <col style={{width:'4%'}}/>
+        <col style={{width:'5%'}}/>
+        <col style={{width:'2%'}}/>
+        <col style={{width:'4%'}}/>
+        <col style={{width:'5%'}}/>
+        <col style={{width:'6%'}}/>
+        <col style={{width:'5%'}}/>
+        <col style={{width:'6%'}}/>
+        <col style={{width:'8%'}}/>
+      </colgroup>
+      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','CGST','SGST','Total'].map((h,idx)=><th key={h} style={{padding:'4px 2px',textAlign:['left','left','left','left','left','left','center','right','center','right','right','right'][idx],fontSize:9,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis'}}>{h}</th>)}</tr></thead>
       <tbody>{(bill.items||[]).map((item,i)=><tr key={i} style={{background:i%2===0?'#fafafa':'#fff'}}>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{i+1}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',fontWeight:600}}>{item.name}<div style={{fontSize:8,color:'#888',fontFamily:'monospace'}}>{item.sku}</div></td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700}}>{item.articleNo||'-'}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700}}>{item.hsn||'-'}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{item.cat}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee'}}>{item.size}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{item.qty||0}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt(item.rate||0)}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'center'}}>{item.gstRate||0}%</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt((item.gstAmt||0)/2)}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right'}}>{fmt((item.gstAmt||0)/2)}</td>
-        <td style={{padding:'3px 5px',borderBottom:'0.5px solid #eee',textAlign:'right',fontWeight:700}}>{fmt(item.total||0)}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'left',overflow:'hidden'}}>{i+1}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',fontWeight:600,overflow:'hidden',wordBreak:'break-word'}}>{item.name}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700,textAlign:'left',overflow:'hidden'}}>{item.articleNo||'-'}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700,textAlign:'left',overflow:'hidden'}}>{item.hsn||'-'}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'left',overflow:'hidden'}}>{item.cat}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'left',overflow:'hidden'}}>{item.size}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'center',overflow:'hidden'}}>{item.qty||0}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt(item.rate||0)}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'center',overflow:'hidden'}}>{item.gstRate||0}%</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt((item.gstAmt||0)/2)}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt((item.gstAmt||0)/2)}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',fontWeight:700,overflow:'hidden'}}>{fmt(item.total||0)}</td>
       </tr>)}</tbody>
     </table>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8}}><tbody><tr>
