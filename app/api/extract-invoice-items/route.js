@@ -22,13 +22,21 @@ export async function POST(req) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { imageBase64, geminiKey } = await req.json();
+    const { imageBase64, geminiKey, mimeType } = await req.json();
 
     if (!imageBase64 || !geminiKey) {
       return Response.json(
         { error: 'Image and Gemini key required' },
         { status: 400 }
       );
+    }
+
+    // Determine MIME type - use provided or detect from base64
+    let finalMimeType = mimeType || 'image/jpeg';
+    if (!mimeType && imageBase64) {
+      if (imageBase64.startsWith('JVBERi')) finalMimeType = 'application/pdf';
+      else if (imageBase64.startsWith('/9j/')) finalMimeType = 'image/jpeg';
+      else if (imageBase64.startsWith('iVBORw0KGgo')) finalMimeType = 'image/png';
     }
 
     // Call Gemini Vision API
@@ -85,7 +93,7 @@ Examples of valid responses:
                     parts: [
                       {
                         inline_data: {
-                          mime_type: 'image/jpeg',
+                          mime_type: finalMimeType,
                           data: imageBase64,
                         },
                       },
@@ -95,7 +103,7 @@ Examples of valid responses:
                 ],
                 generationConfig: {
                   temperature: 0.1,
-                  maxOutputTokens: 2048,
+                  maxOutputTokens: 8192,
                 },
               }),
             }
