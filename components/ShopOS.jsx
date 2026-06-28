@@ -13,6 +13,7 @@ import PhotoInvoice from '@/components/PhotoInvoice';
 import InvoicePreview from '@/components/InvoicePreview';
 import StockCheck from '@/components/StockCheck';
 import FirmSwitcher from '@/components/FirmSwitcher';
+import EInvoiceManager from '@/app/components/EInvoiceManager';
 import InvoiceHelp from '@/components/PageHelpGuides/InvoiceHelp';
 import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
@@ -409,6 +410,35 @@ export default function ShopOS(){
     await loadFirmData(f.id, true); // force reload for firm switch
   };
 
+  const handleAddFirm=async()=>{
+    try{
+      console.log('[handleAddFirm] Checking trial status...');
+      const trialRes=await api.get('/api/trial/status');
+      console.log('[handleAddFirm] Trial response:', trialRes);
+
+      if(!trialRes){
+        console.log('[handleAddFirm] No trial data, showing upgrade block');
+        setShowUpgradeBlock(true);
+        return;
+      }
+
+      console.log('[handleAddFirm] Plan:', trialRes.plan, 'Current firms:', trialRes.currentFirmCount, 'Limit:', trialRes.firmCountLimit);
+
+      if((trialRes.plan==='free_trial'||trialRes.plan==='trial')&&trialRes.currentFirmCount>=trialRes.firmCountLimit){
+        console.log('[handleAddFirm] Trial user at firm limit, blocking creation');
+        setShowUpgradeBlock(true);
+        return;
+      }
+
+      console.log('[handleAddFirm] Allowing firm creation');
+      setPage('team');
+    }catch(e){
+      console.error('[handleAddFirm] Trial check error:', e);
+      console.log('[handleAddFirm] Error, but proceeding anyway');
+      setPage('team');
+    }
+  };
+
   const saveFirm=async f=>{setFirm(f);await api.post('/api/settings',f);};
   const nextInv=async()=>{const res=await api.post('/api/next-invoice',{});return res.invoiceNo||'';};
   const logout=async()=>{await supabase.auth.signOut();dataLoaded.current=false;setSes(null);};
@@ -474,7 +504,7 @@ export default function ShopOS(){
         {TABS.map(([p,l])=><button key={p} onClick={()=>setPage(p)} style={_theme==='modern'&&page===p?{padding:'6px 14px',border:'none',borderRadius:8,background:'linear-gradient(135deg, #1B5E8A, #2980b9)',color:'#fff',cursor:'pointer',fontSize:tab?10:11.5,fontWeight:700,boxShadow:'0 4px 12px rgba(27,94,138,0.3)',whiteSpace:'nowrap',transition:'all 0.2s ease'}:_theme==='modern'?{padding:'6px 14px',border:'none',borderRadius:8,background:'transparent',color:'rgba(255,255,255,0.7)',cursor:'pointer',fontSize:tab?10:11.5,fontWeight:500,whiteSpace:'nowrap',transition:'all 0.2s ease'}:{padding:'12px 8px',border:'none',borderRadius:0,background:'transparent',color:page===p?BL:MUT,cursor:'pointer',fontSize:tab?10:11.5,fontWeight:page===p?700:500,borderBottom:page===p?'2px solid '+BL:'2px solid transparent',whiteSpace:'nowrap'}} onMouseEnter={e=>{if(_theme==='modern'&&page!==p)e.currentTarget.style.color='rgba(255,255,255,0.9)'}} onMouseLeave={e=>{if(_theme==='modern'&&page!==p)e.currentTarget.style.color='rgba(255,255,255,0.7)'}}>{l}</button>)}
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:8}}>
-        <FirmDropdown activeFirm={activeFirm} firms={firms} onSwitch={switchFirm} onAdd={()=>setPage('team')} onRefresh={refreshFirms}/>
+        <FirmDropdown activeFirm={activeFirm} firms={firms} onSwitch={switchFirm} onAdd={handleAddFirm} onRefresh={refreshFirms}/>
         <UserMenu email={ses?.user?.email} theme={_theme} onLogout={logout} onNavigate={handleNavigation}/>
       </div>
     </nav>}
@@ -494,7 +524,7 @@ export default function ShopOS(){
             firms={firms}
             activeFirm={activeFirm}
             onSelectFirm={switchFirm}
-            onCreateFirm={()=>setPage('team')}
+            onCreateFirm={handleAddFirm}
             mobile={mob}
           />
         </div>
@@ -511,11 +541,11 @@ export default function ShopOS(){
       {page==='dash'&&<Dashboard P={P} B={B} C={C} Py={Py} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
       }{page==='analytics'&&<Analytics P={P} B={B} C={C} Py={Py} Ret={Ret} mob={mob}/>}
       {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}
-      {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} mob={mob}/>}
+      {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={()=>setShowUpgradeBlock(true)} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={B} Py={Py} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
-      {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} mob={mob}/>}
+      {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={B} Py={Py} firm={firm} mob={mob} gk={()=>firm?.geminiKey||''}/>}
@@ -772,7 +802,7 @@ function Catalog({P,setP,mob}){
   </div>;}
 
 /* ── SCAN BILL (with markup) ── */
-function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
+function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[items,setItems]=useState([]);
   const[scanning,setScanning]=useState(false);
@@ -826,27 +856,72 @@ function ScanBill({P,setP,firm,SI,setSI,onDone,onLabels,mob}){
       const b64=ev.target.result.split(',')[1];
       setPreview(isPDF?null:ev.target.result);
       setScanning(true);setErr(null);setScanStatus('');setSupplierBanner(null);
-      const PROMPT='You are a JSON extraction API for Indian wholesale clothing invoices.\n\nOUTPUT ONLY RAW JSON — no markdown, no backticks, no code fences.\nStart with { end with }.\n\nFormat:\n{"supplier":"firm name","supplierGSTIN":"GSTIN","invoiceNo":"number","invoiceDate":"date","place":"city","subtotal":0,"discount":0,"discountPct":0,"cgst":0,"sgst":0,"igst":0,"invoiceTotal":0,"items":[{"articleNo":"","name":"","hsn":"","sizes":"","qty":1,"price":0,"gst":5,"cat":"Others","color":""}]}\n\nRULES:\nSUBTOTAL: Extract from "Subtotal" or "Net Amt" line in invoice (BEFORE discount). Critical — must be accurate from invoice.\nDISCOUNT: Extract actual discount amount from "Discount" line. Also put discount % in discountPct if shown.\nCGST/SGST/IGST: Extract exact tax amounts from invoice. Critical — copy from invoice totals.\nINVOICE TOTAL: Extract final total from invoice bottom.\nARTICLE NO: Indian invoices often write "9925 PANSARI" — leading code is articleNo, rest is name.\nHSN: Extract from HSN/SAC column.\nSIZES: Comma-separated if multiple (M,L,XL). "Free Size" if none shown.\nGST: SGST 2.5%+CGST 2.5%=5, SGST 6%+CGST 6%=12, SGST 9%+CGST 9%=18, SGST 14%+CGST 14%=28. Must be 0/5/12/18/28.\nCATEGORY: Kids/Girls/Men/Women/Jeans/Tops/Jackets/Hosiery/Woollen/Suits/Others.\nPLACE: Extract city/state from "Place of Supply" field.\nPRICE: Per unit line price, plain number, no Rs symbol.\nCritical: If you cannot find exact subtotal or discount in invoice, output as 0 and note in items.';
-      const MODELS=['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-1.5-flash-latest'];
-      const sleep=ms=>new Promise(res=>setTimeout(res,ms));
-      const mimeType=file.type||'image/jpeg';
-      let res=null;
-      outer:for(const model of MODELS){for(let attempt=1;attempt<=3;attempt++){setScanStatus(model+' — attempt '+attempt+'/3');try{res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+k,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mimeType,data:b64}},{text:PROMPT}]}],generationConfig:{temperature:0.1,maxOutputTokens:8192}})});if(res.status===503||res.status===429){const wait=attempt*4000;setScanStatus(model+' busy — waiting '+Math.round(wait/1000)+'s...');await sleep(wait);continue;}if(res.ok){setScanStatus('');break outer;}break;}catch(netErr){if(attempt===3)break;await sleep(2000);}}}
+
       try{
-        if(!res||!res.ok){const status=res?.status||'unknown';const errMsg=status===503?'Gemini API temporarily unavailable (503). Please try again in a moment.':status===429?'API rate limit reached. Please wait a few minutes.':'API request failed. Check your internet connection.';throw new Error(errMsg);}
-        const d=await res.json();
-        if(d.error)throw new Error('Gemini: '+d.error.message);
-        if(d.promptFeedback&&d.promptFeedback.blockReason)throw new Error('Blocked: '+d.promptFeedback.blockReason);
-        const rawTxt=(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||'';
-        if(!rawTxt)throw new Error('Empty response — check your Gemini API key in Settings.');
-        const parsed=extractJSON(rawTxt);
+        // Call backend API instead of Gemini directly (so trial limits are checked FIRST)
+        console.log('[ScanBill] Calling backend /api/extract-invoice-items with trial check...');
+        setScanStatus('Checking trial limits...');
+
+        const mimeType=file.type||'image/jpeg';
+
+        // Get auth token from Supabase
+        const {data:{session}} = await supabase.auth.getSession();
+        const token=session?.access_token;
+
+        if(!token){
+          throw new Error('Not authenticated. Please login again.');
+        }
+
+        console.log('[ScanBill] Auth: token OK, firmId:', activeFirm?.id);
+
+        if(!activeFirm?.id){
+          throw new Error('No firm selected. Please select a firm first.');
+        }
+
+        // Call backend with proper auth headers and firm ID
+        const backendRes=await fetch('/api/extract-invoice-items',{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'Authorization':`Bearer ${token}`,
+            'x-firm-id':activeFirm.id
+          },
+          body:JSON.stringify({imageBase64:b64,geminiKey:k,mimeType})
+        });
+
+        const data=await backendRes.json();
+
+        // Check if blocked by trial limits (403) or other errors
+        if(backendRes.status===403){
+          console.log('[ScanBill] ❌ BLOCKED by trial limits, showing upgrade modal');
+          setScanning(false);
+          setScanStatus('');
+          onUpgrade(); // Show upgrade modal
+          return;
+        }
+
+        if(!backendRes.ok){
+          console.error('[ScanBill] Backend error:',data.error);
+          throw new Error(data.error||'Failed to extract invoice');
+        }
+
+        console.log('[ScanBill] ✅ Successfully extracted from backend');
+        setScanStatus('');
+
+        const parsed=data;
         if(parsed._truncated)setErr('Response was cut off — recovered '+parsed.items.length+' items. Check for missing items.');
         if(parsed.supplier||parsed.invoiceNo)setSupplierBanner({supplier:parsed.supplier||'',gstin:parsed.supplierGSTIN||'',invoiceNo:parsed.invoiceNo||'',invoiceDate:parsed.invoiceDate||'',place:parsed.place||'',subtotal:+parsed.subtotal||0,discount:+parsed.discount||0,discountPct:+parsed.discountPct||0,cgst:+parsed.cgst||0,sgst:+parsed.sgst||0,igst:+parsed.igst||0,invoiceTotal:+parsed.invoiceTotal||0});
         // OCR validation - accept extracted category or default to Others
         const extracted=(parsed.items||[]).map(i=>({articleNo:String(i.articleNo||'').trim(),name:String(i.name||'Unknown').trim(),hsn:String(i.hsn||'').trim(),sizes:String(i.sizes||i.size||'Free Size').trim(),qty:Math.max(1,+i.qty||1),price:+i.price||0,_costPrice:+i.price||0,gst:[0,5,12,18,28].includes(+i.gst)?+i.gst:5,cat:(i.cat&&String(i.cat).trim())||'Others',color:String(i.color||'').trim(),qrCount:Math.max(1,+i.qty||1)}));
         if(extracted.length===0)setErr('No items found. Try a clearer photo or add manually below.');
         else setItems(extracted);
-      }catch(e){setErr('Could not read invoice: '+e.message);}finally{setScanning(false);setScanStatus('');}
+      }catch(e){
+        console.error('[ScanBill] Error:',e.message);
+        setErr('Could not read invoice: '+e.message);
+      }finally{
+        setScanning(false);
+        setScanStatus('');
+      }
     };reader.readAsDataURL(file);
   },[]);
 
@@ -1673,7 +1748,7 @@ function EWayBillModal({bill,firm,onClose}){
   </Modal>;}
 
 /* ── BILLS ── */
-function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,mob}){
+function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[vid,setVid]=useState(initBill?.id||null);const[payBill,setPayBill]=useState(null);const[toast,showT]=useToast();
   const[transportEdit,setTransportEdit]=useState(null);const[transportForm,setTransportForm]=useState({transportName:'',lrNumber:''});
@@ -1865,6 +1940,9 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,mob}){
         <button style={S.btn('def')} onClick={()=>setVid(null)}>Close</button>
       </div>
       <div style={{border:'0.5px solid '+BORD,borderRadius:8,overflow:'hidden',background:'#fff'}}><Invoice bill={bill} firm={firm} payments={Py}/></div>
+      {activeFirm?.id&&<div style={{marginTop:20}}>
+        <EInvoiceManager billId={bill.id} firmId={activeFirm.id} billNo={bill.invoiceNo||'#'+bill.id} getToken={getToken}/>
+      </div>}
     </div>}
     {payBill&&<PayModal bill={payBill} onSave={savePayment} onClose={()=>setPayBill(null)}/>}
     {ewayBill&&<EWayBillModal bill={ewayBill} firm={firm} onClose={()=>setEwayBill(null)}/>}
@@ -2445,11 +2523,11 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
   const[showColConfig,setShowColConfig]=useState(false);
   const allCols=['name','phone','shop','email','gst','address','openingBal','bills','totalBilled','paid','balance'];
   const[visCols,setVisCols]=useState(()=>isBR?JSON.parse(localStorage.getItem('custVisCols')||JSON.stringify(['name','phone','shop','openingBal','bills','totalBilled','paid','balance'])):['name','phone','shop','openingBal','bills','totalBilled','paid','balance']);
-  const BLANK={name:'',phone:'',shopname:'',gst:'',addr:'',email:'',openingBalance:'',openingBalanceDate:''};
+  const BLANK={name:'',phone:'',shopname:'',gst:'',addr:'',email:'',state:'Madhya Pradesh',pincode:'',openingBalance:'',openingBalanceDate:''};
   const[f,setF]=useState(BLANK);
   const[toast,showT]=useToast();
   const openNew=()=>{setEditId(null);setF(BLANK);setShow(true);};
-  const openEdit=c=>{setEditId(c.id);setF({name:c.name,phone:c.phone,shopname:c.shopname||'',gst:c.gst||'',addr:c.addr||'',email:c.email||'',openingBalance:c.openingBalance||'',openingBalanceDate:c.openingBalanceDate||''});setShow(true);};
+  const openEdit=c=>{setEditId(c.id);setF({name:c.name,phone:c.phone,shopname:c.shopname||'',gst:c.gst||'',addr:c.addr||'',email:c.email||'',state:c.state||'Madhya Pradesh',pincode:c.pincode||'',openingBalance:c.openingBalance||'',openingBalanceDate:c.openingBalanceDate||''});setShow(true);};
   const handleRefresh=async()=>{setRefreshing(true);await onRefresh?.();setRefreshing(false);};
   const toggleCol=col=>{const nc=visCols.includes(col)?visCols.filter(c=>c!==col):[...visCols,col];setVisCols(nc);if(isBR)localStorage.setItem('custVisCols',JSON.stringify(nc));};
   const save=async()=>{
@@ -2491,6 +2569,8 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
         <Fld label='GSTIN'><input style={S.inp} value={f.gst} onChange={e=>setF(x=>({...x,gst:e.target.value}))} placeholder='GST no.'/></Fld>
         <Fld label='Email'><input style={S.inp} value={f.email} onChange={e=>setF(x=>({...x,email:e.target.value}))} placeholder='email@example.com'/></Fld>
         <Fld label='Address/City'><input style={S.inp} value={f.addr} onChange={e=>setF(x=>({...x,addr:e.target.value}))} placeholder='City'/></Fld>
+        <Fld label='State'><input style={S.inp} value={f.state} onChange={e=>setF(x=>({...x,state:e.target.value}))} placeholder='Madhya Pradesh'/></Fld>
+        <Fld label='Pincode'><input style={S.inp} value={f.pincode} onChange={e=>setF(x=>({...x,pincode:e.target.value}))} placeholder='450001'/></Fld>
         <Fld label='Opening Balance Rs. (if any)'>
           <input style={S.inp} type='number' value={f.openingBalance} onChange={e=>setF(x=>({...x,openingBalance:e.target.value}))} placeholder='0 (amount they already owe you)'/>
         </Fld>
@@ -3195,6 +3275,19 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
 
   const createFirm=async()=>{
     if(!newFirmName){showT('Enter firm name','err');return;}
+
+    // Check trial limits before creating firm
+    try{
+      const trialRes=await api.get('/api/trial/status');
+      if(trialRes&&(trialRes.plan==='free_trial'||trialRes.plan==='trial')&&trialRes.currentFirmCount>=trialRes.firmCountLimit){
+        showT('Trial users can only create 1 firm. Upgrade to Business plan.','err');
+        return;
+      }
+    }catch(e){
+      console.error('Trial check error:',e);
+      // Continue anyway if trial check fails
+    }
+
     const res=await api.post('/api/firms',{name:newFirmName});
     if(res.error){showT(res.error,'err');return;}
     setNewFirmName('');showT('Firm created!');onNewFirm(res);
@@ -3611,6 +3704,7 @@ function Suppliers({SI,setSI,SS,setSS,firm,gk,mob}){
   const[selSupplier,setSelSupplier]=useState(null); // group view
   const[editInv,setEditInv]=useState(null); // invoice being edited
   const[tab,setTab]=useState('invoices');const[uploading,setUploading]=useState(false);
+  const[expandedInvoices,setExpandedInvoices]=useState({}); // track which invoices are expanded
   const[toast,showT]=useToast();
   const handleStatementUpload=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>(10*1024*1024)){showT('File too large (max 10MB)','err');return;}setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const res=await api.post('/api/supplier-statements',{supplierId:null,supplierName:selSupplier||'',fileName:file.name,fileType:file.type,fileData:b64,fileSize:file.size,description:'',statementDate:new Date().toISOString().split('T')[0]});setSS(ss=>[res,...ss]);showT('Statement uploaded!');};r.readAsDataURL(file);}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
   const relatedStatements=selSupplier?SS.filter(s=>s.supplierName===selSupplier):[];
@@ -3728,44 +3822,47 @@ function Suppliers({SI,setSI,SS,setSS,firm,gk,mob}){
             </div>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
-            {supInvoices.map(inv=><div key={inv.id} style={{...S.card,border:'0.5px solid '+BORD}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
-                <div>
+            {supInvoices.map(inv=>{const isExp=expandedInvoices[inv.id];return<div key={inv.id} style={{...S.card,border:'0.5px solid '+BORD}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:isExp?10:0,cursor:'pointer'}} onClick={()=>setExpandedInvoices(ex=>({...ex,[inv.id]:!isExp}))}>
+                <div style={{flex:1}}>
                   <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <span style={{fontSize:16,color:BL,fontWeight:600,minWidth:20}}>{isExp?'▼':'▶'}</span>
                     {inv.invoiceNo&&<span style={{...S.mono,fontWeight:800,color:BL,fontSize:13}}>#{inv.invoiceNo}</span>}
                     {inv.invoiceDate&&<span style={{fontSize:12,color:MUT}}>{new Date(inv.invoiceDate).toLocaleDateString('en-IN')}</span>}
                     {inv.place&&<span style={{fontSize:11,color:MUT}}>📍 {inv.place}</span>}
                     {inv.supplierGSTIN&&<span style={{...S.mono,fontSize:10,color:BL,background:BLL,padding:'1px 6px',borderRadius:4}}>GSTIN: {inv.supplierGSTIN}</span>}
                   </div>
-                  {inv.notes&&<div style={{fontSize:11,color:MUT,marginTop:4}}>{inv.notes}</div>}
                 </div>
-                <div style={{display:'flex',gap:6}}>
+                <div style={{display:'flex',gap:6,marginLeft:8}} onClick={e=>e.stopPropagation()}>
                   <button style={S.btn('def',true)} onClick={()=>openEdit(inv)}>Edit</button>
                   <button style={S.btn('dan',true)} onClick={()=>del(inv.id)}>Delete</button>
                 </div>
               </div>
-              {/* Amount breakdown */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:8}}>
-                {[['Subtotal',inv.subtotal,TXT],['Discount',inv.discount>0?'-'+fmt(inv.discount):null,GR],['CGST',inv.cgst,BL],['SGST',inv.sgst,BL],['IGST',inv.igst>0?inv.igst:null,PUR],['Round Off',inv.roundOff!==0?inv.roundOff:null,MUT]].filter(([,v])=>v!==null&&v!==0&&v!==undefined).map(([l,v,c])=><div key={l} style={{background:BG,borderRadius:6,padding:'6px 10px'}}>
-                  <div style={{fontSize:10,color:MUT,fontWeight:600,textTransform:'uppercase'}}>{l}</div>
-                  <div style={{...S.mono,fontWeight:700,color:c,fontSize:13}}>{typeof v==='string'&&v.startsWith('-')?v:fmt(v)}</div>
-                </div>)}
-                <div style={{background:BLL,borderRadius:6,padding:'6px 10px',border:'0.5px solid '+BL+'40'}}>
-                  <div style={{fontSize:10,color:BL,fontWeight:700,textTransform:'uppercase'}}>Total</div>
-                  <div style={{...S.mono,fontWeight:800,color:BL,fontSize:14}}>{fmt(inv.total)}</div>
-                </div>
-              </div>
-              {/* Items if available */}
-              {inv.items&&inv.items.length>0&&<div style={{marginTop:10,borderTop:'0.5px solid '+BORD,paddingTop:8}}>
-                <div style={{fontSize:10,fontWeight:700,color:MUT,textTransform:'uppercase',marginBottom:6}}>Items ({inv.items.length})</div>
-                <div style={{display:'flex',flexDirection:'column',gap:4}}>
-                  {inv.items.map((it,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:11,padding:'3px 0',borderBottom:'0.5px solid #f0ede8'}}>
-                    <span style={{fontWeight:600}}>{it.name}{it.articleNo?' ('+it.articleNo+')':''}</span>
-                    <span style={{color:MUT}}>{it.sizes} · {it.qty} pcs · <span style={{...S.mono,color:AMB,fontWeight:700}}>{fmt(it.price)}</span></span>
+              {isExp&&<>
+                {inv.notes&&<div style={{fontSize:11,color:MUT,marginBottom:10}}>{inv.notes}</div>}
+                {/* Amount breakdown */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:8}}>
+                  {[['Subtotal',inv.subtotal,TXT],['Discount',inv.discount>0?'-'+fmt(inv.discount):null,GR],['CGST',inv.cgst,BL],['SGST',inv.sgst,BL],['IGST',inv.igst>0?inv.igst:null,PUR],['Round Off',inv.roundOff!==0?inv.roundOff:null,MUT]].filter(([,v])=>v!==null&&v!==0&&v!==undefined).map(([l,v,c])=><div key={l} style={{background:BG,borderRadius:6,padding:'6px 10px'}}>
+                    <div style={{fontSize:10,color:MUT,fontWeight:600,textTransform:'uppercase'}}>{l}</div>
+                    <div style={{...S.mono,fontWeight:700,color:c,fontSize:13}}>{typeof v==='string'&&v.startsWith('-')?v:fmt(v)}</div>
                   </div>)}
+                  <div style={{background:BLL,borderRadius:6,padding:'6px 10px',border:'0.5px solid '+BL+'40'}}>
+                    <div style={{fontSize:10,color:BL,fontWeight:700,textTransform:'uppercase'}}>Total</div>
+                    <div style={{...S.mono,fontWeight:800,color:BL,fontSize:14}}>{fmt(inv.total)}</div>
+                  </div>
                 </div>
-              </div>}
-            </div>)}
+                {/* Items if available */}
+                {inv.items&&inv.items.length>0&&<div style={{marginTop:10,borderTop:'0.5px solid '+BORD,paddingTop:8}}>
+                  <div style={{fontSize:10,fontWeight:700,color:MUT,textTransform:'uppercase',marginBottom:6}}>Items ({inv.items.length})</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    {inv.items.map((it,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:11,padding:'3px 0',borderBottom:'0.5px solid #f0ede8'}}>
+                      <span style={{fontWeight:600}}>{it.name}{it.articleNo?' ('+it.articleNo+')':''}</span>
+                      <span style={{color:MUT}}>{it.sizes} · {it.qty} pcs · <span style={{...S.mono,color:AMB,fontWeight:700}}>{fmt(it.price)}</span></span>
+                    </div>)}
+                  </div>
+                </div>}
+              </>}
+            </div>;})}
           </div>
         </div>}
       </div>

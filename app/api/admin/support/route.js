@@ -49,7 +49,8 @@ export async function GET(req) {
     const enriched = await Promise.all(
       tickets.map(async (ticket) => {
         let userEmail = 'N/A';
-        let orgName = 'N/A';
+        let firmName = 'N/A';
+        let customerName = 'N/A';
         let orgId = null;
 
         try {
@@ -61,21 +62,26 @@ export async function GET(req) {
             userEmail = user?.email || 'N/A';
           }
 
-          // Get organization info
+          // Get firm info from firm_settings
           if (ticket.user_id) {
-            const { data: org } = await supabase
-              .from('organizations')
-              .select('*')
-              .eq('owner_id', ticket.user_id)
+            const { data: firmSettings } = await supabase
+              .from('firm_settings')
+              .select('name')
+              .eq('user_id', ticket.user_id)
               .single();
 
-            if (org) {
-              orgName = org.name;
-              orgId = org.id;
+            if (firmSettings?.name) {
+              firmName = firmSettings.name;
+              customerName = `${firmName} (${userEmail})`;
+            } else {
+              // Fallback to just user email if firm not found
+              customerName = userEmail;
             }
           }
         } catch (e) {
           console.error('Error enriching ticket:', ticket.id, e);
+          // Fallback to user email on error
+          customerName = userEmail;
         }
 
         return {
@@ -88,7 +94,7 @@ export async function GET(req) {
           createdAt: ticket.created_at,
           updatedAt: ticket.updated_at,
           customerEmail: userEmail,
-          customerName: orgName,
+          customerName: customerName,
           customerId: ticket.user_id,
           orgId: orgId,
         };

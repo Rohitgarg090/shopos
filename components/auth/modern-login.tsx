@@ -21,6 +21,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"in" | "up" | "forgot">("in");
+  const [signupMode, setSignupMode] = useState<"trial" | "join" | null>(null);
 
   // Read mode from URL query parameters
   useEffect(() => {
@@ -44,9 +45,19 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
       return;
     }
 
-    if (mode === "up" && (!name || !firmId)) {
-      setError("Name and Firm ID are required to register");
-      return;
+    if (mode === "up") {
+      if (!name) {
+        setError("Name is required");
+        return;
+      }
+      if (signupMode === "join" && !firmId) {
+        setError("Firm ID is required to join a firm");
+        return;
+      }
+      if (!signupMode) {
+        setError("Please select: Start Free Trial or Join Existing Firm");
+        return;
+      }
     }
 
     setLoading(true);
@@ -58,18 +69,24 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
         if (res.error) throw res.error;
         onLogin(res.data.session);
       } else {
-        // Controlled registration: validate firm + create join request
+        // Registration: trial or join existing firm
         const res = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, name, firmId }),
+          body: JSON.stringify({
+            email,
+            password,
+            name,
+            firmId: signupMode === "join" ? firmId : null,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
-        setError(data.message || "Request submitted! Sign in and you'll see the pending status.");
+        setError(data.message || "Registration successful! Sign in now.");
         setMode("in");
         setName("");
         setFirmId("");
+        setSignupMode(null);
       }
     } catch (e: any) {
       setError(e.message || "Authentication failed");
@@ -171,10 +188,16 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
         {/* Login Card */}
         <Card variant="glass" className="border border-white/10 backdrop-blur-xl">
           <CardHeader className="pb-6">
-            <CardTitle className="text-2xl">{mode === "up" ? "Request Access" : "Welcome"}</CardTitle>
+            <CardTitle className="text-2xl">
+              {mode === "up" ? (signupMode ? (signupMode === "trial" ? "Start Your Free Trial" : "Join a Firm") : "Get Started") : "Welcome"}
+            </CardTitle>
             <p className="text-sm text-slate-400 mt-2">
               {mode === "up"
-                ? "Provide your Firm ID — your admin will approve your access"
+                ? (signupMode
+                  ? (signupMode === "trial"
+                    ? "Create your account to access Shopos for 14 days"
+                    : "Request access to an existing firm account")
+                  : "Choose how you want to get started")
                 : "Sign in to access your dashboard"}
             </p>
           </CardHeader>
@@ -214,9 +237,53 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
               </div>
             )}
 
-            {/* Name + Firm ID — only for Register mode */}
-            {mode === "up" && (
+            {/* Registration Mode Selection — only for Register mode */}
+            {mode === "up" && !signupMode && (
+              <div className="mb-6 space-y-3">
+                <p className="text-sm text-slate-300 font-medium mb-3">Choose an option:</p>
+                <button
+                  onClick={() => setSignupMode("trial")}
+                  disabled={loading}
+                  className="w-full p-4 rounded-lg border border-green-500/30 bg-green-500/5 hover:bg-green-500/10 hover:border-green-500/50 transition-all text-left"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">🚀</div>
+                    <div>
+                      <p className="font-semibold text-white">Start Free Trial</p>
+                      <p className="text-xs text-slate-400 mt-1">14 days full access, no credit card needed</p>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setSignupMode("join")}
+                  disabled={loading}
+                  className="w-full p-4 rounded-lg border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/50 transition-all text-left"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">🏢</div>
+                    <div>
+                      <p className="font-semibold text-white">Join Existing Firm</p>
+                      <p className="text-xs text-slate-400 mt-1">Request to join your company's account</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* Name + Firm ID — only for Register mode after selecting signup mode */}
+            {mode === "up" && signupMode && (
               <>
+                <div className="mb-4 flex items-center gap-2 pb-2 border-b border-slate-700">
+                  <button
+                    onClick={() => setSignupMode(null)}
+                    className="text-slate-400 hover:text-slate-300 text-sm"
+                  >
+                    ← Back
+                  </button>
+                  <p className="text-sm text-slate-400">
+                    {signupMode === "trial" ? "Start Free Trial" : "Join Firm"}
+                  </p>
+                </div>
                 <div className="mb-4">
                   <Input
                     type="text"
@@ -229,21 +296,23 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                     disabled={loading}
                   />
                 </div>
-                <div className="mb-4">
-                  <Input
-                    type="text"
-                    label="Firm ID"
-                    placeholder="Get this from your firm admin"
-                    value={firmId}
-                    onChange={(e) => setFirmId(e.target.value.trim())}
-                    icon={<Building2 size={18} />}
-                    variant="glass"
-                    disabled={loading}
-                  />
-                  <p className="text-xs text-slate-500 mt-1 pl-1">
-                    Ask your firm owner or manager for the Firm ID
-                  </p>
-                </div>
+                {signupMode === "join" && (
+                  <div className="mb-4">
+                    <Input
+                      type="text"
+                      label="Firm ID"
+                      placeholder="Get this from your firm admin"
+                      value={firmId}
+                      onChange={(e) => setFirmId(e.target.value.trim())}
+                      icon={<Building2 size={18} />}
+                      variant="glass"
+                      disabled={loading}
+                    />
+                    <p className="text-xs text-slate-500 mt-1 pl-1">
+                      Ask your firm owner or manager for the Firm ID
+                    </p>
+                  </div>
+                )}
               </>
             )}
 

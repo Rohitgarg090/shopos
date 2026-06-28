@@ -13,7 +13,7 @@ async function ctx(req) {
 
 const shape = c => ({
   id: c.id, name: c.name, phone: c.phone, shopname: c.shopname||'',
-  gst: c.gst||'', addr: c.addr||'', email: c.email||'',
+  gst: c.gst||'', addr: c.addr||'', email: c.email||'', state: c.state||'Madhya Pradesh', pincode: c.pincode||'',
   openingBalance: +c.opening_balance||0, openingBalanceDate: c.opening_balance_date||'',
 });
 
@@ -32,8 +32,8 @@ export async function POST(req) {
   const b = await req.json();
   const { data, error } = await c.sb.from('customers').insert([{
     name: b.name, phone: b.phone, shopname: b.shopname||'', gst: b.gst||'',
-    addr: b.addr||'', email: b.email||'', opening_balance: +b.openingBalance||0,
-    opening_balance_date: b.openingBalanceDate||null, firm_id: c.firmId||null,
+    addr: b.addr||'', email: b.email||'', state: b.state||'Madhya Pradesh', pincode: b.pincode||'',
+    opening_balance: +b.openingBalance||0, opening_balance_date: b.openingBalanceDate||null, firm_id: c.firmId||null,
   }]).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(shape(data), { status: 201 });
@@ -56,6 +56,8 @@ export async function PATCH(req) {
   if (rest.gst      !== undefined) u.gst      = rest.gst||'';
   if (rest.addr     !== undefined) u.addr     = rest.addr||'';
   if (rest.email    !== undefined) u.email    = rest.email||'';
+  if (rest.state    !== undefined) u.state    = rest.state||'Madhya Pradesh';
+  if (rest.pincode  !== undefined) u.pincode  = rest.pincode||'';
   if (openingBalance     !== undefined) u.opening_balance      = +openingBalance;
   if (openingBalanceDate !== undefined) u.opening_balance_date = openingBalanceDate||null;
   const { data, error } = await c.sb.from('customers').update(u).eq('id', id).select().single();

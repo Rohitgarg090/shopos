@@ -89,7 +89,7 @@ export async function GET(req) {
           }
 
           const salesCount = totalBills || 0;
-          const purchasesCount = 0; // TODO: distinguish purchase vs sales bills
+          const purchasesCount = 0;
 
           // Get last invoice date
           const { data: lastInvoiceData, error: invoiceError } = await supabase
@@ -107,32 +107,52 @@ export async function GET(req) {
 
           const lastInvoice = lastInvoiceData;
 
-        // Calculate status
-        const hasSales = (salesCount || 0) > 0;
-        const hasPurchases = (purchasesCount || 0) > 0;
-        let status = 'red';
+          // Get compliance deadlines for this firm (all, not just current month)
+          const { data: deadlines, error: deadlineError } = await supabase
+            .from('ca_compliance_deadlines')
+            .select('id, deadline_type, due_date, status')
+            .eq('firm_id', link.firm_id)
+            .gte('due_date', monthStartStr)
+            .order('due_date', { ascending: true });
 
-        if (hasSales && hasPurchases) {
-          status = 'green';
-        } else if (lastInvoice && lastInvoice.date) {
-          const lastDate = new Date(lastInvoice.date);
-          const daysSinceLastInvoice = Math.floor(
-            (now - lastDate) / (1000 * 60 * 60 * 24)
-          );
-          if (daysSinceLastInvoice > 5) {
-            status = 'amber';
-          } else {
-            status = 'red';
+          if (deadlineError && deadlineError.code !== 'PGRST116') {
+            console.error('[ca-dashboard] Deadline error:', deadlineError);
           }
-        }
+
+          // Calculate completion percentage
+          const allDeadlines = deadlines || [];
+          const completedCount = allDeadlines.filter(d => d.status === 'completed').length;
+          const completionPercent = allDeadlines.length > 0
+            ? Math.round((completedCount / allDeadlines.length) * 100)
+            : 0;
+
+          // Get next deadline
+          const nextDeadline = allDeadlines.find(d => d.due_date >= monthStartStr);
+          const nextDeadlineDate = nextDeadline?.due_date;
+          const nextDeadlineType = nextDeadline?.deadline_type;
+          const daysUntilDeadline = nextDeadlineDate
+            ? Math.ceil((new Date(nextDeadlineDate) - now) / (1000 * 60 * 60 * 24))
+            : null;
+
+          // Calculate status based on completion %
+          let status = 'red';
+          if (completionPercent === 100) {
+            status = 'green';
+          } else if (completionPercent >= 70) {
+            status = 'amber';
+          }
 
           return {
             firmId: link.firm_id,
             firmName: link.firms?.name || 'Unknown',
             salesCount: salesCount || 0,
             purchasesCount: purchasesCount || 0,
-            lastInvoiceDate: lastInvoice?.date || null,
+            lastInvoiceDate: lastInvoice?.created_at || null,
             status,
+            completionPercent,
+            nextDeadlineDate,
+            nextDeadlineType,
+            daysUntilDeadline,
             monthYear,
           };
         } catch (err) {
@@ -142,9 +162,10 @@ export async function GET(req) {
       })
     );
 
-    // Sort by status (red first, then amber, then green)
-    const statusOrder = { red: 0, amber: 1, green: 2 };
-    clients.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+    // Calculate summary by status
+    const upToDate = clients.filter(c => c.completionPercent === 100).length;
+    const dataGood = clients.filter(c => c.completionPercent >= 70 && c.completionPercent < 100).length;
+    const dataPoor = clients.filter(c => c.completionPercent < 70).length;
 
     return Response.json({
       success: true,
@@ -152,9 +173,9 @@ export async function GET(req) {
       clients,
       summary: {
         total: clients.length,
-        green: clients.filter(c => c.status === 'green').length,
-        amber: clients.filter(c => c.status === 'amber').length,
-        red: clients.filter(c => c.status === 'red').length,
+        upToDate,
+        dataGood,
+        dataPoor,
       },
     });
   } catch (error) {
