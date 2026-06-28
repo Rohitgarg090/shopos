@@ -1,3 +1,4 @@
+'use client';
 import React, { useState, useEffect, useRef } from 'react';
 
 const monthlyPrices = { basic: 1299, business: 1549, pro: 4999 };
