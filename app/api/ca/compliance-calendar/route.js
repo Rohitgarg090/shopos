@@ -138,9 +138,8 @@ export async function POST(req) {
   }
 }
 
-// Auto-generate compliance deadlines for a firm
-// POST /api/ca/compliance-calendar/generate-defaults
-export async function generateDefaults(firmId, caId) {
+// Auto-generate compliance deadlines for a firm (helper function)
+async function generateDefaults(firmId, caId) {
   try {
     const now = new Date();
     const currentMonth = now.toISOString().substring(0, 7);
