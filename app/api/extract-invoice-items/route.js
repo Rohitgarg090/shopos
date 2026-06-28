@@ -40,39 +40,29 @@ export async function POST(req) {
     }
 
     // Call Gemini Vision API
-    const PROMPT = `You are an invoice item extraction AI. Extract items from the image.
+    const PROMPT = `You are a JSON extraction API for Indian wholesale clothing invoices.
 
-RETURN ONLY VALID JSON, no markdown, no code fences, no explanation.
+OUTPUT ONLY RAW JSON — no markdown, no backticks, no code fences.
+Start with { end with }.
 
-Output format:
-{
-  "items": [
-    {
-      "name": "Item name",
-      "quantity": 1,
-      "unitPrice": 100,
-      "confidence": 0.95
-    }
-  ],
-  "extractedText": "Raw text from image",
-  "rawImage": "Description of what's shown"
-}
+Format:
+{"supplier":"firm name","supplierGSTIN":"GSTIN","invoiceNo":"number","invoiceDate":"date","place":"city","subtotal":0,"discount":0,"discountPct":0,"cgst":0,"sgst":0,"igst":0,"invoiceTotal":0,"items":[{"articleNo":"","name":"","hsn":"","sizes":"","qty":1,"price":0,"gst":5,"cat":"Others","color":""}]}
 
 RULES:
-- Extract each line item from the image
-- "name": Product or item name (clean, no extra text)
-- "quantity": Number of units (default 1 if not shown)
-- "unitPrice": Price per unit (number only, no currency)
-- "confidence": How confident you are (0-1, where 1 is very confident)
-- Ignore headers, totals, invoice numbers - just extract line items
-- If image is unclear, set confidence lower
-- Return empty items array if no items found
-- Support handwritten and printed text
-
-Examples of valid responses:
-{"items":[{"name":"Tea","quantity":5,"unitPrice":50,"confidence":0.9}]}
-{"items":[{"name":"Milk","quantity":2,"unitPrice":60,"confidence":0.85},{"name":"Butter","quantity":1,"unitPrice":300,"confidence":0.95}]}
-{"items":[],"extractedText":"Could not identify items","rawImage":"Blank or invalid image"}`;
+SUBTOTAL: Extract from "Subtotal" or "Net Amt" line in invoice (BEFORE discount). If not clear, calculate from items.
+DISCOUNT: Extract actual discount amount from "Discount" line if shown.
+CGST/SGST/IGST: Extract exact tax amounts from invoice. Copy from invoice totals.
+INVOICE TOTAL: Extract final total from invoice bottom.
+ARTICLE NO: Indian invoices often write "9925 PANSARI" — leading code is articleNo, rest is name.
+HSN: Extract from HSN/SAC column if visible.
+SIZES: Comma-separated if multiple (M,L,XL). "Free Size" if none shown.
+GST: Must be 0/5/12/18/28 based on CGST+SGST rates.
+CATEGORY: Kids/Girls/Men/Women/Jeans/Tops/Jackets/Hosiery/Woollen/Suits/Others.
+PLACE: Extract city/state from "Place of Supply" field.
+PRICE: Per unit line price, plain number, no Rs symbol. CRITICAL — extract from invoice line item column.
+ITEMS: Extract EACH line item. Include ALL rows — do not skip any item.
+CONFIDENCE: 0-1 score for each item.
+If unclear, set confidence lower but still extract.`;
 
     const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash-latest'];
     let response = null;
@@ -118,6 +108,7 @@ Examples of valid responses:
           if (!res.ok) {
             const errData = await res.json();
             lastError = errData.error?.message || `HTTP ${res.status}`;
+            console.error(`[extract-invoice] ${model} HTTP error:`, { status: res.status, error: errData });
             continue;
           }
 
@@ -125,11 +116,13 @@ Examples of valid responses:
 
           if (data.error) {
             lastError = data.error.message;
+            console.error(`[extract-invoice] ${model} Gemini error:`, data.error);
             continue;
           }
 
           if (data.promptFeedback?.blockReason) {
             lastError = `Content blocked: ${data.promptFeedback.blockReason}`;
+            console.error(`[extract-invoice] ${model} blocked:`, data.promptFeedback.blockReason);
             continue;
           }
 
@@ -138,6 +131,7 @@ Examples of valid responses:
 
           if (!rawText) {
             lastError = 'No response from model';
+            console.error(`[extract-invoice] ${model} no response. Data:`, JSON.stringify(data).substring(0, 200));
             continue;
           }
 
@@ -165,14 +159,19 @@ Examples of valid responses:
               parsed.items = [];
             }
 
-            // Validate each item
-            parsed.items = parsed.items.filter(item => {
-              item.name = String(item.name || '').trim();
-              item.quantity = Math.max(1, parseInt(item.quantity) || 1);
-              item.unitPrice = Math.max(0, parseFloat(item.unitPrice) || 0);
-              item.confidence = Math.min(1, Math.max(0, parseFloat(item.confidence) || 0.7));
-              return item.name.length > 0 && item.unitPrice > 0;
-            });
+            // Validate each item - support both field name conventions and normalize
+            parsed.items = (parsed.items || []).map(item => ({
+              articleNo: String(item.articleNo || '').trim(),
+              name: String(item.name || '').trim(),
+              hsn: String(item.hsn || '').trim(),
+              sizes: String(item.sizes || item.size || 'Free Size').trim(),
+              qty: Math.max(1, parseInt(item.qty || item.quantity) || 1),
+              price: Math.max(0, parseFloat(item.price || item.unitPrice) || 0),
+              gst: [0, 5, 12, 18, 28].includes(parseInt(item.gst)) ? parseInt(item.gst) : 5,
+              cat: String(item.cat || item.category || 'Others').trim(),
+              color: String(item.color || '').trim(),
+              confidence: Math.min(1, Math.max(0, parseFloat(item.confidence) || 0.7))
+            })).filter(item => item.name.length > 0);
 
             console.log('[extract-invoice] Successfully extracted', parsed.items.length, 'items');
             return Response.json({
