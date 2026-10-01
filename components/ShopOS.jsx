@@ -2886,7 +2886,7 @@ function ReviewSession({sessionId,onBack,mob,showT,C=[]}){
   const markSuspense=async(txnId,isSuspense,reason='')=>{await api.patch('/api/bank-reconciliation',{txnId,isSuspense,suspenseReason:reason});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,is_suspense:isSuspense,suspense_reason:reason}:t));setEditingTxn(null);};
   const linkCustomer=async(txnId,customerId)=>{await api.patch('/api/bank-reconciliation',{txnId,customerId});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,customer_id:customerId}:t));};
   const saveCustomEntry=async(txnId)=>{if(!editCustom.trim())return;await api.patch('/api/bank-reconciliation',{txnId,customerId:editCustom});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,customer_id:editCustom}:t));setEditingTxn(null);setEditCustom('');};
-  const exportCsv=async()=>{const res=await fetch(`/api/recon-sessions/${sessionId}/export`,{headers:{'x-firm-id':session?.firm_id}});const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`BankRecon_${session?.label}.csv`;a.click();};
+  const exportCsv=async()=>{const h=await authH();const res=await fetch(`/api/recon-sessions/${sessionId}/export`,{headers:h});if(!res.ok){alert('Export failed');return;}const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`BankRecon_${session?.label}.csv`;a.click();};
 
   if(loading)return<div><Spin/></div>;
 
