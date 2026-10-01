@@ -46,27 +46,31 @@ function extractJSON(txt) {
   throw new Error('Could not parse Gemini response as JSON');
 }
 
-const PROMPT = `You are a bank statement parser for Indian bank accounts.
-Extract ALL transactions from this bank statement.
+const PROMPT = `You are a bank statement parser. Extract transactions from tables/statements.
 
-OUTPUT ONLY RAW JSON ARRAY — no markdown, no explanation, no backticks.
-Start with [ and end with ].
+CRITICAL: Output ONLY valid JSON array. No text before/after. No markdown code blocks.
 
-Format each transaction as:
-{"date":"DD/MM/YYYY","description":"original text from statement","amount":1000.00,"type":"credit","balance":50000.00,"ref":"reference or cheque number if visible"}
+For each transaction row, extract:
+{"date":"DD-MM-YYYY","description":"text from description column","amount":NUMBER,"type":"credit or debit","balance":NUMBER,"ref":""}
 
-RULES:
-- type must be exactly "credit" or "debit"
-- amount must be positive number regardless of type
-- date in DD/MM/YYYY format
-- description: keep original text as-is, do not modify
-- balance: running balance if shown, else 0
-- ref: UTR/cheque/reference number if visible, else empty string
-- Include ALL rows — do not skip any transaction
-- If unclear amount, put 0
-- Indian formats: Cr = credit, Dr = debit, + = credit, - = debit
+EXTRACTION RULES:
+1. Look for transaction tables with columns like: DATE, DESCRIPTION, DEBITS, CREDITS, BALANCE
+2. DEBITS column = type "debit", CREDITS column = type "credit"
+3. amount = absolute value (always positive number)
+4. date = convert to DD-MM-YYYY format
+5. description = text exactly as shown in statement
+6. balance = running balance from rightmost balance column
+7. ref = empty string "" (we'll link customers manually)
+8. Include EVERY row with a transaction
+9. Skip headers, footers, and non-transaction lines
 
-If no transactions found return: []`;
+OUTPUT FORMAT:
+[
+  {"date":"02-04-2025","description":"Loan Reco. For 5170210000009","amount":27773.33,"type":"debit","balance":8735.73,"ref":""},
+  {"date":"25-04-2025","description":"NEFT/HDFCH00200737067/HDFC/SHIVNARA","amount":1000.00,"type":"credit","balance":9735.73,"ref":""}
+]
+
+If no transactions found: return []`;
 
 function convertTxnDate(ddMmYyyy) {
   if (!ddMmYyyy) return new Date().toISOString().split('T')[0];
