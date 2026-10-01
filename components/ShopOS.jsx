@@ -2843,20 +2843,21 @@ function BankPage({BS,setBS,B,Py,firm,mob,gk}){
       {['statements','recon','history'].map(t=><button key={t} onClick={()=>setBankTab(t)} style={{...S.btn(bankTab===t?'pri':'def',true),textTransform:'capitalize',background:'none',border:'none',borderBottom:bankTab===t?'2px solid '+BL:'none',borderRadius:0,paddingBottom:8}}>{t}</button>)}
     </div>
     {bankTab==='statements'&&<BankStatements BS={BS} setBS={setBS} mob={mob}/>}
-    {bankTab==='recon'&&<FirmReconciliation BS={BS} B={B} Py={Py} firm={firm} gk={gk} mob={mob}/>}
+    {bankTab==='recon'&&<FirmReconciliation BS={BS} B={B} Py={Py} firm={firm} C={C} gk={gk} mob={mob}/>}
     {bankTab==='history'&&<ReconciliationHistory mob={mob}/>}
   </div>;
 }
 
-function FirmReconciliation({BS,B,Py,firm,gk,mob}){
+function FirmReconciliation({BS,B,Py,firm,C,gk,mob}){
+  const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[sessionId,setSessionId]=useState(null);const[sessions,setSessions]=useState([]);const[toast,showT]=useToast();const[uploading,setUploading]=useState(false);
   const[scanStatus,setScanStatus]=useState('');const[selectedFile,setSelectedFile]=useState(null);const[sessionLabel,setSessionLabel]=useState('');
 
   const handleFile=async e=>{const file=e.target.files[0];if(!file)return;setSelectedFile(file);setSessionLabel(file.name.replace(/\.[^/.]+$/,''));};
 
-  const uploadAndReconcile=async()=>{if(!selectedFile)return;if(!gk()){showT('Add Gemini API key in Settings first','err');return;}setScanStatus('Reading file...');setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const mimeType=selectedFile.type||'application/octet-stream';let csvText='';if(selectedFile.type.startsWith('text/')){csvText=new TextDecoder().decode(atob(b64).split('').map(c=>c.charCodeAt(0)));}setScanStatus('Creating session...');const sessionRes=await api.post('/api/recon-sessions',{label:sessionLabel||'Bank Statement',bankStmtId:null});setScanStatus('Processing statement...');const reconcileRes=await api.post('/api/reconcile',{apiKey:gk(),csvText,imageData:b64,imageType:mimeType,scope:'firm',sessionId:sessionRes.id,bills:B,payments:Py});setSessionId(reconcileRes.sessionId);setSelectedFile(null);setScanStatus('');showT('Statement processed!');};r.readAsDataURL(file);}catch(err){showT('Error: '+err.message,'err');setScanStatus('');}finally{setUploading(false);}};
+  const uploadAndReconcile=async()=>{if(!selectedFile)return;if(!gk()){showT('Add Gemini API key in Settings first','err');return;}setScanStatus('Extracting transactions...');setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const mimeType=selectedFile.type||'application/octet-stream';let csvText='';if(selectedFile.type.startsWith('text/')){csvText=new TextDecoder().decode(atob(b64).split('').map(c=>c.charCodeAt(0)));}const reconcileRes=await api.post('/api/reconcile',{apiKey:gk(),csvText,imageData:b64,imageType:mimeType});const txns=reconcileRes.transactions||[];setScanStatus('Creating session...');const sessionRes=await api.post('/api/bank-reconciliation',{label:sessionLabel||'Bank Statement',bankStmtId:null,transactions:txns});setSessionId(sessionRes.id);setSelectedFile(null);setScanStatus('');showT('Statement processed! Review & match entries below.');};r.readAsDataURL(selectedFile);}catch(err){showT('Error: '+err.message,'err');setScanStatus('');}finally{setUploading(false);}};
 
-  if(sessionId){return<ReviewSession sessionId={sessionId} onBack={()=>{setSessionId(null);setSelectedFile(null);}} mob={mob} showT={showT}/>;}
+  if(sessionId){return<ReviewSession sessionId={sessionId} onBack={()=>{setSessionId(null);setSelectedFile(null);}} C={C} mob={mob} showT={showT}/>;}
 
   return<div>
     {toast}
@@ -2875,45 +2876,48 @@ function FirmReconciliation({BS,B,Py,firm,gk,mob}){
   </div>;
 }
 
-function ReviewSession({sessionId,onBack,mob,showT}){
-  const[session,setSession]=useState(null);const[txns,setTxns]=useState([]);const[loading,setLoading]=useState(true);const[filter,setFilter]=useState('all');const[linkedPaymentId,setLinkedPaymentId]=useState(null);const[linkTxnId,setLinkTxnId]=useState(null);
+function ReviewSession({sessionId,onBack,mob,showT,C}){
+  const[session,setSession]=useState(null);const[txns,setTxns]=useState([]);const[loading,setLoading]=useState(true);const[filter,setFilter]=useState('all');const[editingTxn,setEditingTxn]=useState(null);
 
-  useEffect(()=>{(async()=>{const res=await api.get('/api/recon-sessions/'+sessionId);setSession(res.session);setTxns(res.transactions);setLoading(false);})();},[ sessionId]);
+  useEffect(()=>{(async()=>{const res=await api.get('/api/bank-reconciliation?sessionId='+sessionId);setSession(res.session);setTxns(res.transactions);setLoading(false);})();},[ sessionId]);
 
-  const filtered=txns.filter(t=>filter==='all'||t.status===filter);const stats=session?.stats||{};const lockAll=async()=>{if(!confirm('Lock all matched transactions?'))return;for(const t of txns.filter(x=>x.status==='matched')){await api.patch('/api/recon-sessions/'+sessionId,{txnId:t.id,isReconciled:true});}showT('Locked all matched transactions');};const exportCsv=async()=>{const res=await fetch(`/api/recon-sessions/${sessionId}/export`,{headers:{'x-firm-id':session?.firmId}});const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`Recon_${session?.label}.csv`;a.click();};
+  const filtered=txns.filter(t=>{if(filter==='all')return true;if(filter==='suspense')return t.is_suspense;return t.match_status===filter;});
+  const stats=session?.stats||{};
+  const markSuspense=async(txnId,isSuspense,reason='')=>{await api.patch('/api/bank-reconciliation',{txnId,isSuspense,suspenseReason:reason});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,is_suspense:isSuspense,suspense_reason:reason}:t));setEditingTxn(null);};
+  const linkCustomer=async(txnId,customerId)=>{await api.patch('/api/bank-reconciliation',{txnId,customerId});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,customer_id:customerId}:t));};
+  const exportCsv=async()=>{const res=await fetch(`/api/recon-sessions/${sessionId}/export`,{headers:{'x-firm-id':session?.firm_id}});const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`BankRecon_${session?.label}.csv`;a.click();};
 
   if(loading)return<div><Spin/></div>;
 
   return<div>
     <button style={S.btn('def',true)} onClick={onBack}>← Back</button>
-    {session?.status==='locked'&&<div style={{padding:12,background:GRL,borderRadius:8,marginBottom:12,fontSize:12,fontWeight:700,color:GR}}>✓ This session is locked and reconciled</div>}
-    <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(5,1fr)',gap:8,marginBottom:14}}>
-      {[{l:'Total',v:stats.total,c:BL,bg:BLL},{l:'Matched',v:stats.matched,c:GR,bg:GRL},{l:'Likely',v:stats.likely,c:AMB,bg:AMBL},{l:'Unmatched',v:stats.unmatched,c:RD,bg:RDL},{l:'Locked',v:stats.matched,c:PUR,bg:PURL}].map(({l,v,c,bg})=><div key={l} style={{...S.met,background:bg,border:'0.5px solid '+c+'30'}}>
+    {session?.status==='locked'&&<div style={{padding:12,background:GRL,borderRadius:8,marginBottom:12,fontSize:12,fontWeight:700,color:GR}}>✓ This session is locked</div>}
+    <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(6,1fr)',gap:8,marginBottom:14}}>
+      {[{l:'Total',v:stats.total,c:BL,bg:BLL},{l:'Matched',v:stats.matched,c:GR,bg:GRL},{l:'Likely',v:stats.likely,c:AMB,bg:AMBL},{l:'Unmatched',v:stats.unmatched,c:RD,bg:RDL},{l:'Suspense',v:stats.suspense||0,c:PUR,bg:PURL},{l:'Ignored',v:stats.ignored||0,c:MUT,bg:'#f0ede8'}].map(({l,v,c,bg})=><div key={l} style={{...S.met,background:bg,border:'0.5px solid '+c+'30'}}>
         <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',color:c+'aa'}}>{l}</div>
         <div style={{fontSize:24,fontWeight:800,color:c}}>{v||0}</div>
       </div>)}
     </div>
     <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
-      {['all','matched','likely','unmatched','ignored'].map(f=><button key={f} onClick={()=>setFilter(f)} style={{...S.btn(filter===f?'pri':'def',true),textTransform:'capitalize'}}>{f}</button>)}
+      {['all','matched','likely','unmatched','suspense','ignored'].map(f=><button key={f} onClick={()=>setFilter(f)} style={{...S.btn(filter===f?'pri':'def',true),textTransform:'capitalize'}}>{f}</button>)}
     </div>
     <div style={{...S.card,padding:0,overflowX:'auto'}}>
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:mob?400:900}}>
-        <thead><tr>{['Date','Description','Ref','Amount','Type','Status','Score','Matched To',''].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-        <tbody>{filtered.map(t=><tr key={t.id} style={{background:t.isReconciled?BL+'08':''}}>
-          <td style={S.td}>{t.date}</td>
-          <td style={{...S.td,maxWidth:150,overflow:'hidden',textOverflow:'ellipsis'}}>{t.description}</td>
-          <td style={{...S.td,fontSize:10}}>{t.ref}</td>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:mob?400:1100}}>
+        <thead><tr>{['Date','Description','Amount','Type','Customer','Suspense?','Status','Action'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+        <tbody>{filtered.map(t=>{const cust=C?.find(x=>x.id===t.customer_id);return<tr key={t.id} style={{background:t.is_suspense?PUR+'08':t.match_status==='matched'?GR+'08':''}}>
+          <td style={S.td}>{new Date(t.txn_date).toLocaleDateString('en-IN')}</td>
+          <td style={{...S.td,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',fontSize:9}}>{t.description}</td>
           <td style={{...S.td,...S.mono,color:GR,fontWeight:700}}>{fmt(t.amount)}</td>
-          <td style={S.td}><Bdg c={t.type==='credit'?'green':'red'}>{t.type}</Bdg></td>
-          <td style={S.td}><Bdg c={{matched:GR,likely:AMB,unmatched:RD,ignored:MUT}[t.status]}>{t.status}</Bdg></td>
-          <td style={{...S.td,...S.mono,fontSize:10}}>{t.score}</td>
-          <td style={{...S.td,fontSize:10}}>{t.matchRef||'—'}</td>
-          <td style={S.td}>{t.isReconciled?'✓':t.status==='matched'?<button style={S.btn('suc',true)} onClick={async()=>{await api.patch('/api/recon-sessions/'+sessionId,{txnId:t.id,isReconciled:true});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,isReconciled:true}:x));}}>Lock</button>:t.status==='likely'?<><button style={S.btn('def',true)} onClick={async()=>{await api.patch('/api/recon-sessions/'+sessionId,{txnId:t.id,matchStatus:'matched'});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,status:'matched'}:x));}}>Confirm</button><button style={S.btn('dan',true)} onClick={async()=>{await api.patch('/api/recon-sessions/'+sessionId,{txnId:t.id,matchStatus:'unmatched'});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,status:'unmatched'}:x));}}>Clear</button></>:<button style={S.btn('gho',true)} onClick={async()=>{await api.patch('/api/recon-sessions/'+sessionId,{txnId:t.id,matchStatus:'ignored'});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,status:'ignored'}:x));}}>Ignore</button>}</td>
-        </tr>)}</tbody>
+          <td style={S.td}><Bdg c={t.txn_type==='credit'?'green':'red'}>{t.txn_type}</Bdg></td>
+          <td style={S.td}>{cust?<span style={{fontSize:11,fontWeight:600}}>{cust.name}</span>:<select style={{fontSize:10,padding:'3px 6px',border:'0.5px solid '+BORD,borderRadius:4}} onChange={e=>linkCustomer(t.id,e.target.value||null)}><option value=''>—</option>{C?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>}</td>
+          <td style={S.td}>{t.is_suspense?<Bdg c='purple'>Suspense</Bdg>:<button style={S.btn('def',true)} onClick={()=>setEditingTxn(t.id)}>Mark</button>}</td>
+          <td style={S.td}><Bdg c={{matched:GR,likely:AMB,unmatched:RD,ignored:MUT}[t.match_status]}>{t.match_status}</Bdg></td>
+          <td style={S.td}>{editingTxn===t.id?<div style={{display:'flex',flexDirection:'column',gap:3}}><button style={S.btn('dan',true)} onClick={()=>markSuspense(t.id,true,'Manual review needed')}>Suspense</button><button style={S.btn('def',true)} onClick={()=>setEditingTxn(null)}>Cancel</button></div>:<button style={S.btn('suc',true)} onClick={()=>setEditingTxn(t.id)}>Options</button>}</td>
+        </tr>;})}
+        </tbody>
       </table>
     </div>
     <div style={{marginTop:14,display:'flex',gap:8}}>
-      <button style={S.btn('pri')} onClick={lockAll}>Lock All Matched</button>
       <button style={S.btn('def')} onClick={exportCsv}>📥 Export CSV</button>
     </div>
   </div>;
