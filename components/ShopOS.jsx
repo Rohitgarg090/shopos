@@ -2840,7 +2840,7 @@ function BankPage({BS,setBS,B,Py,firm,C,mob,gk}){
   const[bankTab,setBankTab]=useState('recon');
   return<div>
     <div style={{display:'flex',gap:8,marginBottom:14,borderBottom:'1px solid '+BORD,paddingBottom:8}}>
-      {['recon','history'].map(t=><button key={t} onClick={()=>setBankTab(t)} style={{...S.btn(bankTab===t?'pri':'def',true),textTransform:'capitalize',background:'none',border:'none',borderBottom:bankTab===t?'2px solid '+BL:'none',borderRadius:0,paddingBottom:8,color:bankTab===t?'#fff':TXT}}>{t}</button>)}
+      {['recon','history'].map(t=><button key={t} onClick={()=>setBankTab(t)} style={{textTransform:'capitalize',background:'none',border:'none',borderBottom:bankTab===t?'3px solid '+BL:'none',borderRadius:0,paddingBottom:8,padding:'4px 0',cursor:'pointer',fontSize:13,fontWeight:bankTab===t?700:600,color:bankTab===t?BL:TXT,transition:'all 0.2s'}}>{t}</button>)}
     </div>
     {bankTab==='recon'&&<FirmReconciliation BS={BS} B={B} Py={Py} firm={firm} C={C} gk={gk} mob={mob}/>}
     {bankTab==='history'&&<ReconciliationHistory C={C} mob={mob}/>}
