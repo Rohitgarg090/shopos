@@ -79,18 +79,20 @@ export async function POST(req) {
 
   // Insert transactions
   if (transactions && transactions.length > 0) {
-    const txnData = transactions.map((t, idx) => ({
-      session_id: session.id,
-      firm_id: c.firmId,
-      txn_date: t.date,
-      description: t.description,
-      ref_no: t.ref || '',
-      amount: t.amount,
-      txn_type: t.type,
-      balance: t.balance || 0,
-      match_status: 'unmatched',
-      sort_order: idx,
-    }));
+    const txnData = transactions
+      .filter(t => t.date && t.amount && t.type) // Skip incomplete transactions
+      .map((t, idx) => ({
+        session_id: session.id,
+        firm_id: c.firmId,
+        txn_date: t.date,
+        description: t.description || '',
+        ref_no: t.ref || '',
+        amount: parseFloat(t.amount) || 0,
+        txn_type: t.type.toLowerCase(),
+        balance: parseFloat(t.balance) || 0,
+        match_status: 'unmatched',
+        sort_order: idx,
+      }));
 
     const { error: txnErr } = await c.sb.from('recon_transactions').insert(txnData);
     if (txnErr) {
