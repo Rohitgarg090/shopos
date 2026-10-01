@@ -101,6 +101,7 @@ export async function POST(req) {
     }
 
     const rawText = await callGemini(apiKey, parts);
+    console.log('[reconcile] Gemini response:', rawText.substring(0, 500));
     const geminiTxns = extractJSON(rawText);
 
     if (!Array.isArray(geminiTxns)) {
