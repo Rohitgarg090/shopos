@@ -22,7 +22,7 @@ async function callGemini(apiKey, parts) {
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.1, maxOutputTokens: 8192 } }) }
+            body: JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.1, maxOutputTokens: 16384 } }) }
         );
         if (res.status === 503 || res.status === 429) { await sleep(attempt * 3000); continue; }
         if (res.ok) {
@@ -40,7 +40,12 @@ function extractJSON(txt) {
   let s = txt.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
   try { return JSON.parse(s); } catch {}
   const s1 = s.indexOf('['), e1 = s.lastIndexOf(']');
-  if (s1 !== -1 && e1 > s1) { try { return JSON.parse(s.slice(s1, e1 + 1)); } catch {} }
+  if (s1 !== -1) {
+    let candidate = s.slice(s1);
+    if (e1 > s1) candidate = s.slice(s1, e1 + 1);
+    else candidate += ']'; // Try closing truncated array
+    try { return JSON.parse(candidate); } catch {}
+  }
   const s2 = s.indexOf('{'), e2 = s.lastIndexOf('}');
   if (s2 !== -1 && e2 > s2) { try { const p = JSON.parse(s.slice(s2, e2 + 1)); return p.transactions || p; } catch {} }
   throw new Error('Could not parse Gemini response as JSON');
