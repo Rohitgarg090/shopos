@@ -2837,12 +2837,11 @@ function BankStatements({BS,setBS,mob}){
 /* ── BANK RECONCILIATION ── */
 function BankPage({BS,setBS,B,Py,firm,C,mob,gk}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
-  const[bankTab,setBankTab]=useState('statements');
+  const[bankTab,setBankTab]=useState('recon');
   return<div>
     <div style={{display:'flex',gap:8,marginBottom:14,borderBottom:'1px solid '+BORD,paddingBottom:8}}>
-      {['statements','recon','history'].map(t=><button key={t} onClick={()=>setBankTab(t)} style={{...S.btn(bankTab===t?'pri':'def',true),textTransform:'capitalize',background:'none',border:'none',borderBottom:bankTab===t?'2px solid '+BL:'none',borderRadius:0,paddingBottom:8}}>{t}</button>)}
+      {['recon','history'].map(t=><button key={t} onClick={()=>setBankTab(t)} style={{...S.btn(bankTab===t?'pri':'def',true),textTransform:'capitalize',background:'none',border:'none',borderBottom:bankTab===t?'2px solid '+BL:'none',borderRadius:0,paddingBottom:8,color:bankTab===t?'#fff':TXT}}>{t}</button>)}
     </div>
-    {bankTab==='statements'&&<BankStatements BS={BS} setBS={setBS} mob={mob}/>}
     {bankTab==='recon'&&<FirmReconciliation BS={BS} B={B} Py={Py} firm={firm} C={C} gk={gk} mob={mob}/>}
     {bankTab==='history'&&<ReconciliationHistory C={C} mob={mob}/>}
   </div>;
@@ -2878,14 +2877,14 @@ function FirmReconciliation({BS,B,Py,firm,C,gk,mob}){
 
 function ReviewSession({sessionId,onBack,mob,showT,C=[]}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
-  const[session,setSession]=useState(null);const[txns,setTxns]=useState([]);const[loading,setLoading]=useState(true);const[filter,setFilter]=useState('all');const[editingTxn,setEditingTxn]=useState(null);
+  const[session,setSession]=useState(null);const[txns,setTxns]=useState([]);const[loading,setLoading]=useState(true);const[filter,setFilter]=useState('all');const[editingTxn,setEditingTxn]=useState(null);const[editValue,setEditValue]=useState('');
 
   useEffect(()=>{(async()=>{const res=await api.get('/api/bank-reconciliation?sessionId='+sessionId);setSession(res.session);setTxns(res.transactions);setLoading(false);})();},[ sessionId]);
 
   const filtered=txns.filter(t=>{if(filter==='all')return true;if(filter==='suspense')return t.is_suspense;return t.match_status===filter;});
   const stats=session?.stats||{};
   const markSuspense=async(txnId,isSuspense,reason='')=>{await api.patch('/api/bank-reconciliation',{txnId,isSuspense,suspenseReason:reason});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,is_suspense:isSuspense,suspense_reason:reason}:t));setEditingTxn(null);};
-  const linkCustomer=async(txnId,customerId)=>{await api.patch('/api/bank-reconciliation',{txnId,customerId});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,customer_id:customerId}:t));};
+  const saveEntry=async(txnId)=>{if(!editValue.trim())return;await api.patch('/api/bank-reconciliation',{txnId,customerId:editValue});setTxns(ts=>ts.map(t=>t.id===txnId?{...t,customer_id:editValue}:t));setEditingTxn(null);setEditValue('');};
   const exportCsv=async()=>{const res=await fetch(`/api/recon-sessions/${sessionId}/export`,{headers:{'x-firm-id':session?.firm_id}});const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`BankRecon_${session?.label}.csv`;a.click();};
 
   if(loading)return<div><Spin/></div>;
@@ -2903,17 +2902,17 @@ function ReviewSession({sessionId,onBack,mob,showT,C=[]}){
       {['all','matched','likely','unmatched','suspense','ignored'].map(f=><button key={f} onClick={()=>setFilter(f)} style={{...S.btn(filter===f?'pri':'def',true),textTransform:'capitalize'}}>{f}</button>)}
     </div>
     <div style={{...S.card,padding:0,overflowX:'auto'}}>
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:mob?400:1100}}>
-        <thead><tr>{['Date','Description','Amount','Type','Customer','Suspense?','Status','Action'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-        <tbody>{filtered.map(t=>{const cust=C?.find(x=>x.id===t.customer_id);return<tr key={t.id} style={{background:t.is_suspense?PUR+'08':t.match_status==='matched'?GR+'08':''}}>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:10,minWidth:mob?400:1000}}>
+        <thead><tr>{['Date','Description','Amount','Type','Entry (Salary, EMI, Interest, etc.)','Suspense?','Status','Action'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+        <tbody>{filtered.map(t=>{return<tr key={t.id} style={{background:t.is_suspense?PUR+'08':t.match_status==='matched'?GR+'08':''}}>
           <td style={S.td}>{new Date(t.txn_date).toLocaleDateString('en-IN')}</td>
-          <td style={{...S.td,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',fontSize:9}}>{t.description}</td>
+          <td style={{...S.td,maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',fontSize:9}}>{t.description}</td>
           <td style={{...S.td,...S.mono,color:GR,fontWeight:700}}>{fmt(t.amount)}</td>
           <td style={S.td}><Bdg c={t.txn_type==='credit'?'green':'red'}>{t.txn_type}</Bdg></td>
-          <td style={S.td}>{cust?<span style={{fontSize:11,fontWeight:600}}>{cust.name}</span>:<select style={{fontSize:10,padding:'3px 6px',border:'0.5px solid '+BORD,borderRadius:4}} onChange={e=>linkCustomer(t.id,e.target.value||null)}><option value=''>—</option>{C?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>}</td>
+          <td style={S.td}>{editingTxn===t.id?<input style={{...S.inp,fontSize:9,padding:'2px 6px',height:26,width:140}} type='text' placeholder='e.g., Salary' value={editValue} onChange={e=>setEditValue(e.target.value)}/>:<span style={{fontSize:10,fontWeight:600}}>{t.customer_id||<span style={{color:MUT}}>—</span>}</span>}</td>
           <td style={S.td}>{t.is_suspense?<Bdg c='purple'>Suspense</Bdg>:<button style={S.btn('def',true)} onClick={()=>setEditingTxn(t.id)}>Mark</button>}</td>
           <td style={S.td}><Bdg c={{matched:GR,likely:AMB,unmatched:RD,ignored:MUT}[t.match_status]}>{t.match_status}</Bdg></td>
-          <td style={S.td}>{editingTxn===t.id?<div style={{display:'flex',flexDirection:'column',gap:3}}><button style={S.btn('dan',true)} onClick={()=>markSuspense(t.id,true,'Manual review needed')}>Suspense</button><button style={S.btn('def',true)} onClick={()=>setEditingTxn(null)}>Cancel</button></div>:<button style={S.btn('suc',true)} onClick={()=>setEditingTxn(t.id)}>Options</button>}</td>
+          <td style={S.td}>{editingTxn===t.id?<div style={{display:'flex',flexDirection:'column',gap:3}}><button style={S.btn('suc',true)} onClick={()=>saveEntry(t.id)}>Save</button><button style={S.btn('dan',true)} onClick={()=>{markSuspense(t.id,true,'Not clear');setEditingTxn(null);}}>Suspense</button><button style={S.btn('def',true)} onClick={()=>setEditingTxn(null)}>Close</button></div>:<button style={S.btn('suc',true)} onClick={()=>{setEditingTxn(t.id);setEditValue(t.customer_id||'');}}>Edit</button>}</td>
         </tr>;})}
         </tbody>
       </table>
