@@ -15,6 +15,7 @@ const shape = p => ({
   id: p.id, name: p.name, sku: p.sku, cat: p.cat, sub: p.sub||'',
   size: p.size, color: p.color||'', price: +p.price, gst: +p.gst,
   qty: +p.qty, hsn: p.hsn||'', articleNo: p.article_no||'',
+  uom: p.unit_of_measure||'Piece', customAttrs: p.custom_attributes||{},
 });
 
 export async function GET(req) {
@@ -34,6 +35,8 @@ export async function POST(req) {
     name: b.name, sku: b.sku, cat: b.cat, sub: b.sub||'',
     size: b.size, color: b.color||'', price: +b.price, gst: +b.gst,
     qty: +b.qty, hsn: b.hsn||'', article_no: b.articleNo||'',
+    unit_of_measure: b.uom || 'Piece',
+    custom_attributes: b.customAttrs || {},
     firm_id: c.firmId || null,
   }]).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -63,6 +66,8 @@ export async function PUT(req) {
   if (f.qty   !== undefined) updates.qty        = +f.qty;
   if (f.hsn   !== undefined) updates.hsn        = f.hsn||'';
   if (f.articleNo !== undefined) updates.article_no = f.articleNo||'';
+  if (f.uom   !== undefined) updates.unit_of_measure = f.uom || 'Piece';
+  if (f.customAttrs !== undefined) updates.custom_attributes = f.customAttrs || {};
   const { data, error } = await c.sb.from('products').update(updates).eq('id', id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(shape(data));

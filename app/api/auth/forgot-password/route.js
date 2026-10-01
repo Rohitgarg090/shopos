@@ -25,7 +25,11 @@ async function sendEmailViaResend(email, otp) {
   console.log('[sendEmail] Using sender email:', process.env.RESEND_FROM_EMAIL || 'info@shopos.co.in');
 
   try {
-    const fromEmail = process.env.RESEND_FROM_EMAIL || 'info@shopos.co.in';
+    let fromEmail = process.env.RESEND_FROM_EMAIL || 'info@shopos.co.in';
+    // Add display name if not already present
+    if (!fromEmail.includes('<')) {
+      fromEmail = `ShopOS Security <${fromEmail}>`;
+    }
     const payload = {
       from: fromEmail,
       to: email,

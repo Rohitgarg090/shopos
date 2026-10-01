@@ -22,7 +22,7 @@ export async function POST(req) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { imageBase64, geminiKey, mimeType } = await req.json();
+    const { imageBase64, geminiKey, mimeType, industryType, userCategories } = await req.json();
 
     if (!imageBase64 || !geminiKey) {
       return Response.json(
@@ -39,8 +39,35 @@ export async function POST(req) {
       else if (imageBase64.startsWith('iVBORw0KGgo')) finalMimeType = 'image/png';
     }
 
-    // Call Gemini Vision API
-    const PROMPT = `You are a JSON extraction API for Indian wholesale clothing invoices.
+    // Build dynamic prompt based on industry type
+    const buildPrompt = (industry, categories) => {
+      const categoryList = categories && categories.length > 0
+        ? categories.join('/')
+        : (industry === 'clothing' ? 'Kids/Girls/Men/Women/Jeans/Tops/Jackets/Hosiery/Woollen/Suits/Others'
+           : industry === 'electronics' ? 'Mobile/Laptop/Tablet/Charger/Accessories/Others'
+           : industry === 'jewelry' ? 'Ring/Necklace/Bracelet/Earring/Pendant/Others'
+           : industry === 'spices' ? 'Whole Spices/Ground Spices/Herbs/Blends/Others'
+           : industry === 'homeDecor' ? 'Wall Art/Furniture/Lighting/Textiles/Decor/Others'
+           : industry === 'tiles' ? 'Ceramic/Porcelain/Stone/Mosaic/Others'
+           : industry === 'pharmacy' ? 'Tablet/Syrup/Cream/Injection/Powder/Others'
+           : 'Products/Items/Goods/Others');
+
+      const industryDesc = {
+        clothing: 'Indian wholesale clothing',
+        electronics: 'Indian electronics/mobile',
+        jewelry: 'jewelry/precious metals',
+        spices: 'Indian spices/herbs',
+        homeDecor: 'home decor/furniture',
+        tiles: 'tiles/ceramics',
+        pharmacy: 'pharmacy/medicines',
+        general: 'general retail'
+      }[industry] || 'retail';
+
+      const sizeField = industry === 'clothing'
+        ? 'SIZES: Comma-separated if multiple (M,L,XL). "Free Size" if none shown.'
+        : 'SIZES: Leave empty for non-apparel.';
+
+      return `You are a JSON extraction API for Indian wholesale ${industryDesc} invoices.
 
 OUTPUT ONLY RAW JSON — no markdown, no backticks, no code fences.
 Start with { end with }.
@@ -55,14 +82,17 @@ CGST/SGST/IGST: Extract exact tax amounts from invoice. Copy from invoice totals
 INVOICE TOTAL: Extract final total from invoice bottom.
 ARTICLE NO: Indian invoices often write "9925 PANSARI" — leading code is articleNo, rest is name.
 HSN: Extract from HSN/SAC column if visible.
-SIZES: Comma-separated if multiple (M,L,XL). "Free Size" if none shown.
+${sizeField}
 GST: Must be 0/5/12/18/28 based on CGST+SGST rates.
-CATEGORY: Kids/Girls/Men/Women/Jeans/Tops/Jackets/Hosiery/Woollen/Suits/Others.
+CATEGORY: ${categoryList}.
 PLACE: Extract city/state from "Place of Supply" field.
 PRICE: Per unit line price, plain number, no Rs symbol. CRITICAL — extract from invoice line item column.
 ITEMS: Extract EACH line item. Include ALL rows — do not skip any item.
 CONFIDENCE: 0-1 score for each item.
 If unclear, set confidence lower but still extract.`;
+    };
+
+    const PROMPT = buildPrompt(industryType || 'general', userCategories);
 
     const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash-latest'];
     let response = null;

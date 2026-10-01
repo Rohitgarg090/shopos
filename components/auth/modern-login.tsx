@@ -25,7 +25,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
 
   // Read mode from URL query parameters
   useEffect(() => {
-    const urlMode = searchParams.get("mode");
+    const urlMode = searchParams?.get("mode");
     if (urlMode === "signup" || urlMode === "up") {
       setMode("up");
     } else if (urlMode === "login" || urlMode === "in") {
@@ -38,6 +38,8 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [registrationStep, setRegistrationStep] = useState<"details" | "verify">("details");
+  const [verificationOtp, setVerificationOtp] = useState("");
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -46,17 +48,24 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
     }
 
     if (mode === "up") {
-      if (!name) {
-        setError("Name is required");
-        return;
-      }
-      if (signupMode === "join" && !firmId) {
-        setError("Firm ID is required to join a firm");
-        return;
-      }
-      if (!signupMode) {
-        setError("Please select: Start Free Trial or Join Existing Firm");
-        return;
+      if (registrationStep === "details") {
+        if (!name) {
+          setError("Name is required");
+          return;
+        }
+        if (signupMode === "join" && !firmId) {
+          setError("Firm ID is required to join a firm");
+          return;
+        }
+        if (!signupMode) {
+          setError("Please select: Start Free Trial or Join Existing Firm");
+          return;
+        }
+      } else if (registrationStep === "verify") {
+        if (!verificationOtp || verificationOtp.length !== 6) {
+          setError("Please enter the 6-digit OTP");
+          return;
+        }
       }
     }
 
@@ -68,25 +77,71 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
         const res = await supabase.auth.signInWithPassword({ email, password });
         if (res.error) throw res.error;
         onLogin(res.data.session);
-      } else {
-        // Registration: trial or join existing firm
-        const res = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            password,
-            name,
-            firmId: signupMode === "join" ? firmId : null,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        setError(data.message || "Registration successful! Sign in now.");
-        setMode("in");
-        setName("");
-        setFirmId("");
-        setSignupMode(null);
+      } else if (mode === "up") {
+        // Registration: check if we need to verify email first
+        if (registrationStep === "details") {
+          // Step 1: Send verification OTP
+          const res = await fetch("/api/auth/send-verification-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email,
+              name,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          setRegistrationStep("verify");
+          setError(""); // Clear error and wait for OTP input
+        } else if (registrationStep === "verify") {
+          // Step 2: Verify OTP first
+          console.log('[Registration] Verifying OTP for:', email);
+          const verifyRes = await fetch("/api/auth/verify-email-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email,
+              otp: verificationOtp,
+            }),
+          });
+          const verifyData = await verifyRes.json();
+
+          if (!verifyRes.ok) {
+            console.error('[Registration] OTP verification failed:', verifyData.error);
+            throw new Error(verifyData.error || "Invalid OTP. Please try again.");
+          }
+
+          console.log('[Registration] OTP verified successfully. Now creating account...');
+
+          // Only create account AFTER OTP is successfully verified
+          const registerRes = await fetch("/api/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email,
+              password,
+              name,
+              firmId: signupMode === "join" ? firmId : null,
+            }),
+          });
+          const registerData = await registerRes.json();
+
+          if (!registerRes.ok) {
+            console.error('[Registration] Account creation failed:', registerData.error);
+            throw new Error(registerData.error || "Failed to create account");
+          }
+
+          console.log('[Registration] Account created successfully');
+          setError(registerData.message || "Registration successful! Sign in now.");
+          setMode("in");
+          setName("");
+          setEmail("");
+          setPassword("");
+          setFirmId("");
+          setSignupMode(null);
+          setRegistrationStep("details");
+          setVerificationOtp("");
+        }
       }
     } catch (e: any) {
       setError(e.message || "Authentication failed");
@@ -189,15 +244,23 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
         <Card variant="glass" className="border border-white/10 backdrop-blur-xl">
           <CardHeader className="pb-6">
             <CardTitle className="text-2xl">
-              {mode === "up" ? (signupMode ? (signupMode === "trial" ? "Start Your Free Trial" : "Join a Firm") : "Get Started") : "Welcome"}
+              {mode === "up"
+                ? (registrationStep === "verify"
+                  ? "Verify Your Email"
+                  : signupMode
+                    ? (signupMode === "trial" ? "Start Your Free Trial" : "Join a Firm")
+                    : "Get Started")
+                : "Welcome"}
             </CardTitle>
             <p className="text-sm text-slate-400 mt-2">
               {mode === "up"
-                ? (signupMode
-                  ? (signupMode === "trial"
-                    ? "Create your account to access Shopos for 14 days"
-                    : "Request access to an existing firm account")
-                  : "Choose how you want to get started")
+                ? (registrationStep === "verify"
+                  ? "Enter the OTP sent to your email to verify your account"
+                  : signupMode
+                    ? (signupMode === "trial"
+                      ? "Create your account to access Shopos for 14 days"
+                      : "Request access to an existing firm account")
+                    : "Choose how you want to get started")
                 : "Sign in to access your dashboard"}
             </p>
           </CardHeader>
@@ -348,8 +411,8 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
               </div>
             )}
 
-            {/* Password Input - Show for Sign In and Register */}
-            {(mode === "in" || mode === "up") && (
+            {/* Password Input - Show for Sign In and Register (only in details step for register) */}
+            {mode === "in" && (
               <div className="mb-6">
                 <Input
                   type="password"
@@ -359,6 +422,43 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAuth()}
                   icon={<Lock size={18} />}
+                  variant="glass"
+                  disabled={loading}
+                />
+              </div>
+            )}
+
+            {/* Registration Password - Show in details step */}
+            {mode === "up" && registrationStep === "details" && (
+              <div className="mb-6">
+                <Input
+                  type="password"
+                  label="Password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAuth()}
+                  icon={<Lock size={18} />}
+                  variant="glass"
+                  disabled={loading}
+                />
+              </div>
+            )}
+
+            {/* Registration Email Verification OTP - Show in verify step */}
+            {mode === "up" && registrationStep === "verify" && (
+              <div className="mb-6">
+                <div className="mb-4 p-3 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-200 text-sm">
+                  We sent an OTP to <strong>{email}</strong>. Enter it below to verify your email.
+                </div>
+                <Input
+                  type="text"
+                  label="Verification OTP"
+                  placeholder="Enter 6-digit OTP"
+                  value={verificationOtp}
+                  onChange={(e) => setVerificationOtp(e.target.value.slice(0, 6))}
+                  onKeyDown={(e) => e.key === "Enter" && handleAuth()}
+                  icon={<Mail size={18} />}
                   variant="glass"
                   disabled={loading}
                 />
@@ -425,8 +525,10 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                 </>
               ) : mode === "in" ? (
                 "Sign In"
-              ) : mode === "up" ? (
-                "Submit Request"
+              ) : mode === "up" && registrationStep === "details" ? (
+                "Send Verification OTP"
+              ) : mode === "up" && registrationStep === "verify" ? (
+                "Verify & Create Account"
               ) : forgotStep === "email" ? (
                 "Send OTP"
               ) : forgotStep === "otp" ? (
@@ -438,17 +540,25 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
 
             {/* Forgot Password Link - Show in Sign In mode */}
             {mode === "in" && (
-              <button
-                onClick={() => {
-                  setMode("forgot");
-                  setForgotStep("email");
-                  setError("");
-                  setEmail("");
-                }}
-                className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
-              >
-                Forgot your password?
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    setMode("forgot");
+                    setForgotStep("email");
+                    setError("");
+                    setEmail("");
+                  }}
+                  className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
+                >
+                  Forgot your password?
+                </button>
+                <a
+                  href="/ca/auth/login"
+                  className="block text-center text-xs text-slate-500 hover:text-indigo-400 mt-3 transition-colors"
+                >
+                  📊 CA Partner Login
+                </a>
+              </>
             )}
 
             {/* Back Button - Show in Forgot Password mode */}
@@ -466,6 +576,20 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                 className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
               >
                 ← Back to Sign In
+              </button>
+            )}
+
+            {/* Back Button - Show in Registration Email Verification */}
+            {mode === "up" && registrationStep === "verify" && (
+              <button
+                onClick={() => {
+                  setRegistrationStep("details");
+                  setVerificationOtp("");
+                  setError("");
+                }}
+                className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
+              >
+                ← Back to Details
               </button>
             )}
 

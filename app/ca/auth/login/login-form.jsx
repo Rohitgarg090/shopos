@@ -145,6 +145,12 @@ export default function CALoginForm() {
             Register here
           </Link>
         </p>
+
+        <p className="text-center text-xs text-gray-500 mt-4">
+          <Link href="/auth" className="text-gray-600 hover:text-indigo-600 transition-colors">
+            ← Back to Main Login
+          </Link>
+        </p>
       </div>
     </div>
   );

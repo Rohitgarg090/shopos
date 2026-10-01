@@ -9,7 +9,11 @@ const supabase = createClient(
 );
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = `Shopos <${process.env.RESEND_FROM_EMAIL || 'info@shopos.co.in'}>`;
+let FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'info@shopos.co.in';
+// Add display name if not already present
+if (!FROM_EMAIL.includes('<')) {
+  FROM_EMAIL = `ShopOS Sales <${FROM_EMAIL}>`;
+}
 
 export async function GET(req) {
   try {

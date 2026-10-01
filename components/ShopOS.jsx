@@ -8,6 +8,7 @@ import TrialExtensionModal from '@/components/TrialExtensionModal';
 import UpgradeBlockModal from '@/components/UpgradeBlockModal';
 import BillingPopup from '@/components/BillingPopup';
 import SupportTickets from '@/components/SupportTickets';
+import { INDUSTRY_TEMPLATES, getAvailableIndustries, UOM_BY_INDUSTRY } from '@/lib/industry-templates';
 import QRScanner from '@/components/QRScanner';
 import PhotoInvoice from '@/components/PhotoInvoice';
 import InvoicePreview from '@/components/InvoicePreview';
@@ -749,33 +750,40 @@ function Catalog({P,setP,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[cat,setCat]=useState('All');const[srch,setSrch]=useState('');const[showF,setShowF]=useState(false);const[eid,setEid]=useState(null);
   const[selected,setSelected]=useState(new Set());
-  const BLK={name:'',cat:'',sub:'',size:'M',color:'',price:'',gst:5,qty:0,hsn:'',articleNo:''};
+  const[industry,setIndustry]=useState('general');const[customFields,setCustomFields]=useState([]);const[userCategories,setUserCategories]=useState([]);
+  const BLK={name:'',cat:'',sub:'',size:'M',color:'',price:'',gst:5,qty:0,hsn:'',articleNo:'',hsnCustom:'',customAttrs:{}};
   const[form,setF]=useState(BLK);const[sv,setSv]=useState(false);const[toast,showT]=useToast();
+
+  // Load industry settings on mount
+  useEffect(()=>{const loadInd=async()=>{try{const res=await api.get('/api/firm-industry');const indType=res.industryType||'general';setIndustry(indType);const template=INDUSTRY_TEMPLATES[indType];const fields=res.customFields&&res.customFields.length>0?res.customFields:(template?.customFields||[]);setCustomFields(fields);setUserCategories(res.categories||[]);console.log('[Catalog] Loaded industry:',indType,'with',fields.length,'custom fields, categories:',res.categories?.length||0);}catch(e){console.error('[Catalog] Failed to load industry:',e);}};loadInd();},[]);
   const ff=k=>v=>setF(f=>({...f,[k]:v}));
-  const cts=CATS.reduce((a,c)=>{a[c]=P.filter(p=>p.cat===c).length;return a},{});
+  const curTemplate=INDUSTRY_TEMPLATES[industry];
+  const cts=(userCategories.length>0?userCategories:curTemplate?.categories||[]).reduce((a,c)=>{a[c]=P.filter(p=>p.cat===c).length;return a},{});
   const rows=P.filter(p=>(cat==='All'||p.cat===cat)&&((p.name||'').toLowerCase().includes(srch.toLowerCase())||(p.sku||'').includes(srch)||(p.articleNo||'').toLowerCase().includes(srch.toLowerCase())));
   const openNew=()=>{setF(BLK);setEid(null);setShowF(true)};
-  const openEdit=p=>{setF({name:p.name,cat:p.cat,sub:p.sub||'',size:p.size,color:p.color||'',price:p.price,gst:p.gst,qty:p.qty,hsn:p.hsn||'',articleNo:p.articleNo||''});setEid(p.id);setShowF(true)};
-  const save=async()=>{if(!form.name){alert('Name required');return}setSv(true);try{const pl={...form,price:+form.price,qty:+form.qty,gst:+form.gst};if(eid){const u=await api.put('/api/products',{id:eid,...pl});setP(ps=>ps.map(p=>p.id===eid?u:p));showT('Updated!')}else{const c=await api.post('/api/products',{...pl,sku:rnd9()});setP(ps=>[c,...ps]);showT('Added!')}setShowF(false)}catch(e){showT('Failed: '+e.message,'err')}finally{setSv(false)}};
+  const openEdit=p=>{setF({name:p.name,cat:p.cat,sub:p.sub||'',size:p.size,color:p.color||'',price:p.price,gst:p.gst,qty:p.qty,hsn:p.hsn||'',articleNo:p.articleNo||'',hsnCustom:'',customAttrs:p.customAttrs||{}});setEid(p.id);setShowF(true)};
+  const save=async()=>{if(!form.name){alert('Name required');return}setSv(true);try{const finalHsn=form.hsn==='custom'?form.hsnCustom:form.hsn;const pl={...form,hsn:finalHsn,price:+form.price,qty:+form.qty,gst:+form.gst,customAttrs:form.customAttrs||{}};if(eid){const u=await api.put('/api/products',{id:eid,...pl});setP(ps=>ps.map(p=>p.id===eid?u:p));showT('Updated!')}else{const c=await api.post('/api/products',{...pl,sku:rnd9()});setP(ps=>[c,...ps]);showT('Added!')}setShowF(false)}catch(e){showT('Failed: '+e.message,'err')}finally{setSv(false)}};
   const del=async id=>{if(!confirm('Delete?'))return;await api.del('/api/products?id='+id);setP(ps=>ps.filter(p=>p.id!==id))};
   const toggleSelect=id=>{const s=new Set(selected);if(s.has(id))s.delete(id);else s.add(id);setSelected(s)};
   const toggleSelectAll=()=>{if(selected.size===rows.length)setSelected(new Set());else setSelected(new Set(rows.map(p=>p.id)))};
   const bulkDelete=async()=>{if(selected.size===0){showT('Select products to delete','err');return}if(!confirm(`Delete ${selected.size} product${selected.size!==1?'s':''}?`))return;try{for(const id of selected){await api.del('/api/products?id='+id);}setP(ps=>ps.filter(p=>!selected.has(p.id)));setSelected(new Set());showT(`Deleted ${selected.size} product${selected.size!==1?'s':''}!`);}catch(e){showT('Failed: '+e.message,'err')}};
+  const[showQR,setShowQR]=useState(false);const[qrQty,setQrQty]=useState({});const[dlQR,setDlQR]=useState(false);
+  const downloadQRLabels=async()=>{console.log('[QR] Download clicked, selected:', selected.size, 'dlQR:', dlQR);if(selected.size===0){showT('Select products','err');return}if(dlQR){console.log('[QR] Already downloading');return}setDlQR(true);try{console.log('[QR] Starting PDF generation...');const{jsPDF}=await import('jspdf');console.log('[QR] jsPDF imported');const pdf=new jsPDF('p','mm',[210,297]);const selectedProds=rows.filter(p=>selected.has(p.id));console.log('[QR] Selected products:', selectedProds.length);let y=12;const labelW=186,labelH=65;let totalLabels=0;for(const p of selectedProds){const qty=parseInt(qrQty[p.id])||p.qty||1;totalLabels+=qty;console.log('[QR] Processing', p.name, 'qty:', qty);for(let i=0;i<qty;i++){if(y+labelH>280){pdf.addPage();y=12;}const x=12;pdf.setDrawColor(100);pdf.setLineWidth(0.5);pdf.rect(x,y,labelW,labelH);const qrSize=45;const qrX=x+labelW-qrSize-4;const infoW=labelW-qrSize-10;pdf.setFontSize(12);pdf.setFont(undefined,'bold');pdf.text('Product: '+(p.name||'Product').substring(0,28),x+4,y+8);pdf.setFontSize(10);pdf.setFont(undefined,'normal');pdf.text('Article Number: '+(p.articleNo||'—'),x+4,y+16);pdf.text('Price: ₹'+(p.price||0),x+4,y+23);if(p.size&&p.size!=='Free Size'){pdf.text('Size: '+p.size,x+4,y+30);}if(p.color){pdf.text('Colour: '+p.color,x+4,y+37);}pdf.text('SKU: '+p.sku,x+4,y+51);const qrUrl=qrU(p.sku||'unknown',200);try{console.log('[QR] Fetching QR from:', qrUrl);const res=await fetch(qrUrl);if(!res.ok){console.error('[QR] QR fetch failed:', res.status);throw new Error('QR fetch failed');}const blob=await res.blob();const reader=new FileReader();await new Promise(res2=>{reader.onload=()=>{try{const imgData=reader.result;pdf.addImage(imgData,'PNG',qrX,y+4,qrSize,qrSize);console.log('[QR] QR image added');}catch(ae){console.error('[QR] Add image error:',ae);}res2();};reader.readAsDataURL(blob);});}catch(e){console.error('[QR] QR error:',e);}y+=labelH+3;}}console.log('[QR] Total labels:', totalLabels);pdf.save('product_qr_labels.pdf');console.log('[QR] PDF saved');showT('QR Labels downloaded!');setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){console.error('[QR] Error:',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false);console.log('[QR] Download complete')}};
   return<div>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}><div style={S.h2}>Product Catalog</div><div style={{display:'flex',gap:6}}>{selected.size>0&&<button style={S.btn('dan')} onClick={bulkDelete}>🗑️ Delete {selected.size}</button>}<button style={S.btn('pri')} onClick={openNew}>+ Add Product</button></div></div>{toast}
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}><div style={S.h2}>Product Catalog</div><div style={{display:'flex',gap:6}}>{selected.size>0&&<><button style={S.btn('gho')} onClick={()=>setShowQR(true)}>⬇️ Download QR ({selected.size})</button><button style={S.btn('dan')} onClick={bulkDelete}>🗑️ Delete {selected.size}</button></>}</div></div>{toast}
     <CatTabs value={cat} onChange={setCat} counts={cts}/>
     <input style={{...S.inp,marginBottom:12}} placeholder='Search name, barcode, article no...' value={srch} onChange={e=>setSrch(e.target.value)}/>
+    <button style={{...S.btn('pri'),marginBottom:12}} onClick={()=>{setF(BLK);setEid(null);setShowF(true)}}> + Add Product</button>
     <div style={{...S.card,padding:0,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:600}}>
-      <thead><tr>{['','QR','Product','Article','Cat','Size','Price','GST','Stock',''].map(h=><th key={h} style={S.th}>{h==='QR'?(<input type='checkbox' checked={selected.size===rows.length&&rows.length>0} onChange={toggleSelectAll} style={{cursor:'pointer'}}/>):h}</th>)}</tr></thead>
+      <thead><tr>{['','QR','Product','Article','Category','Price','GST','Stock',''].map(h=><th key={h} style={S.th}>{h==='QR'?(<input type='checkbox' checked={selected.size===rows.length&&rows.length>0} onChange={toggleSelectAll} style={{cursor:'pointer'}}/>):h}</th>)}</tr></thead>
       <tbody>
-        {rows.length===0&&<tr><td colSpan={10}><MT msg='No products'/></td></tr>}
+        {rows.length===0&&<tr><td colSpan={9}><MT msg='No products'/></td></tr>}
         {rows.map(p=><tr key={p.id} style={{background:selected.has(p.id)?BLL:''}}>
           <td style={S.td}><input type='checkbox' checked={selected.has(p.id)} onChange={()=>toggleSelect(p.id)} style={{cursor:'pointer'}}/></td>
           <td style={S.td}><img src={qrU(p.sku,50)} width={50} height={50} style={{borderRadius:4,border:'0.5px solid '+BORD}} alt='QR'/></td>
-          <td style={S.td}><div style={{fontWeight:700}}>{p.name}</div><div style={{fontSize:10,color:MUT,...S.mono}}>{p.sku}</div></td>
+          <td style={S.td}><div style={{fontWeight:700}}>{p.name}</div><div style={{fontSize:10,color:MUT,...S.mono}}>{p.sku}</div>{p.customAttrs&&Object.entries(p.customAttrs).length>0&&<div style={{fontSize:9,color:BL,marginTop:3}}>{Object.entries(p.customAttrs).map(([k,v])=>v?`${k}:${v}`:null).filter(Boolean).join(' · ')}</div>}</td>
           <td style={{...S.td,...S.mono,fontSize:11,color:BL,fontWeight:600}}>{p.articleNo||'—'}</td>
-          <td style={S.td}><Bdg c='blue'>{p.cat}</Bdg></td>
-          <td style={S.td}><Bdg c='gray'>{p.size}</Bdg></td>
+          <td style={S.td}><Bdg c='blue'>{p.cat||'—'}</Bdg></td>
           <td style={{...S.td,...S.mono,color:AMB,fontWeight:700}}>{fmt(p.price)}</td>
           <td style={S.td}><Bdg c={p.gst===0?'gray':'blue'}>{p.gst}%</Bdg></td>
           <td style={S.td}><Bdg c={p.qty===0?'red':p.qty<=10?'amber':'green'}>{p.qty===0?'Out':p.qty}</Bdg></td>
@@ -783,21 +791,33 @@ function Catalog({P,setP,mob}){
         </tr>)}
       </tbody>
     </table></div>
-    {showF&&<div style={{...S.card,marginTop:14}}>
-      <div style={S.h2}>{eid?'Edit':'Add'} Product</div>
-      <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'1fr 1fr 1fr',gap:10}}>
-        <Fld label='Product Name *' span2><input style={S.inp} value={form.name} onChange={e=>ff('name')(e.target.value)}/></Fld>
-        <Fld label='Article No'><input style={S.inp} value={form.articleNo} onChange={e=>ff('articleNo')(e.target.value)} placeholder='e.g. abc123'/></Fld>
-        <Fld label='Category'><input style={S.inp} placeholder='e.g., Jeans, AC, Ring, Red chilly' value={form.cat} onChange={e=>ff('cat')(e.target.value)}/></Fld>
-        <Fld label='Sub-type'><input style={S.inp} value={form.sub} onChange={e=>ff('sub')(e.target.value)} placeholder='T-Shirts...'/></Fld>
-        <Fld label='Size'><select style={S.inp} value={form.size} onChange={e=>ff('size')(e.target.value)}>{SIZES.map(s=><option key={s}>{s}</option>)}</select></Fld>
-        <Fld label='Color'><input style={S.inp} value={form.color} onChange={e=>ff('color')(e.target.value)} placeholder='Blue...'/></Fld>
-        <Fld label='Price'><input style={S.inp} type='number' value={form.price} onChange={e=>ff('price')(e.target.value)}/></Fld>
-        <Fld label='GST'><select style={S.inp} value={form.gst} onChange={e=>ff('gst')(+e.target.value)}>{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></Fld>
-        <Fld label='Qty'><input style={S.inp} type='number' value={form.qty} onChange={e=>ff('qty')(+e.target.value)}/></Fld>
-        <Fld label='HSN'><input style={S.inp} value={form.hsn} onChange={e=>ff('hsn')(e.target.value)} placeholder='6109'/></Fld>
+    {showF&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
+      <div style={{...S.card,width:mob?'90%':'650px',maxHeight:'90vh',overflowY:'auto'}}>
+        <div style={S.h2}>{eid?'Edit':'Add'} Product</div>
+        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10,marginBottom:12}}>
+          <Fld label='Product Name *' span2={!mob}><input style={S.inp} value={form.name} onChange={e=>ff('name')(e.target.value)}/></Fld>
+          <Fld label='Article No'><input style={S.inp} value={form.articleNo} onChange={e=>ff('articleNo')(e.target.value)} placeholder='e.g. abc123'/></Fld>
+          <Fld label='Category'><select style={S.inp} value={form.cat} onChange={e=>ff('cat')(e.target.value)}><option value=''>Select category...</option>{(userCategories.length>0?userCategories:curTemplate?.categories||[]).map((c,i)=><option key={i} value={c}>{c}</option>)}</select></Fld>
+          <Fld label='Sub-type'><input style={S.inp} value={form.sub} onChange={e=>ff('sub')(e.target.value)} placeholder='Optional'/></Fld>
+          <Fld label='Price'><input style={S.inp} type='number' value={form.price} onChange={e=>ff('price')(e.target.value)}/></Fld>
+          <Fld label='GST'><select style={S.inp} value={form.gst} onChange={e=>ff('gst')(+e.target.value)}>{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></Fld>
+          <Fld label='Qty'><input style={S.inp} type='number' value={form.qty} onChange={e=>ff('qty')(+e.target.value)}/></Fld>
+          <Fld label='HSN Code'><select style={S.inp} value={form.hsn} onChange={e=>{const val=e.target.value;if(val==='custom'){ff('hsn')('custom')}else{ff('hsn')(val)}}}><option value=''>Select HSN code...</option>{form.cat&&curTemplate?.hsnMapping&&curTemplate.hsnMapping[form.cat]&&curTemplate.hsnMapping[form.cat].map((h,i)=>{const code=h.split(' - ')[0].trim();return<option key={i} value={code}>{h}</option>})}<option value='custom'>Custom HSN Code</option></select></Fld>
+          {form.hsn==='custom'&&<Fld label='Enter HSN'><input style={S.inp} value={form.hsnCustom||''} onChange={e=>setF(p=>({...p,hsnCustom:e.target.value}))} placeholder='e.g. 6204'/></Fld>}
+          {customFields.map((f,i)=>{const cv=form.customAttrs?.[f.name]||'';const upd=val=>setF(p=>({...p,customAttrs:{...p.customAttrs,[f.name]:val}}));return<Fld key={i} label={f.label}>{f.type==='text'?<input style={S.inp} value={cv} onChange={e=>upd(e.target.value)} placeholder={f.placeholder}/>:f.type==='number'?<input style={S.inp} type='number' value={cv} onChange={e=>upd(e.target.value)}/>:f.type==='date'?<input style={S.inp} type='date' value={cv} onChange={e=>upd(e.target.value)}/>:<select style={S.inp} value={cv} onChange={e=>upd(e.target.value)}><option value=''>Select {f.label}</option></select>}</Fld>})}
+        </div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button style={S.btn()} onClick={()=>setShowF(false)} disabled={sv}>Cancel</button><button style={S.btn('pri')} onClick={save} disabled={sv}>{sv?'Saving...':'Save & Generate Barcode'}</button></div>
       </div>
-      <div style={{display:'flex',gap:8,marginTop:12}}><button style={S.btn('pri')} onClick={save} disabled={sv}>{sv?'Saving...':'Save & Generate Barcode'}</button><button style={S.btn()} onClick={()=>setShowF(false)}>Cancel</button></div>
+    </div>}
+    {showQR&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
+      <div style={{...S.card,width:mob?'90%':'500px',maxHeight:'80vh',overflowY:'auto'}}>
+        <div style={S.h2}>QR Label Quantities</div>
+        <div style={{fontSize:12,color:MUT,marginBottom:14}}>Select quantity for each product (default = stock quantity)</div>
+        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr',gap:12,marginBottom:14,maxHeight:'50vh',overflowY:'auto'}}>
+          {rows.filter(p=>selected.has(p.id)).map(p=><div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:8,background:BG,borderRadius:6}}><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{p.name}</div><div style={{fontSize:10,color:MUT}}>{p.sku}</div></div><div style={{display:'flex',alignItems:'center',gap:4}}><input type='number' min='1' value={qrQty[p.id]||p.qty||1} onChange={e=>setQrQty(q=>({...q,[p.id]:parseInt(e.target.value)||1}))} style={{...S.inp,width:60,padding:'6px 8px',fontSize:12}} placeholder='Qty'/><span style={{fontSize:11,color:MUT,minWidth:30}}>labels</span></div></div>)}
+        </div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button style={S.btn()} onClick={()=>{setShowQR(false);setQrQty({})}} disabled={dlQR}>Cancel</button><button style={S.btn('pri')} onClick={downloadQRLabels} disabled={dlQR}>{dlQR?'⏳ Generating...':'⬇️ Download PDF'}</button></div>
+      </div>
     </div>}
   </div>;}
 
@@ -814,7 +834,11 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   const[supplierBanner,setSupplierBanner]=useState(null);
   const[markupPct,setMarkupPct]=useState('');
   const[man,setMan]=useState({articleNo:'',name:'',cat:'',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});
+  const[industry,setIndustry]=useState('general');const[userCategories,setUserCategories]=useState([]);
   const gk=()=>firm?.geminiKey||(isBR?JSON.parse(localStorage.getItem('shopos_firm')||'{}').geminiKey||'':'');
+
+  // Load industry settings on mount
+  useEffect(()=>{const loadInd=async()=>{try{const res=await api.get('/api/firm-industry');setIndustry(res.industryType||'general');setUserCategories(res.categories||[]);console.log('[ScanBill] Loaded industry:',res.industryType,'with',res.categories?.length||0,'categories');}catch(e){console.error('[ScanBill] Failed to load industry:',e);}};loadInd();},[]);
 
   /* ── apply markup to all items ── */
   const applyMarkup=pct=>{
@@ -886,7 +910,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
             'Authorization':`Bearer ${token}`,
             'x-firm-id':activeFirm.id
           },
-          body:JSON.stringify({imageBase64:b64,geminiKey:k,mimeType})
+          body:JSON.stringify({imageBase64:b64,geminiKey:k,mimeType,industryType:industry,userCategories})
         });
 
         const data=await backendRes.json();
@@ -1895,6 +1919,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
     finally{setEwbLoading(null);}
   };
   const updatePay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
+  const totalInvoiced=B.reduce((s,b)=>s+b.total,0);const totalPaid=Py.reduce((s,p)=>s+p.amount,0);const netOutstanding=totalInvoiced-totalPaid;
   return<div>
     <div style={{...S.h2, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
       <div style={{display:'flex',alignItems:'center',gap:12}}><span>Bills & Invoices</span><InvoiceHelp /><PaymentHelp /></div>
@@ -1935,6 +1960,13 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
                 {b.ewbNo?<span style={{...S.mono,fontSize:10,color:GR,background:GRL,padding:'2px 6px',borderRadius:5,fontWeight:700}}>EWB: {b.ewbNo}</span>:<button style={S.btn('def',true)} onClick={()=>generateEWB(b)} disabled={ewbLoading===b.id}>{ewbLoading===b.id?<Spin/>:'E-Way'}</button>}
               </div></td>
             </tr>;})}
+          <tr style={{background:'#f5f4f0',fontWeight:700}}>
+            <td colSpan={4} style={S.td}>TOTALS ({B.length} bills)</td>
+            <td style={{...S.td,...S.mono,color:RD,fontWeight:800}}>{fmt(totalInvoiced)}</td>
+            <td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(totalPaid)}</td>
+            <td style={S.td}><Bdg c={netOutstanding>0?'red':'green'}>{netOutstanding>0?'Unpaid':'Settled'}</Bdg></td>
+            <td colSpan={2} style={{...S.td,...S.mono,fontWeight:800,color:netOutstanding>0?RD:GR}}>Outstanding: {fmt(netOutstanding)}</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -2992,6 +3024,51 @@ function SecurityTab({ses}){
   </div>;
 }
 
+/* ── INDUSTRY SETUP ── */
+function IndustrySetup({firm,saveFirm,S,mob}){
+  const[ind,setInd]=useState(firm?.industryType||'general');
+  const[cats,setCats]=useState(firm?.categories||[]);
+  const[newCat,setNewCat]=useState('');
+  const[saving,setSaving]=useState(false);
+  const[toast,showT]=useToast();
+  const indList=getAvailableIndustries();
+  const curTemplate=INDUSTRY_TEMPLATES[ind];
+  const save=async()=>{setSaving(true);try{const customFlds=curTemplate?.customFields||[];await api.put('/api/firm-industry',{industryType:ind,customFields:customFlds,categories:cats});saveFirm({...firm,industryType:ind,customFields:customFlds,categories:cats});showT('Business type updated! Custom fields loaded.');}catch(e){showT('Failed: '+e.message,'err')}finally{setSaving(false)}};
+  const addCat=()=>{if(!newCat.trim()){showT('Category name required','err');return}if(cats.includes(newCat)){showT('Category already exists','err');return}setCats([...cats,newCat]);setNewCat('')};
+  const removeCat=c=>{setCats(cats.filter(x=>x!==c))};
+  return<div>{toast}
+    <div style={{...S.card,marginBottom:14}}>
+      <div style={S.h3}>Select Your Business Type</div>
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:12,marginBottom:16}}>
+        {indList.map(it=><div key={it.id} onClick={()=>setInd(it.id)} style={{padding:14,border:ind===it.id?'2px solid '+BL:'1px solid '+BORD,background:ind===it.id?BLL:'#fff',borderRadius:8,cursor:'pointer',transition:'all 0.2s'}}>
+          <div style={{fontSize:20,marginBottom:4}}>{it.icon}</div>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{it.name}</div>
+          <div style={{fontSize:10,color:MUT,lineHeight:1.4}}>{it.description}</div>
+          {ind===it.id&&<div style={{fontSize:10,color:BL,fontWeight:700,marginTop:6}}>✓ Selected</div>}
+        </div>)}
+      </div>
+    </div>
+    {curTemplate&&<div style={{...S.card,marginBottom:14}}>
+      <div style={S.h3}>Default Fields for {curTemplate.name}</div>
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:8,marginBottom:12}}>
+        {curTemplate.customFields.map((f,i)=><div key={i} style={{padding:8,background:BG,borderRadius:6,fontSize:11}}>
+          <div style={{fontWeight:600,color:BL}}>{f.label}</div>
+          <div style={{fontSize:10,color:MUT}}>{f.type}</div>
+        </div>)}
+      </div>
+    </div>}
+    <div style={{...S.card,marginBottom:14}}>
+      <div style={S.h3}>Product Categories</div>
+      <div style={{display:'flex',gap:6,marginBottom:10}}>
+        <input style={{...S.inp,flex:1}} value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder='Enter category name' onKeyPress={e=>e.key==='Enter'&&addCat()}/>
+        <button style={S.btn('pri')} onClick={addCat}>Add</button>
+      </div>
+      {cats.length===0?<div style={{fontSize:11,color:MUT}}>No categories yet</div>:<div style={{display:'flex',flexWrap:'wrap',gap:6}}>{cats.map((c,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',background:BG,borderRadius:6,fontSize:11}}>{c}<button style={{background:'none',border:'none',color:RD,cursor:'pointer',fontSize:12,fontWeight:700}} onClick={()=>removeCat(c)}>×</button></div>)}</div>}
+    </div>
+    <button style={{...S.btn('pri'),width:'100%'}} onClick={save} disabled={saving}>{saving?'Saving...':'Save Business Setup'}</button>
+  </div>;
+}
+
 function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
   const[f,setF]=useState(firm);const[saved,setSaved]=useState(false);const[logoUploading,setLogoUploading]=useState(false);
   const[settingsTab,setSettingsTab]=useState('account');
@@ -3007,11 +3084,14 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
     {ses&&<div style={{padding:'7px 12px',background:BLL,borderRadius:7,marginBottom:14,fontSize:12,color:BL}}>Logged in as <strong>{ses.user?.email}</strong></div>}
 
     {/* Settings Tabs */}
-    <div style={{display:'flex',gap:8,marginBottom:20,borderBottom:'1px solid '+BORD,paddingBottom:0}}>
-      <button onClick={()=>setSettingsTab('account')} style={{padding:'12px 0',fontSize:13,fontWeight:settingsTab==='account'?700:500,color:settingsTab==='account'?BL:MUT,border:'none',background:'none',cursor:'pointer',borderBottom:settingsTab==='account'?'2px solid '+BL:'2px solid transparent',transition:'all 0.2s'}}>
+    <div style={{display:'flex',gap:8,marginBottom:20,borderBottom:'1px solid '+BORD,paddingBottom:0,overflowX:'auto'}}>
+      <button onClick={()=>setSettingsTab('account')} style={{padding:'12px 0',fontSize:13,fontWeight:settingsTab==='account'?700:500,color:settingsTab==='account'?BL:MUT,border:'none',background:'none',cursor:'pointer',borderBottom:settingsTab==='account'?'2px solid '+BL:'2px solid transparent',transition:'all 0.2s',whiteSpace:'nowrap'}}>
         Account & Firm
       </button>
-      <button onClick={()=>setSettingsTab('security')} style={{padding:'12px 0',fontSize:13,fontWeight:settingsTab==='security'?700:500,color:settingsTab==='security'?BL:MUT,border:'none',background:'none',cursor:'pointer',borderBottom:settingsTab==='security'?'2px solid '+BL:'2px solid transparent',transition:'all 0.2s'}}>
+      <button onClick={()=>setSettingsTab('industry')} style={{padding:'12px 0',fontSize:13,fontWeight:settingsTab==='industry'?700:500,color:settingsTab==='industry'?BL:MUT,border:'none',background:'none',cursor:'pointer',borderBottom:settingsTab==='industry'?'2px solid '+BL:'2px solid transparent',transition:'all 0.2s',whiteSpace:'nowrap'}}>
+        Business Type
+      </button>
+      <button onClick={()=>setSettingsTab('security')} style={{padding:'12px 0',fontSize:13,fontWeight:settingsTab==='security'?700:500,color:settingsTab==='security'?BL:MUT,border:'none',background:'none',cursor:'pointer',borderBottom:settingsTab==='security'?'2px solid '+BL:'2px solid transparent',transition:'all 0.2s',whiteSpace:'nowrap'}}>
         Security
       </button>
     </div>
@@ -3146,6 +3226,7 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
     </div>
     </div>}
 
+    {settingsTab==='industry'&&<IndustrySetup firm={firm} saveFirm={saveFirm} S={S} mob={mob}/>}
     {settingsTab==='security'&&<SecurityTab ses={ses}/>}
   </div>;}
 
@@ -3832,7 +3913,12 @@ function Suppliers({SI,setSI,SS,setSS,firm,gk,mob}){
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
             <div>
               <div style={{fontWeight:800,fontSize:15,color:BL}}>{selSupplier}</div>
-              <div style={{fontSize:12,color:MUT}}>{supInvoices.length} invoices · Total: <strong style={{color:AMB,fontFamily:'DM Mono,monospace'}}>{fmt(supTotal)}</strong></div>
+              <div style={{fontSize:12,color:MUT}}>{supInvoices.length} invoices</div>
+              {supInvoices.length>0&&<div style={{display:'flex',gap:12,marginTop:6}}>
+                <div><span style={{fontSize:10,color:MUT,textTransform:'uppercase',fontWeight:600}}>Subtotal</span><div style={{fontSize:14,fontWeight:800,color:TXT,...S.mono}}>{fmt(supInvoices.reduce((s,i)=>s+(+i.subtotal||0),0))}</div></div>
+                {supInvoices.some(i=>i.discount>0)&&<div><span style={{fontSize:10,color:MUT,textTransform:'uppercase',fontWeight:600}}>Discount</span><div style={{fontSize:14,fontWeight:800,color:GR,...S.mono}}>-{fmt(supInvoices.reduce((s,i)=>s+(+i.discount||0),0))}</div></div>}
+                <div><span style={{fontSize:10,color:MUT,textTransform:'uppercase',fontWeight:600}}>Total</span><div style={{fontSize:14,fontWeight:800,color:AMB,...S.mono}}>{fmt(supTotal)}</div></div>
+              </div>}
             </div>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
