@@ -101,7 +101,16 @@ export async function POST(req) {
     }
 
     const rawText = await callGemini(apiKey, parts);
-    console.log('[reconcile] Gemini response:', rawText.substring(0, 500));
+    console.log('[reconcile] Gemini response length:', rawText.length);
+    console.log('[reconcile] Gemini response:', rawText);
+    try {
+      const geminiTxns = extractJSON(rawText);
+      console.log('[reconcile] Extracted transactions:', geminiTxns.length);
+    } catch (parseErr) {
+      console.error('[reconcile] JSON parse error:', parseErr.message);
+      console.error('[reconcile] Raw response was:', rawText);
+      throw parseErr;
+    }
     const geminiTxns = extractJSON(rawText);
 
     if (!Array.isArray(geminiTxns)) {
