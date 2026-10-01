@@ -133,6 +133,24 @@ function Modal({title,onClose,children,wide}){
 }
 function CatTabs({value,onChange,counts}){const cats=counts?['All',...Object.keys(counts).sort()]:CATS;return<div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>{cats.map(c=><button key={c} onClick={()=>onChange(c)} style={{padding:'3px 11px',borderRadius:20,border:'0.5px solid '+(value===c?BL:BORD),background:value===c?BL:'#fff',color:value===c?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>{c}{c!=='All'&&counts&&<span style={{opacity:.7,fontSize:9}}> {counts[c]||0}</span>}</button>)}</div>;}
 
+function DateRangeFilter({onDateChange}){
+  const[range,setRange]=useState(null);const[custom,setCustom]=useState({from:'',to:''});
+  const getDateRange=preset=>{const today=new Date();const d=new Date(today);d.setHours(0,0,0,0);const from=new Date(d);
+    if(preset==='7d'){from.setDate(from.getDate()-7);}else if(preset==='15d'){from.setDate(from.getDate()-15);}else if(preset==='30d'){from.setDate(from.getDate()-30);}else if(preset==='3m'){from.setMonth(from.getMonth()-3);}else if(preset==='6m'){from.setMonth(from.getMonth()-6);}else if(preset==='1y'){from.setFullYear(from.getFullYear()-1);}
+    return{from:from.toISOString().split('T')[0],to:today.toISOString().split('T')[0]};};
+  const applyRange=preset=>{const r=getDateRange(preset);setRange(preset);setCustom(r);onDateChange({from:r.from,to:r.to});};
+  const applyCustom=()=>{if(custom.from&&custom.to){setRange('custom');onDateChange({from:custom.from,to:custom.to});}};
+  return<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
+    {['7d','15d','30d','3m','6m','1y'].map(p=>{const labels={_7d:'7 days','7d':'7 days','15d':'15 days','30d':'30 days','3m':'3 months','6m':'6 months','1y':'Annual'};return<button key={p} onClick={()=>applyRange(p)} style={{padding:'5px 12px',borderRadius:20,border:'0.5px solid '+(range===p?BL:BORD),background:range===p?BL:'#fff',color:range===p?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>{labels[p]}</button>;})}
+    <div style={{display:'flex',gap:6,alignItems:'center'}}>
+      <input type='date' value={custom.from} onChange={e=>setCustom(c=>({...c,from:e.target.value}))} style={{fontSize:11,padding:'5px 8px',border:'0.5px solid '+BORD,borderRadius:6,background:'#fff'}}/>
+      <span style={{fontSize:11,color:MUT}}>to</span>
+      <input type='date' value={custom.to} onChange={e=>setCustom(c=>({...c,to:e.target.value}))} style={{fontSize:11,padding:'5px 8px',border:'0.5px solid '+BORD,borderRadius:6,background:'#fff'}}/>
+      <button onClick={applyCustom} style={{padding:'5px 12px',borderRadius:6,background:range==='custom'?BL:'#fff',color:range==='custom'?'#fff':TXT,border:'0.5px solid '+(range==='custom'?BL:BORD),cursor:'pointer',fontSize:11,fontWeight:600}}>Apply</button>
+    </div>
+  </div>;
+}
+
 const DEF={name:'Your Firm Name',shoptype:'Wholesale Clothing',gstin:'',address:'Shop Address, City, State',mobile:'',email:'',senderEmail:'',state:'Madhya Pradesh',bankName:'',bankAccount:'',bankIFSC:'',invoicePrefix:'INV',logo:'',emailSubject:'Invoice {invoiceNo} from {firmName}',emailBody:'Dear {customerName},\n\nPlease find your invoice {invoiceNo} dated {date} for {amount}.\n\nThank you for your business!\n\nWarm regards,\n{firmName}\n{mobile}',terms:'1. Goods once sold will not be taken back.\n2. Payment due within 45 days.\n3. Add 18% interest if payment not done in 45 days.\n4. Cheques subject to realisation.\n5. Subject to local jurisdiction.'};
 
 
@@ -1791,6 +1809,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   const[vid,setVid]=useState(initBill?.id||null);const[payBill,setPayBill]=useState(null);const[toast,showT]=useToast();
   const[transportEdit,setTransportEdit]=useState(null);const[transportForm,setTransportForm]=useState({transportName:'',lrNumber:''});
   const[pdfBusy,setPdfBusy]=useState(false);const[ewayBill,setEwayBill]=useState(null);const[ewbLoading,setEwbLoading]=useState(null);
+  const[dateRange,setDateRange]=useState({from:null,to:null});
   useEffect(()=>{if(initBill){setVid(initBill.id);onClearInit&&setTimeout(onClearInit,100);}},[initBill?.id]);
   const bill=B.find(b=>b.id===vid)||initBill;
   const print=()=>{if(!bill)return;const w=window.open('','_blank');const invHtml=document.getElementById('invoice-print')?.outerHTML||'';w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice '+(bill.invoiceNo||bill.id)+'</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;background:#fff}@media print{body{margin:0;padding:0}@page{margin:8mm;size:A4}}</style></head><body>'+invHtml+'</body></html>');w.document.close();setTimeout(()=>w.print(),500);};
@@ -1919,17 +1938,19 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
     finally{setEwbLoading(null);}
   };
   const updatePay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
-  const totalInvoiced=B.reduce((s,b)=>s+b.total,0);const totalPaid=Py.reduce((s,p)=>s+p.amount,0);const netOutstanding=totalInvoiced-totalPaid;
+  const filteredBills=dateRange.from&&dateRange.to?B.filter(b=>{const d=new Date(b.date);return d>=new Date(dateRange.from)&&d<=new Date(dateRange.to+' 23:59:59');}):B;
+  const totalInvoiced=filteredBills.reduce((s,b)=>s+b.total,0);const totalPaid=filteredBills.reduce((s,b)=>{const paid=Py.filter(p=>p.billId===b.id).reduce((sum,p)=>sum+p.amount,0);return s+paid;},0);const netOutstanding=totalInvoiced-totalPaid;
   return<div>
     <div style={{...S.h2, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
       <div style={{display:'flex',alignItems:'center',gap:12}}><span>Bills & Invoices</span><InvoiceHelp /><PaymentHelp /></div>
     </div>{toast}
+    <DateRangeFilter onDateChange={setDateRange}/>
     <div style={{...S.card,padding:0,marginBottom:14,overflowX:'auto'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?500:700}}>
         <thead><tr>{['Invoice','Date','Customer','Pcs','Total','Paid','Status','Transport & LR','Actions'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
         <tbody>
-          {B.length===0&&<tr key='empty'><td colSpan={9}><MT msg='No bills yet.'/></td></tr>}
-          {B.map(b=>{const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';
+          {filteredBills.length===0&&<tr key='empty'><td colSpan={9}><MT msg={dateRange.from?'No bills in this date range':'No bills yet.'}/></td></tr>}
+          {filteredBills.map(b=>{const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';
             return<tr key={b.id}>
               <td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td>
               <td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td>
@@ -1961,7 +1982,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
               </div></td>
             </tr>;})}
           <tr style={{background:'#f5f4f0',fontWeight:700}}>
-            <td colSpan={4} style={S.td}>TOTALS ({B.length} bills)</td>
+            <td colSpan={4} style={S.td}>TOTALS ({filteredBills.length} bills)</td>
             <td style={{...S.td,...S.mono,color:RD,fontWeight:800}}>{fmt(totalInvoiced)}</td>
             <td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(totalPaid)}</td>
             <td style={S.td}><Bdg c={netOutstanding>0?'red':'green'}>{netOutstanding>0?'Unpaid':'Settled'}</Bdg></td>
@@ -2704,6 +2725,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
 function Ledger({B,Py,setPy,C,Ret,firm,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[fp,setFp]=useState('');const[ft,setFt]=useState('All');const[selCust,setSelCust]=useState(null);const[dlLoading,setDlLoading]=useState(false);const[toast,showT]=useToast();
+  const[dateRange,setDateRange]=useState({from:null,to:null});
   const downloadLedger=async(format='csv')=>{setDlLoading(true);try{const token=await getToken();const res=await fetch('/api/ledger',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'x-firm-id':_activeFirmId},body:JSON.stringify({customerId:selCust?.id||null,format})});if(!res.ok)throw new Error('Failed to download');const blob=await res.blob();const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`Ledger_${selCust?.name||'All'}_${new Date().toISOString().split('T')[0]}.${format==='csv'?'csv':'json'}`;link.click();showT('Ledger downloaded!');}catch(err){showT('Failed: '+err.message,'err');}finally{setDlLoading(false)};}
   const upPay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const all=[
@@ -2712,7 +2734,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob}){
     ...(Ret||[]).map(r=>({tp:r.type==='customer'?'Cust. Return':'Supp. Return',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',customerId:r.customerId,debit:r.type==='supplier'?r.total:0,credit:r.type==='customer'?r.total:0,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
     ...C.filter(c=>c.openingBalance>0).map(c=>({tp:'Opening Balance',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,customerId:c.id,debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||((ft==='Invoice'&&e.tp==='Opening Balance'));return pok&&tok;});
+  const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||((ft==='Invoice'&&e.tp==='Opening Balance'));const dok=!dateRange.from||!dateRange.to||(new Date(e.date)>=new Date(dateRange.from)&&new Date(e.date)<=new Date(dateRange.to+' 23:59:59'));return pok&&tok&&dok;});
   let run=0;const withBal=[...rows].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   const tD=rows.reduce((s,e)=>s+e.debit,0),tC=rows.reduce((s,e)=>s+e.credit,0);
   const parties=[...new Set(all.map(e=>e.party).filter(Boolean))].sort();
@@ -2725,6 +2747,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob}){
         <button style={S.btn('def')} disabled={dlLoading} onClick={()=>downloadLedger('json')}>📥 {dlLoading?'Downloading...':'Download JSON'}</button>
       </div>
     </div>
+    <DateRangeFilter onDateChange={setDateRange}/>
     <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:12,marginBottom:14}}>
       {[['Total Invoiced',fmt(tD),RD,RDL],['Total Received',fmt(tC),GR,GRL],['Net Outstanding',fmt(tD-tC),tD-tC>0?RD:GR,tD-tC>0?RDL:GRL]].map(([l,v,c,bg])=><div key={l} style={{...S.met,background:bg,border:'0.5px solid '+c+'30'}}><div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',color:c+'aa',marginBottom:3}}>{l}</div><div style={{fontSize:22,fontWeight:800,...S.mono,color:c}}>{v}</div></div>)}
     </div>
