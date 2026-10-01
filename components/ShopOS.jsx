@@ -2844,7 +2844,7 @@ function BankPage({BS,setBS,B,Py,firm,mob,gk}){
     </div>
     {bankTab==='statements'&&<BankStatements BS={BS} setBS={setBS} mob={mob}/>}
     {bankTab==='recon'&&<FirmReconciliation BS={BS} B={B} Py={Py} firm={firm} C={C} gk={gk} mob={mob}/>}
-    {bankTab==='history'&&<ReconciliationHistory mob={mob}/>}
+    {bankTab==='history'&&<ReconciliationHistory C={C} mob={mob}/>}
   </div>;
 }
 
@@ -2876,7 +2876,8 @@ function FirmReconciliation({BS,B,Py,firm,C,gk,mob}){
   </div>;
 }
 
-function ReviewSession({sessionId,onBack,mob,showT,C}){
+function ReviewSession({sessionId,onBack,mob,showT,C=[]}){
+  const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[session,setSession]=useState(null);const[txns,setTxns]=useState([]);const[loading,setLoading]=useState(true);const[filter,setFilter]=useState('all');const[editingTxn,setEditingTxn]=useState(null);
 
   useEffect(()=>{(async()=>{const res=await api.get('/api/bank-reconciliation?sessionId='+sessionId);setSession(res.session);setTxns(res.transactions);setLoading(false);})();},[ sessionId]);
@@ -2923,12 +2924,12 @@ function ReviewSession({sessionId,onBack,mob,showT,C}){
   </div>;
 }
 
-function ReconciliationHistory({mob}){
+function ReconciliationHistory({mob,C}){
   const[sessions,setSessions]=useState([]);const[loading,setLoading]=useState(true);const[activeSession,setActiveSession]=useState(null);
 
   useEffect(()=>{(async()=>{const res=await api.get('/api/recon-sessions');setSessions(res||[]);setLoading(false);})();},[ ]);
 
-  if(loading)return<div><Spin/></div>;if(activeSession)return<ReviewSession sessionId={activeSession} onBack={()=>setActiveSession(null)} mob={mob}/>;
+  if(loading)return<div><Spin/></div>;if(activeSession)return<ReviewSession sessionId={activeSession} onBack={()=>setActiveSession(null)} C={C} mob={mob}/>;
 
   return<div>
     <div style={S.h2}>Reconciliation History</div>
