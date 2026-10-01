@@ -80,15 +80,15 @@ export async function POST(req) {
   // Insert transactions
   if (transactions && transactions.length > 0) {
     const txnData = transactions
-      .filter(t => t.date && t.amount && t.type) // Skip incomplete transactions
+      .filter(t => (t.date || t.txn_date) && t.amount && (t.type || t.txn_type))
       .map((t, idx) => ({
         session_id: session.id,
         firm_id: c.firmId,
-        txn_date: t.date,
+        txn_date: t.txn_date || t.date,
         description: t.description || '',
-        ref_no: t.ref || '',
+        ref_no: t.ref_no || t.ref || '',
         amount: parseFloat(t.amount) || 0,
-        txn_type: t.type.toLowerCase(),
+        txn_type: (t.txn_type || t.type || '').toLowerCase(),
         balance: parseFloat(t.balance) || 0,
         match_status: 'unmatched',
         sort_order: idx,
