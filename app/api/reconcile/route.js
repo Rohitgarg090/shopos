@@ -79,7 +79,9 @@ If no transactions found: return []`;
 
 function convertTxnDate(ddMmYyyy) {
   if (!ddMmYyyy) return new Date().toISOString().split('T')[0];
-  const [d, m, y] = ddMmYyyy.split('/');
+  const sep = ddMmYyyy.includes('-') ? '-' : '/';
+  const [d, m, y] = ddMmYyyy.split(sep);
+  if (!d || !m || !y) return new Date().toISOString().split('T')[0];
   return `${y}-${m}-${d}`;
 }
 
