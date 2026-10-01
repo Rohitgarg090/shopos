@@ -567,7 +567,7 @@ export default function ShopOS(){
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} mob={mob}/>}
-      {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={B} Py={Py} firm={firm} mob={mob} gk={()=>firm?.geminiKey||''}/>}
+      {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={B} Py={Py} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
       {page==='ledger'&&<Ledger B={B} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
       {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
@@ -2835,7 +2835,7 @@ function BankStatements({BS,setBS,mob}){
   </div>;}
 
 /* ── BANK RECONCILIATION ── */
-function BankPage({BS,setBS,B,Py,firm,mob,gk}){
+function BankPage({BS,setBS,B,Py,firm,C,mob,gk}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[bankTab,setBankTab]=useState('statements');
   return<div>
