@@ -46,12 +46,15 @@ export async function POST(req) {
 export async function PUT(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!c.firmId) return NextResponse.json({ error: 'No firm selected' }, { status: 400 });
+
   const b = await req.json();
   const { id, ...f } = b;
 
-  // Verify product belongs to this firm
+  // Verify product belongs to this firm (or has no firm assigned yet)
   const { data: product } = await c.sb.from('products').select('firm_id').eq('id', id).single();
-  if (!product || product.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+  if (product.firm_id && product.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Only update fields that are provided
   const updates = {};
@@ -76,11 +79,14 @@ export async function PUT(req) {
 export async function DELETE(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!c.firmId) return NextResponse.json({ error: 'No firm selected' }, { status: 400 });
+
   const id = new URL(req.url).searchParams.get('id');
 
   // Verify product belongs to this firm before deleting
   const { data: product } = await c.sb.from('products').select('firm_id').eq('id', id).single();
-  if (!product || product.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+  if (product.firm_id && product.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { error } = await c.sb.from('products').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
