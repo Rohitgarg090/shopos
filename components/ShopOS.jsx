@@ -2998,7 +2998,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
     // Sales Invoices (if ledgerType includes Sales)
     ...((ledgerType==='All'||ledgerType==='Sales')?B.map(b=>({tp:'Sales Inv',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,partyId:b.customerId,partyType:'customer',debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})):[]),
     // Purchase Invoices (if ledgerType includes Purchase)
-    ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.date,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',debit:0,credit:s.total,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
+    ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.date,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',debit:s.total,credit:0,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
     // Payments - FILTERED by ledger type using paymentType field
     ...((ledgerType==='Sales'?validPayments.filter(p=>p.paymentType==='customer'):ledgerType==='Purchase'?validPayments.filter(p=>p.paymentType==='supplier'):validPayments).map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,partyId:p.customerId||p.supplierId,partyType:p.paymentType||'customer',debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p}))),
     // Returns - FILTERED by ledger type
