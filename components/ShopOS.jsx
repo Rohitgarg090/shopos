@@ -2489,15 +2489,16 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
       </table>
     </div>
   </div>}
-    {caTab==='payment'&&<PaymentReceivedTab customer={cust} payments={custPay} onPaymentAdded={(p)=>{custPay.push(p);setCaTab('payment');}} firm={firm}/>}
+    {caTab==='payment'&&<PaymentReceivedTab customer={cust} payments={custPay} setPy={setPy} Py={Py} B={B} firm={firm}/>}
     {caTab==='notifications'&&<NotificationHistory customerId={cust.id} customerName={cust.name}/>}
     {caTab==='files'&&<CustomerBankStatements customerId={cust.id}/>}
   </Modal>;}
 
-function PaymentReceivedTab({customer,payments,onPaymentAdded,firm}){
+function PaymentReceivedTab({customer,payments,setPy,Py,B,firm}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
-  const[date,setDate]=useState(new Date().toISOString().split('T')[0]);const[mode,setMode]=useState('Cash');const[amount,setAmount]=useState('');const[ref,setRef]=useState('');const[city,setCity]=useState('');const[remarks,setRemarks]=useState('');const[printId,setPrintId]=useState(null);
-  const add=async()=>{if(!amount||!parseFloat(amount)){alert('Enter amount');return;}try{const p=await api.post('/api/payments',{customerId:customer.id,date,mode,amount:parseFloat(amount),chequeNo:mode==='Cheque'?ref:'',upiRef:mode==='UPI'?ref:'',city,remarks});onPaymentAdded(p);setAmount('');setRef('');setCity('');setRemarks('');setDate(new Date().toISOString().split('T')[0]);alert('Payment added!');}catch(e){alert('Error: '+e.message);}};
+  const[date,setDate]=useState(new Date().toISOString().split('T')[0]);const[mode,setMode]=useState('Cash');const[amount,setAmount]=useState('');const[ref,setRef]=useState('');const[city,setCity]=useState('');const[remarks,setRemarks]=useState('');const[printId,setPrintId]=useState(null);const[bill,setBill]=useState('');
+  const custBills=B.filter(b=>b.customerId===customer.id);
+  const add=async()=>{if(!amount||!parseFloat(amount)){alert('Enter amount');return;}if(!bill){alert('Select a bill or create invoice first');return;}try{const p=await api.post('/api/payments',{billId:bill,date,mode,amount:parseFloat(amount),chequeNo:mode==='Cheque'?ref:'',upiRef:mode==='UPI'?ref:'',city,remarks});setPy([...Py,p]);setAmount('');setRef('');setCity('');setRemarks('');setBill('');setDate(new Date().toISOString().split('T')[0]);alert('Payment added & synced to all views!');}catch(e){alert('Error: '+e.message);}};
   if(printId){const p=payments.find(x=>x.id===printId);return<div style={{padding:30,maxWidth:600,margin:'0 auto',background:'#fff',fontFamily:'Arial'}}>
     <div style={{textAlign:'center',marginBottom:30}}><div style={{fontSize:24,fontWeight:700,marginBottom:5}}>{firm.name||'Receipt'}</div><div style={{fontSize:11,color:MUT,marginBottom:15}}>{firm.address||''}</div><hr style={{margin:'15px 0',border:'none',borderTop:'1px solid #ccc'}}/></div>
     <div style={{marginBottom:20}}><div style={{fontSize:12,fontWeight:600,marginBottom:8}}>PAYMENT RECEIVED</div><div style={{fontSize:11,marginBottom:4}}><strong>From:</strong> {customer.name}</div>{customer.shopname&&<div style={{fontSize:11,marginBottom:4}}><strong>Place:</strong> {customer.shopname}</div>}<div style={{fontSize:11,marginBottom:4}}><strong>Date:</strong> {new Date(p.date||p.createdAt).toLocaleDateString('en-IN')}</div><div style={{fontSize:11,marginBottom:4}}><strong>Mode:</strong> {p.mode}</div>{p.chequeNo&&<div style={{fontSize:11,marginBottom:4}}><strong>Cheque #:</strong> {p.chequeNo}</div>}{p.upiRef&&<div style={{fontSize:11,marginBottom:4}}><strong>UTR:</strong> {p.upiRef}</div>}</div>
@@ -2508,8 +2509,9 @@ function PaymentReceivedTab({customer,payments,onPaymentAdded,firm}){
   </div>;}
   return<div>
     <div style={S.h3}>Add Payment Received</div>
-    <div style={{...S.card,marginBottom:14}}>
+    {custBills.length===0?<div style={{...S.card,padding:20,textAlign:'center',color:MUT}}>No invoices for this customer. Create an invoice first to record payments.</div>:<div style={{...S.card,marginBottom:14}}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+        <Fld label='Invoice *'><select style={S.inp} value={bill} onChange={e=>setBill(e.target.value)}><option value=''>Select invoice...</option>{custBills.map(b=>{const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);const bal=b.total-paid;return<option key={b.id} value={b.id}>{b.invoiceNo||'#'+b.id} - ₹{bal.toFixed(2)} pending</option>})}</select></Fld>
         <Fld label='Date'><input style={S.inp} type='date' value={date} onChange={e=>setDate(e.target.value)}/></Fld>
         <Fld label='Mode'><select style={S.inp} value={mode} onChange={e=>setMode(e.target.value)}><option>Cash</option><option>Cheque</option><option>UPI</option><option>Bank Transfer</option></select></Fld>
         <Fld label='Amount (₹)'><input style={S.inp} type='number' value={amount} onChange={e=>setAmount(e.target.value)} placeholder='0.00'/></Fld>
@@ -2517,8 +2519,8 @@ function PaymentReceivedTab({customer,payments,onPaymentAdded,firm}){
         <Fld label='City/Place'><input style={S.inp} value={city} onChange={e=>setCity(e.target.value)} placeholder='e.g., Delhi'/></Fld>
         <Fld label='Remarks'><input style={S.inp} value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder='Optional'/></Fld>
       </div>
-      <button style={S.btn('pri')} onClick={add}>✓ Add Payment</button>
-    </div>
+      <button style={S.btn('pri')} onClick={add}>✓ Add Payment & Sync</button>
+    </div>}
     <div style={S.h3}>Payment History</div>
     {payments.length===0?<MT msg='No payments recorded'/>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:600}}>
