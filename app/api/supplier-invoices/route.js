@@ -27,7 +27,6 @@ const shape = r => ({
   roundOff: +r.round_off || 0,
   total: +r.total || 0,
   notes: r.notes || '',
-  items: r.items || [],
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -143,28 +142,37 @@ export async function POST(req) {
       }
     }
 
-    const { data, error } = await c.sb.from('supplier_invoices').insert([{
-      firm_id: c.firmId,
-      supplier_name: b.supplierName,
-      supplier_gstin: b.supplierGSTIN || '',
-      invoice_no: b.invoiceNo || '',
-      invoice_date: invoiceDateFormatted,
-      place: b.place || '',
-      subtotal: +b.subtotal || 0,
-      discount: +b.discount || 0,
-      discount_pct: +b.discountPct || 0,
-      cgst: +b.cgst || 0,
-      sgst: +b.sgst || 0,
-      igst: +b.igst || 0,
-      round_off: +b.roundOff || 0,
-      total: +b.total || 0,
-      notes: b.notes || '',
-      items: b.items || [],
-    }]).select().single();
+    try {
+      const { data, error } = await c.sb.from('supplier_invoices').insert([{
+        firm_id: c.firmId,
+        supplier_name: b.supplierName,
+        supplier_gstin: b.supplierGSTIN || '',
+        invoice_no: b.invoiceNo || '',
+        invoice_date: invoiceDateFormatted,
+        place: b.place || '',
+        subtotal: +b.subtotal || 0,
+        discount: +b.discount || 0,
+        discount_pct: +b.discountPct || 0,
+        cgst: +b.cgst || 0,
+        sgst: +b.sgst || 0,
+        igst: +b.igst || 0,
+        round_off: +b.roundOff || 0,
+        total: +b.total || 0,
+        notes: b.notes || '',
+      }]).select().single();
 
-    if (error) {
-      console.error('[supplier-invoices] Invoice insert error:', error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+        console.error('[supplier-invoices] Invoice insert error:', error);
+        return NextResponse.json({ error: error.message || 'Database insert failed' }, { status: 500 });
+      }
+
+      if (!data) {
+        console.error('[supplier-invoices] No data returned after insert');
+        return NextResponse.json({ error: 'Failed to create invoice' }, { status: 500 });
+      }
+    } catch (dbError) {
+      console.error('[supplier-invoices] Database exception:', dbError);
+      return NextResponse.json({ error: dbError.message || 'Database error' }, { status: 500 });
     }
 
     console.log('[supplier-invoices] Invoice created:', { id: data.id });
@@ -243,7 +251,6 @@ export async function PATCH(req) {
     round_off: +rest.roundOff || 0,
     total: +rest.total || 0,
     notes: rest.notes || '',
-    items: rest.items || [],
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await c.sb.from('supplier_invoices')
