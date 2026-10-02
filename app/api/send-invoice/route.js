@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import QRCode from 'qrcode';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
@@ -140,10 +141,16 @@ function buildInvoiceHTML(bill, firm, payments = []) {
     </div>
   </div>
 
-  <!-- Bank details -->
-  ${firm.bankName ? `<div style="margin:0 24px 16px;padding:10px 14px;background:#f8f9fc;border-radius:6px;font-size:11px;border:1px solid #e8e8e8">
-    <strong>Bank:</strong> ${firm.bankName} &nbsp;|&nbsp; <strong>A/C:</strong> ${firm.bankAccount} &nbsp;|&nbsp; <strong>IFSC:</strong> ${firm.bankIFSC}
-  </div>` : ''}
+  <!-- Bank & Payment details -->
+  <div style="margin:0 24px 16px;display:flex;gap:16px;flex-wrap:wrap">
+    ${firm.bankName ? `<div style="flex:1;padding:10px 14px;background:#f8f9fc;border-radius:6px;font-size:11px;border:1px solid #e8e8e8">
+      <strong>Bank:</strong> ${firm.bankName}<br><strong>A/C:</strong> ${firm.bankAccount}<br><strong>IFSC:</strong> ${firm.bankIFSC}
+    </div>` : ''}
+    ${firm.upiId ? `<div style="flex:0 0 100px;padding:10px 14px;background:#f8f9fc;border-radius:6px;text-align:center;border:1px solid #e8e8e8">
+      <div style="font-size:10px;font-weight:700;margin-bottom:6px;color:#888">SCAN TO PAY</div>
+      <img src="cid:upiQr" style="width:80px;height:80px;border:1px solid #ddd;border-radius:3px" alt="UPI QR">
+    </div>` : ''}
+  </div>
 
   <!-- Terms -->
   ${firm.terms ? `<div style="margin:0 24px 16px;padding:10px 14px;border-top:1px solid #eee;font-size:10px;color:#888;line-height:1.7;white-space:pre-line">${firm.terms}</div>` : ''}
@@ -211,6 +218,25 @@ export async function POST(req) {
       subject,
       html: fullHTML,
     };
+
+    // Add UPI QR if UPI ID is configured
+    if (firm.upiId) {
+      try {
+        const upiPayload = `upi://pay?pa=${firm.upiId}&pn=${encodeURIComponent(firm.name)}&cu=INR`;
+        const qrDataUrl = await QRCode.toDataURL(upiPayload, { width: 150, margin: 1, errorCorrectionLevel: 'H' });
+        const base64Data = qrDataUrl.split(',')[1];
+        if (!payload.attachments) payload.attachments = [];
+        payload.attachments.push({
+          filename: 'upi-qr.png',
+          content: base64Data,
+          contentType: 'image/png',
+          contentDisposition: 'inline',
+          contentId: 'upiQr',
+        });
+      } catch (qrErr) {
+        console.warn('[send-invoice] Failed to generate UPI QR:', qrErr.message);
+      }
+    }
     // reply_to only if custom email set
     if (firm.senderEmail && !isDefaultSender) payload.reply_to = firm.senderEmail;
     if (firm.email && !isDefaultSender) payload.reply_to = firm.email;

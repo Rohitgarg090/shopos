@@ -152,7 +152,7 @@ function DateRangeFilter({onDateChange}){
   </div>;
 }
 
-const DEF={name:'Your Firm Name',shoptype:'Wholesale Clothing',gstin:'',address:'Shop Address, City, State',mobile:'',email:'',senderEmail:'',state:'Madhya Pradesh',bankName:'',bankAccount:'',bankIFSC:'',invoicePrefix:'INV',logo:'',emailSubject:'Invoice {invoiceNo} from {firmName}',emailBody:'Dear {customerName},\n\nPlease find your invoice {invoiceNo} dated {date} for {amount}.\n\nThank you for your business!\n\nWarm regards,\n{firmName}\n{mobile}',terms:'1. Goods once sold will not be taken back.\n2. Payment due within 45 days.\n3. Add 18% interest if payment not done in 45 days.\n4. Cheques subject to realisation.\n5. Subject to local jurisdiction.'};
+const DEF={name:'Your Firm Name',shoptype:'Wholesale Clothing',gstin:'',address:'Shop Address, City, State',mobile:'',email:'',senderEmail:'',state:'Madhya Pradesh',bankName:'',bankAccount:'',bankIFSC:'',invoicePrefix:'INV',logo:'',emailSubject:'Invoice {invoiceNo} from {firmName}',emailBody:'Dear {customerName},\n\nPlease find your invoice {invoiceNo} dated {date} for {amount}.\n\nThank you for your business!\n\nWarm regards,\n{firmName}\n{mobile}',terms:'1. Goods once sold will not be taken back.\n2. Payment due within 45 days.\n3. Add 18% interest if payment not done in 45 days.\n4. Cheques subject to realisation.\n5. Subject to local jurisdiction.',upiId:'',upiQrImage:''};
 
 
 /* ── FIRM DROPDOWN ── */
@@ -1604,9 +1604,9 @@ function ChequeStatus({payment,onUpdate}){
 function Invoice({bill,firm,payments=[]}){
   if(!bill)return null;
   const paid=payments.filter(p=>p.billId===bill.id).reduce((s,p)=>s+p.amount,0),bal=bill.total-paid;
-  const qd='Invoice: '+(bill.invoiceNo||bill.id)+'\nDate: '+new Date(bill.date).toLocaleDateString('en-IN')+'\nParty: '+bill.customerName+'\nTotal: '+fmt(bill.total)+'\nFirm: '+firm.name;
   const gstBkp=(bill.items||[]).reduce((acc,item)=>{const r=item.gstRate||0;if(!acc[r])acc[r]={cgst:0,sgst:0,taxable:0};acc[r].taxable+=item.rate*item.qty;acc[r].cgst+=item.gstAmt/2;acc[r].sgst+=item.gstAmt/2;return acc},{});
   const hasDiscount=(bill.discount||0)>0;
+  useEffect(()=>{if(firm.upiId&&typeof window!=='undefined'){const QRCode=require('qrcode');const canvas=document.getElementById('upiQrCanvas');if(canvas){const payload=`upi://pay?pa=${firm.upiId}&pn=${encodeURIComponent(firm.name)}&cu=INR`;QRCode.toCanvas(canvas,payload,{width:88,margin:0,errorCorrectionLevel:'H'},(err)=>{if(err)console.error('QR generation failed:',err);});}};},[firm.upiId,firm.name]);
   return<div id='invoice-print' style={{fontFamily:'Arial,sans-serif',color:'#111',fontSize:12,width:'100%',background:'#fff',padding:22,boxSizing:'border-box'}}>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:10}}><tbody><tr>
       <td style={{width:'60%',verticalAlign:'top'}}>
@@ -1619,7 +1619,7 @@ function Invoice({bill,firm,payments=[]}){
         {firm.gstin&&<div style={{fontSize:11,fontWeight:700,marginTop:3}}>GSTIN: {firm.gstin}</div>}
       </td>
       <td style={{width:'40%',textAlign:'right',verticalAlign:'top'}}>
-        <img src={qrU(qd,88)} width={88} height={88} alt='QR'/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to verify</div>
+        {firm.upiQrImage?<div><img src={firm.upiQrImage} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:firm.upiId?<div><canvas id='upiQrCanvas' style={{width:88,height:88,border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:null}
       </td>
     </tr></tbody></table>
     <div style={{background:'#1B3A6B',color:'#fff',padding:'5px 14px',borderRadius:4,marginBottom:10,display:'flex',justifyContent:'space-between'}}>
@@ -3140,6 +3140,8 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
   const save=()=>{saveFirm(f);setSaved(true);setTimeout(()=>setSaved(false),2500)};
   const handleLogo=e=>{const file=e.target.files[0];if(!file)return;setLogoUploading(true);const r=new FileReader();r.onload=ev=>{setF(x=>({...x,logo:ev.target.result}));setLogoUploading(false);};r.readAsDataURL(file);};
   const removeLogo=()=>setF(x=>({...x,logo:''}));
+  const handleUpiQrImage=e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{setF(x=>({...x,upiQrImage:ev.target.result}));};r.readAsDataURL(file);};
+  const removeUpiQrImage=()=>setF(x=>({...x,upiQrImage:''}));
   // Sync form state when firm data loads from API
   useEffect(()=>{if(firm&&firm.name)setF(firm);},[firm]);
   return<div>
@@ -3203,6 +3205,22 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
             {logoUploading?<><Spin/> Uploading...</>:'Upload Logo (PNG/JPG)'}
           </label>
           <div style={{fontSize:11,color:MUT,marginTop:6}}>Recommended: 200x60px, transparent background. Stored locally.</div>
+        </div>
+        <div style={{...S.card,marginTop:14}}>
+          <div style={S.h3}>Payment QR (for invoices)</div>
+          <div style={{fontSize:11,color:MUT,marginBottom:10}}>Show a QR code on invoices for customers to scan and pay via UPI. Either type your UPI ID or upload a QR image.</div>
+          <div style={{marginBottom:10}}>
+            <Fld label='UPI ID (e.g., name@bank)'><input style={S.inp} value={f.upiId||''} onChange={e=>up('upiId')(e.target.value)} placeholder='example@upi'/></Fld>
+            {f.upiId&&<div style={{marginTop:6,fontSize:10,color:GR}}>✓ QR will be generated from this UPI ID</div>}
+          </div>
+          <div style={{borderTop:'1px solid '+BORD,paddingTop:10,marginTop:10}}>
+            <div style={{fontSize:11,fontWeight:600,marginBottom:8}}>Or upload a QR image:</div>
+            {f.upiQrImage?<div style={{marginBottom:10}}><img src={f.upiQrImage} alt='UPI QR' style={{maxHeight:100,maxWidth:100,border:'0.5px solid '+BORD,borderRadius:4,padding:2}}/><br/><button style={{...S.btn('dan',true),marginTop:6}} onClick={removeUpiQrImage}>Remove QR Image</button></div>:null}
+            <label style={{...S.btn('def'),cursor:'pointer',display:'inline-flex'}}>
+              <input type='file' accept='image/*' style={{display:'none'}} onChange={handleUpiQrImage}/>
+              Upload QR Image (PNG/JPG)
+            </label>
+          </div>
         </div>
         <div style={{...S.card,marginTop:14}}>
           <div style={S.h3}>Gemini AI Key (for invoice scanning)</div>

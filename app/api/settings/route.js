@@ -47,6 +47,8 @@ const shape = r => ({
   msg91SmsTemplate: r.msg91_sms_template || '',
   msg91WaTemplate: r.msg91_wa_template || '',
   notifEnabled: !!r.notif_enabled,
+  upiId: r.upi_id || '',
+  upiQrImage: r.upi_qr_image || '',
 });
 
 export async function GET(req) {
@@ -103,6 +105,8 @@ export async function POST(req) {
     geminiKey: 'gemini_key',
     ewbUsername: 'ewb_username',
     ewbPassword: 'ewb_password',
+    upiId: 'upi_id',
+    upiQrImage: 'upi_qr_image',
     // Note: Exclude these fields if they don't exist in schema:
     // msg91Key, msg91SmsTemplate, msg91WaTemplate, interestEnabled,
     // interestOnOpeningBalance, notifEnabled
@@ -111,14 +115,9 @@ export async function POST(req) {
   const fields = {};
   Object.entries(fieldMap).forEach(([key, dbCol]) => {
     // Include field if it has a value (for strings, numbers, booleans)
-    // Skip only truly empty/undefined values, but include 0 and false
+    // Skip only truly undefined/null values
     if (b[key] !== undefined && b[key] !== null) {
-      const val = b[key];
-      // Skip empty strings, but keep 0, false, and other falsy values that are defined
-      if (typeof val === 'string' && val === '') {
-        return;
-      }
-      fields[dbCol] = val;
+      fields[dbCol] = b[key];
     }
   });
 
