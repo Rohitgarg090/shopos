@@ -1978,63 +1978,72 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
 
   const doDownloadZip=async()=>{
     if(selectedBills.size===0){showT('Select at least one invoice','err');return;}
-    if(selectedBills.size>50){showT('Max 50 invoices per ZIP. Please select fewer.','err');return;}
+    if(selectedBills.size>20){showT('Max 20 invoices per ZIP to avoid memory issues. Please select fewer.','err');return;}
     setZipBusy(true);
     try{
       const {default: jsPDF}=await import('jspdf');
+      const html2canvas_=await import('html2canvas').then(m=>m.default);
       const selected=activeBills.filter(b=>selectedBills.has(b.id));
       const zip=new JSZip();
+
       for(let i=0;i<selected.length;i++){
         const b=selected[i];
         showT(`Generating ${i+1}/${selected.length}...`);
-        // Create a simple PDF using jsPDF with invoice content
-        const pdf=new jsPDF();
-        const pageWidth=pdf.internal.pageSize.getWidth();
-        let yPos=10;
-        pdf.setFontSize(16);
-        pdf.text('INVOICE',pageWidth/2,yPos,{align:'center'});
-        yPos+=10;
-        pdf.setFontSize(10);
-        pdf.text(`Invoice No: ${b.invoiceNo||'#'+b.id}`,10,yPos);
-        yPos+=6;
-        pdf.text(`Date: ${new Date(b.date).toLocaleDateString('en-IN')}`,10,yPos);
-        yPos+=6;
-        pdf.text(`Customer: ${b.customerName}`,10,yPos);
-        yPos+=6;
-        pdf.text(`Phone: ${b.customerPhone}`,10,yPos);
-        yPos+=6;
-        pdf.text(`Address: ${b.customerAddr}`,10,yPos);
-        yPos+=10;
-        pdf.setFontSize(12);
-        pdf.text('Items:',10,yPos);
-        yPos+=6;
-        pdf.setFontSize(9);
-        for(const item of (b.items||[])){
-          pdf.text(`${item.name} x${item.qty} @ Rs.${item.rate}`,10,yPos);
-          yPos+=4;
+
+        // Create hidden container with Invoice component rendered
+        const container=document.createElement('div');
+        container.style.position='fixed';
+        container.style.left='-9999px';
+        container.style.top='-9999px';
+        container.style.width='794px';
+        container.style.background='white';
+        container.id=`invoice-zip-${b.id}`;
+        document.body.appendChild(container);
+
+        // Render Invoice component
+        const root=window.React?.createRoot?window.React.createRoot(container):null;
+        if(root){
+          const invoiceEl=React.createElement(Invoice,{bill:b,firm,payments:Py});
+          root.render(invoiceEl);
+          // Wait for render
+          await new Promise(r=>setTimeout(r,500));
+        }else{
+          // Fallback: use existing invoice HTML
+          const existingInv=document.getElementById('invoice-print');
+          if(existingInv){
+            container.innerHTML=existingInv.innerHTML;
+          }
         }
-        yPos+=6;
-        pdf.setFontSize(11);
-        pdf.text(`Subtotal: Rs. ${b.subtotal.toFixed(2)}`,10,yPos);
-        yPos+=4;
-        if(b.discount>0){
-          pdf.text(`Discount: -Rs. ${b.discount.toFixed(2)}`,10,yPos);
-          yPos+=4;
+
+        // Capture with html2canvas
+        const canvas=await html2canvas_(container,{scale:2,allowTaint:true,useCORS:true});
+        const imgData=canvas.toDataURL('image/jpeg',0.95);
+
+        // Create PDF
+        const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+        const imgWidth=210;
+        const imgHeight=(canvas.height*imgWidth)/canvas.width;
+        const pageHeight=pdf.internal.pageSize.getHeight();
+
+        let yPos=0;
+        let heightLeft=imgHeight;
+        while(heightLeft>0){
+          pdf.addImage(imgData,'JPEG',0,yPos,imgWidth,imgHeight);
+          heightLeft-=pageHeight;
+          if(heightLeft>0)pdf.addPage();
+          yPos=-pageHeight;
         }
-        pdf.text(`GST: Rs. ${b.gst.toFixed(2)}`,10,yPos);
-        yPos+=4;
-        pdf.setFontSize(12);
-        pdf.text(`TOTAL: Rs. ${b.total.toFixed(2)}`,10,yPos);
-        yPos+=10;
-        const paid=calcPaidAmount(b.id,Py);
-        pdf.setFontSize(9);
-        pdf.text(`Amount Paid: Rs. ${paid.toFixed(2)}`,10,yPos);
-        yPos+=4;
-        pdf.text(`Balance Due: Rs. ${(b.total-paid).toFixed(2)}`,10,yPos);
+
         const fileName=`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.pdf`;
         zip.file(fileName,pdf.output('blob'));
-        if(i%5===4)await new Promise(r=>setTimeout(r,200));
+
+        // Cleanup
+        if(root)root.unmount();
+        document.body.removeChild(container);
+
+        if(i%3===2)await new Promise(r=>setTimeout(r,300));
       }
+
       const blob=await zip.generateAsync({type:'blob'});
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a');
@@ -2044,9 +2053,9 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showT(`Downloaded ${selected.length} invoices as ZIP`);
+      showT(`✓ Downloaded ${selected.length} invoices as ZIP`);
       setSelectedBills(new Set());
-    }catch(e){showT('ZIP download failed: '+e.message,'err');}finally{setZipBusy(false);}
+    }catch(e){console.error('ZIP error:',e);showT('ZIP failed: '+e.message,'err');}finally{setZipBusy(false);}
   };
   return<div>
     <div style={{...S.h2, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -2562,7 +2571,7 @@ function CustomerBankStatements({customerId}){
 }
 
 /* ── CUSTOMER ACCOUNT VIEW ── */
-function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
+function CustomerAccount({cust,B,Py,setPy,firm,C,onClose}){
   const cb=B.filter(b=>b.customerId===cust.id);
   const custPay=Py.filter(p=>cb.some(b=>b.id===p.billId));
   const validPay=custPay.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
@@ -2897,7 +2906,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
       </div>
     </div>}
     <div style={{marginTop:8,fontSize:11,color:MUT}}>Click any row to view full account — bills, payments and running balance.</div>
-    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} onClose={()=>setSelCust(null)}/>}
+    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} C={C} onClose={()=>setSelCust(null)}/>}
   </div>;}
 
 /* ── LEDGER ── */
@@ -2982,7 +2991,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob}){
         </tr>
       </tbody>
     </table></div>
-    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} onClose={()=>setSelCust(null)}/>}
+    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} C={C} onClose={()=>setSelCust(null)}/>}
   </div>;}
 
 /* ── BANK STATEMENTS ── */
