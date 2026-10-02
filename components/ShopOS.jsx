@@ -576,7 +576,7 @@ export default function ShopOS(){
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
-      {page==='ledger'&&<Ledger B={Bactive} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
+      {page==='ledger'&&<Ledger B={Bactive} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob} SI={SI}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
       {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
         </>;
@@ -2916,20 +2916,26 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
   </div>;}
 
 /* ── LEDGER ── */
-function Ledger({B,Py,setPy,C,Ret,firm,mob}){
+function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
-  const[fp,setFp]=useState('');const[ft,setFt]=useState('All');const[selCust,setSelCust]=useState(null);const[dlLoading,setDlLoading]=useState(false);const[toast,showT]=useToast();
+  const[fp,setFp]=useState('');const[ft,setFt]=useState('All');const[ledgerType,setLedgerType]=useState('All');const[selCust,setSelCust]=useState(null);const[dlLoading,setDlLoading]=useState(false);const[toast,showT]=useToast();
   const[dateRange,setDateRange]=useState({from:null,to:null});
   const downloadLedger=async(format='csv')=>{setDlLoading(true);try{const token=await getToken();const res=await fetch('/api/ledger',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'x-firm-id':_activeFirmId},body:JSON.stringify({customerId:selCust?.id||null,format})});if(!res.ok)throw new Error('Failed to download');const blob=await res.blob();const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`Ledger_${selCust?.name||'All'}_${new Date().toISOString().split('T')[0]}.${format==='csv'?'csv':'json'}`;link.click();showT('Ledger downloaded!');}catch(err){showT('Failed: '+err.message,'err');}finally{setDlLoading(false)};}
   const upPay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const validPayments=Py.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
   const all=[
-    ...B.map(b=>({tp:'Invoice',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,customerId:b.customerId,debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})),
-    ...validPayments.map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,customerId:null,debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p})),
-    ...(Ret||[]).map(r=>({tp:r.type==='customer'?'Cust. Return':'Supp. Return',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',customerId:r.customerId,debit:r.type==='supplier'?r.total:0,credit:r.type==='customer'?r.total:0,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
-    ...C.filter(c=>c.openingBalance>0).map(c=>({tp:'Opening Balance',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,customerId:c.id,debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})),
+    // Sales Invoices (if ledgerType includes Sales)
+    ...((ledgerType==='All'||ledgerType==='Sales')?B.map(b=>({tp:'Sales Inv',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,partyId:b.customerId,partyType:'customer',debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})):[]),
+    // Purchase Invoices (if ledgerType includes Purchase)
+    ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.date,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',debit:0,credit:s.total,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
+    // Payments
+    ...validPayments.map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,partyId:p.customerId||p.supplierId,partyType:p.customerId?'customer':'supplier',debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p})),
+    // Returns
+    ...(Ret||[]).map(r=>({tp:r.type==='customer'?'Cust Ret':'Supp Ret',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',partyId:r.customerId||r.supplierId,partyType:r.type==='customer'?'customer':'supplier',debit:r.type==='supplier'?r.total:0,credit:r.type==='customer'?r.total:0,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
+    // Opening Balances
+    ...C.filter(c=>c.openingBalance>0).map(c=>({tp:'OB',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,partyId:c.id,partyType:'customer',debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||((ft==='Invoice'&&e.tp==='Opening Balance'));const dok=!dateRange.from||!dateRange.to||(new Date(e.date)>=new Date(dateRange.from)&&new Date(e.date)<=new Date(dateRange.to+' 23:59:59'));return pok&&tok&&dok;});
+  const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||((ft==='Invoice'||ft==='Sales Inv')&&(e.tp==='Sales Inv'||e.tp==='OB'))||((ft==='Purchase Inv'||ft==='Purch Inv')&&e.tp==='Purch Inv');const dok=!dateRange.from||!dateRange.to||(new Date(e.date)>=new Date(dateRange.from)&&new Date(e.date)<=new Date(dateRange.to+' 23:59:59'));return pok&&tok&&dok;});
   let run=0;const withBal=[...rows].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   const tD=rows.reduce((s,e)=>s+e.debit,0),tC=rows.reduce((s,e)=>s+e.credit,0);
   const parties=[...new Set(all.map(e=>e.party).filter(Boolean))].sort();
@@ -2947,12 +2953,18 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob}){
     <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:12,marginBottom:14}}>
       {[['Total Invoiced',fmt(tD),RD,RDL],['Total Received',fmt(tC),GR,GRL],['Net Outstanding',fmt(tD-tC),tD-tC>0?RD:GR,tD-tC>0?RDL:GRL]].map(([l,v,c,bg])=><div key={l} style={{...S.met,background:bg,border:'0.5px solid '+c+'30'}}><div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',color:c+'aa',marginBottom:3}}>{l}</div><div style={{fontSize:22,fontWeight:800,...S.mono,color:c}}>{v}</div></div>)}
     </div>
-    <div style={{display:'flex',gap:10,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
-      <input style={{...S.inp,maxWidth:240}} placeholder='Search by party name...' value={fp} onChange={e=>setFp(e.target.value)}/>
-      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-        {['All','Invoice','Payment','Cust. Return','Supp. Return'].map(t=><button key={t} onClick={()=>setFt(t)} style={{padding:'5px 12px',borderRadius:20,border:'0.5px solid '+(ft===t?BL:BORD),background:ft===t?BL:'#fff',color:ft===t?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>{t}</button>)}
+    <div style={{marginBottom:14}}>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}}>
+        <span style={{fontSize:11,fontWeight:600,color:MUT,alignSelf:'center'}}>Ledger Type:</span>
+        {['All','Sales','Purchase'].map(t=><button key={t} onClick={()=>{setLedgerType(t);setFt('All');}} style={{padding:'5px 12px',borderRadius:20,border:'0.5px solid '+(ledgerType===t?PUR:BORD),background:ledgerType===t?PUR:'#fff',color:ledgerType===t?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>{t}</button>)}
       </div>
-      {fp&&<button onClick={()=>setFp('')} style={{...S.btn('dan',true),fontSize:11}}>Clear</button>}
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+        <input style={{...S.inp,maxWidth:240}} placeholder='Search by party name...' value={fp} onChange={e=>setFp(e.target.value)}/>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {['All','Sales Inv','Purch Inv','Payment','Cust Ret','Supp Ret'].map(t=><button key={t} onClick={()=>setFt(t)} style={{padding:'5px 12px',borderRadius:20,border:'0.5px solid '+(ft===t?BL:BORD),background:ft===t?BL:'#fff',color:ft===t?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>{t}</button>)}
+        </div>
+        {fp&&<button onClick={()=>setFp('')} style={{...S.btn('dan',true),fontSize:11}}>Clear</button>}
+      </div>
     </div>
     {!fp&&parties.length>0&&<div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>
       <span style={{fontSize:11,color:MUT,alignSelf:'center'}}>Quick filter:</span>
