@@ -121,15 +121,26 @@ export async function POST(req) {
     let invoiceDateFormatted = null;
     if (b.invoiceDate) {
       try {
-        // Handle DD/M/YYYY or DD-M-YYYY format
         let dateStr = b.invoiceDate.toString().trim();
         console.log('[supplier-invoices] Parsing date:', dateStr);
 
-        if (dateStr.includes('/') || dateStr.includes('-')) {
+        // Check if already in YYYY-MM-DD format
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          invoiceDateFormatted = dateStr;
+          console.log('[supplier-invoices] Date already in YYYY-MM-DD format:', invoiceDateFormatted);
+        }
+        // Handle DD-MM-YYYY or DD/MM/YYYY format
+        else if (dateStr.includes('/') || dateStr.includes('-')) {
           const parts = dateStr.replace(/\//g, '-').split('-');
           if (parts.length === 3) {
-            const [day, month, year] = parts;
-            invoiceDateFormatted = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            // If first part is 4 digits, it's YYYY-MM-DD format (already correct)
+            if (parts[0].length === 4) {
+              invoiceDateFormatted = dateStr;
+            } else {
+              // Otherwise assume DD-MM-YYYY and convert
+              const [day, month, year] = parts;
+              invoiceDateFormatted = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            }
             console.log('[supplier-invoices] Converted date to:', invoiceDateFormatted);
           }
         } else {
