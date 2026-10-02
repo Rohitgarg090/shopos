@@ -1026,18 +1026,32 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
         items:items.map(i=>({name:i.name,articleNo:i.articleNo||'',sizes:i.sizes,qty:i.qty,price:i.price,gst:i.gst,hsn:i.hsn||''})),
       };
       try{
+        console.log('[ScanBill] Posting supplier invoice to API:', siPayload);
         const saved=await api.post('/api/supplier-invoices',siPayload);
+        console.log('[ScanBill] API Response:', saved);
         if(saved?.error){
+          console.error('[ScanBill] Invoice save error:', saved.error);
           showT('Failed to save invoice: '+saved.error,'err');
-        }else if(setSI){
-          setSI(si=>[saved,...si]);
+        }else if(saved?.id){
+          console.log('[ScanBill] ✅ Invoice saved with ID:', saved.id, 'Updating SI state...');
+          setSI(si=>{
+            const updated=[saved,...si];
+            console.log('[ScanBill] SI state updated, new count:', updated.length);
+            return updated;
+          });
           showT('✅ Supplier invoice saved!');
           // NOW navigate after invoice is saved
           setItems([]);setSupplierBanner(null);setMarkupPct('');
-          setTimeout(()=>onDone(),800);
+          setTimeout(()=>{console.log('[ScanBill] Navigating to catalog');onDone();},800);
           return;
+        }else{
+          console.error('[ScanBill] No invoice ID in response:', saved);
+          showT('Failed: Invalid response from server','err');
         }
-      }catch(err){showT('Failed to save supplier invoice: '+err.message,'err');}
+      }catch(err){
+        console.error('[ScanBill] Exception saving invoice:', err);
+        showT('Failed to save supplier invoice: '+err.message,'err');
+      }
     }else if(supplierBanner&&!supplierBanner.supplier){
       showT('Could not identify supplier name from invoice','err');
     }
