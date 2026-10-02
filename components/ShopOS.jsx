@@ -2443,7 +2443,7 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
     </div>
     {/* Tabs */}
     <div style={{display:'flex',gap:6,marginBottom:14,borderBottom:'0.5px solid '+BORD,paddingBottom:10}}>
-      {[['statement','Transactions'],['reconcile','Bank Reconciliation'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
+      {[['statement','Transactions'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
     </div>
 
     {caTab==='statement'&&<div>
@@ -2489,7 +2489,6 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
       </table>
     </div>
   </div>}
-    {caTab==='reconcile'&&<BankReconciliation customerId={cust.id} customerName={cust.name} B={B} Py={Py} firm={firm} mob={false}/>}
     {caTab==='notifications'&&<NotificationHistory customerId={cust.id} customerName={cust.name}/>}
     {caTab==='files'&&<CustomerBankStatements customerId={cust.id}/>}
   </Modal>;}
