@@ -2501,61 +2501,7 @@ function PaymentReceivedTab({customer,payments,setPy,Py,B,firm}){
   const[date,setDate]=useState(new Date().toISOString().split('T')[0]);const[mode,setMode]=useState('Cash');const[amount,setAmount]=useState('');const[ref,setRef]=useState('');const[city,setCity]=useState('');const[remarks,setRemarks]=useState('');const[printId,setPrintId]=useState(null);const[bill,setBill]=useState('');
   const custBills=B.filter(b=>b.customerId===customer.id);
   const add=async()=>{if(!amount||!parseFloat(amount)){alert('Enter amount');return;}if(!bill){alert('Select a bill or create invoice first');return;}try{const p=await api.post('/api/payments',{billId:bill,date,mode,amount:parseFloat(amount),chequeNo:mode==='Cheque'?ref:'',upiRef:mode==='UPI'?ref:'',city,remarks});setPy([...Py,p]);setAmount('');setRef('');setCity('');setRemarks('');setBill('');setDate(new Date().toISOString().split('T')[0]);alert('Payment added & synced to all views!');}catch(e){alert('Error: '+e.message);}};
-  if(printId){const p=payments.find(x=>x.id===printId);const cb=B.filter(b=>b.customerId===customer.id);const paid=calcPaidAmount(null,Py.filter(py=>cb.some(b=>b.id===py.billId)));const totalBilled=cb.reduce((s,b)=>s+b.total,0);const remaining=totalBilled-paid;const receiptId='RCP-'+new Date().getTime();return<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'#f5f5f5',zIndex:9999,overflow:'auto',padding:'20px'}}>
-    <style>{`@media print {* {margin:0!important;padding:0!important;background:white!important;color:#000!important;} html, body {width:210mm!important;margin:0!important;padding:0!important;background:#fff!important;display:block!important;} #receipt-envelope {width:210mm!important;height:auto!important;margin:0!important;padding:20mm!important;box-shadow:none!important;border:none!important;background:#fff!important;position:relative!important;page-break-after:avoid!important;} .receipt-controls {display:none!important;} @page {size:A4;margin:0;padding:0;}}`}</style>
-    <div style={{background:'#fff',width:'210mm',margin:'0 auto',padding:'20mm',boxShadow:'0 2px 10px rgba(0,0,0,0.1)',fontFamily:'Arial, sans-serif'}} id='receipt-envelope'>
-      <div style={{textAlign:'center',marginBottom:'15mm'}}>
-        <div style={{fontSize:'18pt',fontWeight:'bold',marginBottom:'3px'}}>{firm.name}</div>
-        <div style={{fontSize:'10pt',color:'#666'}}>{firm.address}</div>
-      </div>
-
-      <div style={{textAlign:'center',marginBottom:'15mm'}}>
-        <div style={{fontSize:'14pt',fontWeight:'bold',letterSpacing:'1px'}}>PAYMENT RECEIPT</div>
-      </div>
-
-      <div style={{marginBottom:'15mm',fontSize:'10pt'}}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8mm'}}>
-          <div><span style={{color:'#666'}}>Receipt #:</span> <strong>{receiptId}</strong></div>
-          <div><span style={{color:'#666'}}>Date:</span> {new Date(p.date||p.createdAt).toLocaleDateString('en-IN')}</div>
-        </div>
-      </div>
-
-      <div style={{borderTop:'2px solid #000',borderBottom:'2px solid #000',padding:'10mm 0',marginBottom:'15mm'}}>
-        <div style={{fontSize:'11pt',marginBottom:'5mm'}}><strong>From:</strong> {customer.name}</div>
-        {customer.shopname&&<div style={{fontSize:'10pt',color:'#666'}}><strong>Shop:</strong> {customer.shopname}</div>}
-        <div style={{fontSize:'10pt',marginTop:'3mm'}}><strong>Mode:</strong> {p.mode} {p.chequeNo?`(Cheque #${p.chequeNo})`:''} {p.upiRef?`(UTR: ${p.upiRef})`:''}</div>
-      </div>
-
-      <div style={{background:'#f9f9f9',padding:'12mm',textAlign:'center',marginBottom:'15mm',border:'1px solid #ddd'}}>
-        <div style={{fontSize:'9pt',color:'#666',marginBottom:'5mm'}}>AMOUNT RECEIVED</div>
-        <div style={{fontSize:'28pt',fontWeight:'bold',color:'#1e40af',marginBottom:'5mm'}}>₹ {parseFloat(p.amount).toLocaleString('en-IN')}</div>
-        <div style={{fontSize:'11pt',fontStyle:'italic',color:'#333'}}>{n2w(parseFloat(p.amount))}</div>
-      </div>
-
-      <div style={{marginBottom:'15mm',fontSize:'10pt'}}>
-        <div style={{borderBottom:'1px solid #ccc',paddingBottom:'5mm',marginBottom:'5mm'}}>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4mm'}}><span>Previous Balance:</span> <strong>₹ {(remaining+parseFloat(p.amount)).toLocaleString('en-IN')}</strong></div>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4mm'}}><span>Paid Now:</span> <strong>₹ {parseFloat(p.amount).toLocaleString('en-IN')}</strong></div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:'12pt',fontWeight:'bold',color:remaining>0?'#dc2626':'#16a34a'}}><span>Current Balance:</span> <span>₹ {remaining.toLocaleString('en-IN')}</span></div>
-        </div>
-      </div>
-
-      <div style={{textAlign:'center',color:'#666',fontSize:'10pt',marginBottom:'20mm'}}>Thank you for your payment</div>
-
-      <div style={{borderTop:'1px dashed #999',paddingTop:'15mm',marginTop:'20mm'}}>
-        <div style={{textAlign:'center',fontSize:'9pt',color:'#666',marginBottom:'30mm'}}>Authorized By: _________________________</div>
-        <div style={{textAlign:'center',fontSize:'9pt'}}>
-          <div style={{fontWeight:'bold'}}>{firm.name}</div>
-          <div style={{color:'#666'}}>{new Date(p.date||p.createdAt).toLocaleTimeString('en-IN')}</div>
-        </div>
-      </div>
-    </div>
-
-    <div style={{textAlign:'center',marginTop:'20px',gap:'10px',display:'flex',justifyContent:'center'}} className='receipt-controls'>
-      <button style={S.btn('pri',true)} onClick={()=>{window.print();}}>🖨️ Print Receipt</button>
-      <button style={S.btn('def',true)} onClick={()=>setPrintId(null)}>Close</button>
-    </div>
-  </div>;}
+  if(printId){const p=payments.find(x=>x.id===printId);const cb=B.filter(b=>b.customerId===customer.id);const paid=calcPaidAmount(null,Py.filter(py=>cb.some(b=>b.id===py.billId)));const totalBilled=cb.reduce((s,b)=>s+b.total,0);const remaining=totalBilled-paid;const prevBalance=remaining+parseFloat(p.amount);const receiptId='RCP-'+new Date().getTime();const handlePrint=()=>{const w=window.open('','_blank');w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Receipt</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;background:#fff;padding:20mm;}#receipt{width:210mm;margin:0 auto;padding:20mm;background:#fff;}.header{text-align:center;margin-bottom:15mm;}.title{font-size:18pt;font-weight:bold;margin-bottom:3px;}.subtitle{font-size:10pt;color:#666;}.payment-receipt{text-align:center;font-size:14pt;font-weight:bold;margin:15mm 0;letter-spacing:1px;}.info{margin-bottom:15mm;font-size:10pt;}.info-row{display:flex;justify-content:space-between;margin-bottom:8mm;}.customer{border-top:2px solid #000;border-bottom:2px solid #000;padding:10mm 0;margin-bottom:15mm;font-size:10pt;}.customer div{margin-bottom:5mm;}.amount-box{background:#f9f9f9;padding:12mm;text-align:center;margin-bottom:15mm;border:1px solid #ddd;}.amount-label{font-size:9pt;color:#666;margin-bottom:5mm;}.amount-value{font-size:28pt;font-weight:bold;color:#1e40af;margin-bottom:5mm;}.amount-words{font-size:11pt;font-style:italic;color:#333;}.summary{margin-bottom:15mm;font-size:10pt;border-bottom:1px solid #ccc;padding-bottom:5mm;}.summary-row{display:flex;justify-content:space-between;margin-bottom:4mm;}.summary-current{font-size:12pt;font-weight:bold;}.summary-due{color:#dc2626;}.summary-paid{color:#16a34a;}.thank-you{text-align:center;color:#666;font-size:10pt;margin-bottom:20mm;}.signature{border-top:1px dashed #999;padding-top:15mm;margin-top:20mm;}.sig-line{text-align:center;font-size:9pt;color:#666;margin-bottom:30mm;}.sig-footer{text-align:center;font-size:9pt;}@media print{body{margin:0;padding:0;}#receipt{width:210mm;margin:0;padding:20mm;}}</style></head><body><div id="receipt"><div class="header"><div class="title">${firm.name}</div><div class="subtitle">${firm.address||''}</div></div><div class="payment-receipt">PAYMENT RECEIPT</div><div class="info"><div class="info-row"><div><span style="color:#666">Receipt #:</span> <strong>${receiptId}</strong></div><div><span style="color:#666">Date:</span> ${new Date(p.date||p.createdAt).toLocaleDateString('en-IN')}</div></div></div><div class="customer"><div><strong>From:</strong> ${customer.name}</div>${customer.shopname?'<div><strong>Shop:</strong>'+customer.shopname+'</div>':''}<div style="margin-top:3mm"><strong>Mode:</strong> ${p.mode}${p.chequeNo?' (Cheque #'+p.chequeNo:''}${p.upiRef?' (UTR: '+p.upiRef:''})</div></div><div class="amount-box"><div class="amount-label">AMOUNT RECEIVED</div><div class="amount-value">₹ ${parseFloat(p.amount).toLocaleString('en-IN')}</div><div class="amount-words">${n2w(parseFloat(p.amount))}</div></div><div class="summary"><div class="summary-row"><span>Previous Balance:</span><strong>₹ ${prevBalance.toLocaleString('en-IN')}</strong></div><div class="summary-row"><span>Paid Now:</span><strong>₹ ${parseFloat(p.amount).toLocaleString('en-IN')}</strong></div><div class="summary-row summary-current"><span>Current Balance:</span><span class="${remaining>0?'summary-due':'summary-paid'}">₹ ${remaining.toLocaleString('en-IN')}</span></div></div><div class="thank-you">Thank you for your payment</div><div class="signature"><div class="sig-line">Authorized By: _________________________</div><div class="sig-footer"><div style="font-weight:bold">${firm.name}</div><div style="color:#666">${new Date(p.date||p.createdAt).toLocaleTimeString('en-IN')}</div></div></div></div></body></html>`);w.document.close();w.print();};return<div style={{textAlign:'center',padding:'40px'}}><div style={{fontSize:'16pt',fontWeight:'bold',marginBottom:'20px'}}>Receipt Preview</div><div style={{background:'#fff',width:'210mm',margin:'0 auto',padding:'20mm',boxShadow:'0 2px 10px rgba(0,0,0,0.1)',fontFamily:'Arial, sans-serif'}}><div style={{fontSize:'14pt',color:'#666'}}>Click the button below to print your receipt</div></div><div style={{display:'flex',gap:'10px',justifyContent:'center'}}><button style={S.btn('pri',true)} onClick={handlePrint}>🖨️ Print Receipt</button><button style={S.btn('def',true)} onClick={()=>setPrintId(null)}>Close</button></div></div>}
   return<div>
     <div style={S.h3}>Add Payment Received</div>
     {custBills.length===0?<div style={{...S.card,padding:20,textAlign:'center',color:MUT}}>No invoices for this customer. Create an invoice first to record payments.</div>:<div style={{...S.card,marginBottom:14}}>
