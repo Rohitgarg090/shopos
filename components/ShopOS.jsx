@@ -568,7 +568,7 @@ export default function ShopOS(){
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} mob={mob}/>}
-      {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={B} Py={Py} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
+      {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={B} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
       {page==='ledger'&&<Ledger B={B} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
       {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
@@ -2869,15 +2869,77 @@ function BankStatements({BS,setBS,mob}){
   </div>;}
 
 /* ── BANK RECONCILIATION ── */
-function BankPage({BS,setBS,B,Py,firm,C,mob,gk}){
+function BankPage({BS,setBS,B,Py,setPy,firm,C,mob,gk}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[bankTab,setBankTab]=useState('recon');
   return<div>
     <div style={{display:'flex',gap:8,marginBottom:14,borderBottom:'1px solid '+BORD,paddingBottom:8}}>
-      {['recon','history'].map(t=><button key={t} onClick={()=>setBankTab(t)} style={{textTransform:'capitalize',background:'none',border:'none',borderBottom:bankTab===t?'3px solid '+BL:'none',borderRadius:0,paddingBottom:8,padding:'4px 0',cursor:'pointer',fontSize:13,fontWeight:bankTab===t?700:600,color:bankTab===t?BL:TXT,transition:'all 0.2s'}}>{t}</button>)}
+      {['recon','cheques','history'].map(t=><button key={t} onClick={()=>setBankTab(t)} style={{textTransform:'capitalize',background:'none',border:'none',borderBottom:bankTab===t?'3px solid '+BL:'none',borderRadius:0,paddingBottom:8,padding:'4px 0',cursor:'pointer',fontSize:13,fontWeight:bankTab===t?700:600,color:bankTab===t?BL:TXT,transition:'all 0.2s'}}>{t}</button>)}
     </div>
     {bankTab==='recon'&&<FirmReconciliation BS={BS} B={B} Py={Py} firm={firm} C={C} gk={gk} mob={mob}/>}
+    {bankTab==='cheques'&&<ChequeRecords B={B} Py={Py} setPy={setPy} C={C} firm={firm} mob={mob}/>}
     {bankTab==='history'&&<ReconciliationHistory C={C} mob={mob}/>}
+  </div>;
+}
+
+function ChequeRecords({B,Py,setPy,C,firm,mob}){
+  const S=_theme==='modern'?MODERN_S:MINIMAL_S;
+  const[cheques,setCheques]=useState([]);const[adding,setAdding]=useState(false);const[loading,setLoading]=useState(true);const[toast,showT]=useToast();
+  const[form,setForm]=useState({partyName:'',bank:'',chequeNo:'',chequeDate:'',receivedDate:'',amount:'',customerId:'',remarks:''});
+  const[dateRange,setDateRange]=useState({from:new Date(Date.now()-30*24*60*60*1000).toISOString().split('T')[0],to:new Date().toISOString().split('T')[0]});
+  const[statusFilter,setStatusFilter]=useState('all');
+
+  const loadCheques=async()=>{setLoading(true);try{const res=await api.get('/api/cheque-records');setCheques(res||[]);}catch(err){showT('Error loading cheques: '+err.message,'err');}finally{setLoading(false);}};
+  useEffect(()=>{loadCheques();},[]);
+
+  const paymentCheques=Py.filter(p=>p.mode==='Cheque').map(p=>({id:p.id,isPayment:true,partyName:p.partyName||'',bank:p.bank||'',chequeNo:p.chequeNo,chequeDate:p.chequeDate,receivedDate:p.receivedDate||p.date,amount:p.amount,status:p.chequeStatus||'received',remarks:p.remarks||''}));
+  const allCheques=[...paymentCheques,...cheques].sort((a,b)=>new Date(b.chequeDate||b.receivedDate)-new Date(a.chequeDate||a.receivedDate));
+
+  const filtered=allCheques.filter(c=>{const d=new Date(c.chequeDate||c.receivedDate);return d>=new Date(dateRange.from)&&d<=new Date(dateRange.to)&&(statusFilter==='all'||c.status===statusFilter);});
+
+  const totals={pending:filtered.filter(c=>c.status==='received'||c.status==='deposited').reduce((s,c)=>s+(c.amount||0),0),cleared:filtered.filter(c=>c.status==='cleared'||c.status==='recleared').reduce((s,c)=>s+(c.amount||0),0),bounced:filtered.filter(c=>c.status==='bounced').reduce((s,c)=>s+(c.amount||0),0)};
+
+  const addCheque=async()=>{if(!form.partyName||!form.amount){showT('Party name and amount required','err');return;}setAdding(true);try{const res=await api.post('/api/cheque-records',{partyName:form.partyName,bank:form.bank,chequeNo:form.chequeNo,chequeDate:form.chequeDate,receivedDate:form.receivedDate,amount:parseFloat(form.amount),customerId:form.customerId||null,remarks:form.remarks});setCheques([...cheques,res]);setForm({partyName:'',bank:'',chequeNo:'',chequeDate:'',receivedDate:'',amount:'',customerId:'',remarks:''});showT('Cheque added');}catch(err){showT('Error: '+err.message,'err');}finally{setAdding(false);}};
+
+  const updateChequeStatus=async(id,isPayment,newStatus,clearanceDate)=>{try{if(isPayment){await api.patch('/api/payments',{id,chequeStatus:newStatus});setPy(py=>py.map(p=>p.id===id?{...p,chequeStatus:newStatus}:p));}else{const res=await api.patch('/api/cheque-records',{id,status:newStatus,clearanceDate});setCheques(c=>c.map(ch=>ch.id===id?res:ch));}showT('Status updated');}catch(err){showT('Error: '+err.message,'err');}};
+
+  return<div>
+    <div style={{...S.card,marginBottom:14}}>
+      <div style={S.h3}>Add Cheque Record</div>
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:12,marginBottom:12}}>
+        <Fld label='Party Name *'><input style={S.inp} value={form.partyName} onChange={e=>setForm({...form,partyName:e.target.value})} placeholder='Customer/Party name'/></Fld>
+        <Fld label='Amount *'><input style={S.inp} type='number' value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder='0.00'/></Fld>
+        <Fld label='Cheque #'><input style={S.inp} value={form.chequeNo} onChange={e=>setForm({...form,chequeNo:e.target.value})} placeholder='Cheque number'/></Fld>
+        <Fld label='Bank'><input style={S.inp} value={form.bank} onChange={e=>setForm({...form,bank:e.target.value})} placeholder='Bank name'/></Fld>
+        <Fld label='Cheque Date'><input style={S.inp} type='date' value={form.chequeDate} onChange={e=>setForm({...form,chequeDate:e.target.value})}/></Fld>
+        <Fld label='Received Date'><input style={S.inp} type='date' value={form.receivedDate} onChange={e=>setForm({...form,receivedDate:e.target.value})}/></Fld>
+        <Fld label='Customer (Optional)'><select style={S.inp} value={form.customerId} onChange={e=>setForm({...form,customerId:e.target.value})}><option value=''>Select customer</option>{C.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Fld>
+        <Fld label='Remarks'><input style={S.inp} value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})} placeholder='Optional notes'/></Fld>
+      </div>
+      <button style={S.btn('pri')} onClick={addCheque} disabled={adding}>{adding?'Adding...':'+ Add Cheque'}</button>
+    </div>
+
+    <div style={{...S.card,marginBottom:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div style={S.h3}>Cheque Register</div>
+        <div style={{display:'flex',gap:8}}>
+          <select style={{...S.inp,fontSize:11}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value='all'>All Status</option><option value='received'>Received</option><option value='deposited'>Deposited</option><option value='cleared'>Cleared</option><option value='bounced'>Bounced</option><option value='recleared'>Recleared</option></select>
+        </div>
+      </div>
+
+      <DateRangeFilter onDateChange={dr=>setDateRange({from:dr.from,to:dr.to})}/>
+
+      <div style={{fontSize:11,color:MUT,marginBottom:10}}>Showing {filtered.length} cheques | Pending: ₹{totals.pending.toLocaleString('en-IN')} | Cleared: ₹{totals.cleared.toLocaleString('en-IN')} | Bounced: ₹{totals.bounced.toLocaleString('en-IN')}</div>
+
+      {loading?<div style={{textAlign:'center',padding:20}}><Spin/> Loading...</div>:filtered.length===0?<MT msg='No cheques in this date range'/>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:800}}>
+          <thead><tr>{['Date','Party','Bank','Cheque #','Amount','Status','Action'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <tbody>
+            {filtered.map(c=><tr key={c.id||c.partyName}><td style={{...S.td,fontSize:10}}>{new Date(c.chequeDate||c.receivedDate).toLocaleDateString('en-IN')}</td><td style={S.td}>{c.partyName}</td><td style={{...S.td,fontSize:10,color:MUT}}>{c.bank||'—'}</td><td style={{...S.td,fontSize:10,fontWeight:600}}>{c.chequeNo||'—'}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:600}}>₹{c.amount.toLocaleString('en-IN')}</td><td style={S.td}><Bdg c={c.status==='cleared'||c.status==='recleared'?'green':c.status==='bounced'?'red':'amber'}>{c.status}</Bdg></td><td style={S.td}><ChequeStatus payment={{chequeStatus:c.status,id:c.id}} onStatusChange={(st,cd)=>updateChequeStatus(c.id,c.isPayment,st,cd)}/></td></tr>)}
+          </tbody>
+        </table>
+      </div>}
+    </div>
   </div>;
 }
 
