@@ -2443,7 +2443,7 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
     </div>
     {/* Tabs */}
     <div style={{display:'flex',gap:6,marginBottom:14,borderBottom:'0.5px solid '+BORD,paddingBottom:10}}>
-      {[['statement','Transactions'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
+      {[['statement','Transactions'],['payment','Payment Received'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
     </div>
 
     {caTab==='statement'&&<div>
@@ -2489,9 +2489,46 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
       </table>
     </div>
   </div>}
+    {caTab==='payment'&&<PaymentReceivedTab customer={cust} payments={custPay} onPaymentAdded={(p)=>{custPay.push(p);setCaTab('payment');}} firm={firm}/>}
     {caTab==='notifications'&&<NotificationHistory customerId={cust.id} customerName={cust.name}/>}
     {caTab==='files'&&<CustomerBankStatements customerId={cust.id}/>}
   </Modal>;}
+
+function PaymentReceivedTab({customer,payments,onPaymentAdded,firm}){
+  const S=_theme==='modern'?MODERN_S:MINIMAL_S;
+  const[date,setDate]=useState(new Date().toISOString().split('T')[0]);const[mode,setMode]=useState('Cash');const[amount,setAmount]=useState('');const[ref,setRef]=useState('');const[city,setCity]=useState('');const[remarks,setRemarks]=useState('');const[printId,setPrintId]=useState(null);
+  const add=async()=>{if(!amount||!parseFloat(amount)){alert('Enter amount');return;}try{const p=await api.post('/api/payments',{customerId:customer.id,date,mode,amount:parseFloat(amount),chequeNo:mode==='Cheque'?ref:'',upiRef:mode==='UPI'?ref:'',city,remarks});onPaymentAdded(p);setAmount('');setRef('');setCity('');setRemarks('');setDate(new Date().toISOString().split('T')[0]);alert('Payment added!');}catch(e){alert('Error: '+e.message);}};
+  if(printId){const p=payments.find(x=>x.id===printId);return<div style={{padding:30,maxWidth:600,margin:'0 auto',background:'#fff',fontFamily:'Arial'}}>
+    <div style={{textAlign:'center',marginBottom:30}}><div style={{fontSize:24,fontWeight:700,marginBottom:5}}>{firm.name||'Receipt'}</div><div style={{fontSize:11,color:MUT,marginBottom:15}}>{firm.address||''}</div><hr style={{margin:'15px 0',border:'none',borderTop:'1px solid #ccc'}}/></div>
+    <div style={{marginBottom:20}}><div style={{fontSize:12,fontWeight:600,marginBottom:8}}>PAYMENT RECEIVED</div><div style={{fontSize:11,marginBottom:4}}><strong>From:</strong> {customer.name}</div>{customer.shopname&&<div style={{fontSize:11,marginBottom:4}}><strong>Place:</strong> {customer.shopname}</div>}<div style={{fontSize:11,marginBottom:4}}><strong>Date:</strong> {new Date(p.date||p.createdAt).toLocaleDateString('en-IN')}</div><div style={{fontSize:11,marginBottom:4}}><strong>Mode:</strong> {p.mode}</div>{p.chequeNo&&<div style={{fontSize:11,marginBottom:4}}><strong>Cheque #:</strong> {p.chequeNo}</div>}{p.upiRef&&<div style={{fontSize:11,marginBottom:4}}><strong>UTR:</strong> {p.upiRef}</div>}</div>
+    <div style={{background:'#f9f9f9',padding:15,marginBottom:20,borderRadius:6,textAlign:'center'}}><div style={{fontSize:11,color:MUT,marginBottom:5}}>Amount Received</div><div style={{fontSize:28,fontWeight:800,color:BL}}>₹{parseFloat(p.amount).toLocaleString('en-IN')}</div></div>
+    <div style={{fontSize:10,color:MUT,marginBottom:20,textAlign:'center'}}>Thank you for your payment</div>
+    <div style={{marginTop:40,paddingTop:20,borderTop:'1px solid #ccc',textAlign:'center'}}><div style={{fontSize:11,fontWeight:600,marginBottom:10}}>Authorized Signature</div><div style={{fontSize:9,color:MUT}}>{firm.name}</div></div>
+    <div style={{marginTop:30,textAlign:'center'}}><button style={S.btn('pri',true)} onClick={()=>{window.print();setPrintId(null);}}>Print Receipt</button> <button style={S.btn('def',true)} onClick={()=>setPrintId(null)}>Close</button></div>
+  </div>;}
+  return<div>
+    <div style={S.h3}>Add Payment Received</div>
+    <div style={{...S.card,marginBottom:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+        <Fld label='Date'><input style={S.inp} type='date' value={date} onChange={e=>setDate(e.target.value)}/></Fld>
+        <Fld label='Mode'><select style={S.inp} value={mode} onChange={e=>setMode(e.target.value)}><option>Cash</option><option>Cheque</option><option>UPI</option><option>Bank Transfer</option></select></Fld>
+        <Fld label='Amount (₹)'><input style={S.inp} type='number' value={amount} onChange={e=>setAmount(e.target.value)} placeholder='0.00'/></Fld>
+        <Fld label={mode==='Cheque'?'Cheque #':mode==='UPI'?'UTR':'Reference'}><input style={S.inp} value={ref} onChange={e=>setRef(e.target.value)} placeholder={mode==='Cheque'?'Cheque number':'Reference'}/></Fld>
+        <Fld label='City/Place'><input style={S.inp} value={city} onChange={e=>setCity(e.target.value)} placeholder='e.g., Delhi'/></Fld>
+        <Fld label='Remarks'><input style={S.inp} value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder='Optional'/></Fld>
+      </div>
+      <button style={S.btn('pri')} onClick={add}>✓ Add Payment</button>
+    </div>
+    <div style={S.h3}>Payment History</div>
+    {payments.length===0?<MT msg='No payments recorded'/>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:600}}>
+        <thead><tr>{['Date','Mode','Amount','Reference','City','Remarks','Print'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+        <tbody>{payments.map(p=><tr key={p.id}><td style={{...S.td,fontSize:10}}>{new Date(p.date||p.createdAt).toLocaleDateString('en-IN')}</td><td style={S.td}><Bdg c={p.mode==='Cash'?'green':p.mode==='Cheque'?'amber':'blue'}>{p.mode}</Bdg></td><td style={{...S.td,...S.mono,color:GR,fontWeight:600}}>₹{parseFloat(p.amount).toLocaleString('en-IN')}</td><td style={{...S.td,fontSize:10}}>{p.chequeNo?'Chq #'+p.chequeNo:p.upiRef?'UTR: '+p.upiRef:p.reference||'—'}</td><td style={{...S.td,fontSize:10,color:MUT}}>{p.city||'—'}</td><td style={{...S.td,fontSize:10,color:MUT}}>{p.remarks||'—'}</td><td style={S.td}><button style={S.btn('def',true)} onClick={()=>setPrintId(p.id)}>🖨️ Print</button></td></tr>)}
+        </tbody>
+      </table>
+    </div>}
+  </div>;
+}
 
 function NotificationHistory({customerId,customerName}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
