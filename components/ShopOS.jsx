@@ -1968,29 +1968,80 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
       const res=await api.patch('/api/bills',{id:cancelBill.id,action:'cancel',cancelReason});
       setB(bs=>bs.map(b=>b.id===cancelBill.id?res:b));
       setCancelBill(null);setCancelReason('');
-      showT('Invoice '+cancelBill.invoiceNo+' cancelled and stock restored');
-    }catch(e){showT('Cancel failed: '+e.message,'err');}
+      showT('✓ Invoice '+cancelBill.invoiceNo+' cancelled and stock restored!');
+    }catch(e){
+      const msg=e.message||'Unknown error';
+      console.error('[doCancelBill] Error:',e);
+      showT('Cancel failed: '+msg,'err');
+    }
   };
 
   const doDownloadZip=async()=>{
     if(selectedBills.size===0){showT('Select at least one invoice','err');return;}
+    if(selectedBills.size>50){showT('Max 50 invoices per ZIP. Please select fewer.','err');return;}
     setZipBusy(true);
     try{
       const selected=activeBills.filter(b=>selectedBills.has(b.id));
       const zip=new JSZip();
       for(let i=0;i<selected.length;i++){
         const b=selected[i];
-        const invEl=document.createElement('div');
-        invEl.innerHTML=`<div id="temp-invoice-${b.id}" style="width:794px;padding:20px;background:#fff;font-family:Arial,sans-serif"></div>`;
-        document.body.appendChild(invEl);
-        const tempInvEl=invEl.querySelector(`#temp-invoice-${b.id}`);
-        // For now, use a simple approach: render invoice summary as PDF
-        // Real implementation would clone and render the Invoice component
-        const pdfContent=`Invoice ${b.invoiceNo}\nDate: ${new Date(b.date).toLocaleDateString('en-IN')}\nCustomer: ${b.customerName}\nAmount: Rs.${b.total.toFixed(2)}`;
-        zip.file(`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.txt`,pdfContent);
-        document.body.removeChild(invEl);
-        // Yield to prevent blocking
-        if(i%5===4)await new Promise(r=>setTimeout(r,100));
+        showT(`Generating ${i+1}/${selected.length}...`);
+        // Create a temporary container and render Invoice there
+        const tempDiv=document.createElement('div');
+        tempDiv.style.display='none';
+        tempDiv.id=`zip-invoice-${b.id}`;
+        document.body.appendChild(tempDiv);
+        // Create a simple PDF using jsPDF with invoice content
+        const {jsPDF}=window;
+        const pdf=new jsPDF();
+        const pageWidth=pdf.internal.pageSize.getWidth();
+        let yPos=10;
+        pdf.setFontSize(16);
+        pdf.text('INVOICE',pageWidth/2,yPos,{align:'center'});
+        yPos+=10;
+        pdf.setFontSize(10);
+        pdf.text(`Invoice No: ${b.invoiceNo||'#'+b.id}`,10,yPos);
+        yPos+=6;
+        pdf.text(`Date: ${new Date(b.date).toLocaleDateString('en-IN')}`,10,yPos);
+        yPos+=6;
+        pdf.text(`Customer: ${b.customerName}`,10,yPos);
+        yPos+=6;
+        pdf.text(`Phone: ${b.customerPhone}`,10,yPos);
+        yPos+=6;
+        pdf.text(`Address: ${b.customerAddr}`,10,yPos);
+        yPos+=10;
+        pdf.setFontSize(12);
+        pdf.text('Items:',10,yPos);
+        yPos+=6;
+        pdf.setFontSize(9);
+        let totalQty=0;
+        for(const item of (b.items||[])){
+          pdf.text(`${item.name} x${item.qty} @ Rs.${item.rate}`,10,yPos);
+          yPos+=4;
+          totalQty+=item.qty;
+        }
+        yPos+=6;
+        pdf.setFontSize(11);
+        pdf.text(`Subtotal: Rs. ${b.subtotal.toFixed(2)}`,10,yPos);
+        yPos+=4;
+        if(b.discount>0){
+          pdf.text(`Discount: -Rs. ${b.discount.toFixed(2)}`,10,yPos);
+          yPos+=4;
+        }
+        pdf.text(`GST: Rs. ${b.gst.toFixed(2)}`,10,yPos);
+        yPos+=4;
+        pdf.setFontSize(12);
+        pdf.text(`TOTAL: Rs. ${b.total.toFixed(2)}`,10,yPos);
+        yPos+=10;
+        const paid=calcPaidAmount(b.id,Py);
+        pdf.setFontSize(9);
+        pdf.text(`Amount Paid: Rs. ${paid.toFixed(2)}`,10,yPos);
+        yPos+=4;
+        pdf.text(`Balance Due: Rs. ${(b.total-paid).toFixed(2)}`,10,yPos);
+        const fileName=`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.pdf`;
+        zip.file(fileName,pdf.output('blob'));
+        document.body.removeChild(tempDiv);
+        if(i%5===4)await new Promise(r=>setTimeout(r,200));
       }
       const blob=await zip.generateAsync({type:'blob'});
       const url=URL.createObjectURL(blob);

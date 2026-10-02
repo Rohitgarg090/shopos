@@ -86,20 +86,38 @@ export async function PATCH(req) {
     }
 
     // Restore stock for all bill items
+    const stockErrors = [];
     for (const item of (bill.bill_items || [])) {
       if (item.product_sku) {
-        await c.sb.rpc('increment_stock', { p_sku: item.product_sku, p_qty: item.qty });
+        try {
+          const { error } = await c.sb.rpc('increment_stock', { p_sku: item.product_sku, p_qty: item.qty });
+          if (error) {
+            console.error('[cancel] increment_stock error:', error);
+            stockErrors.push(`${item.product_sku}: ${error.message}`);
+          }
+        } catch (e) {
+          console.error('[cancel] increment_stock exception:', e);
+          stockErrors.push(`${item.product_sku}: ${e.message}`);
+        }
       }
     }
 
-    // Mark bill as cancelled
+    // Mark bill as cancelled (continue even if some stock restores fail)
     const { data: updated, error: updateErr } = await c.sb.from('bills')
       .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: cancelReason || '' })
       .eq('id', id)
       .select()
       .single();
 
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    if (updateErr) {
+      console.error('[cancel] update error:', updateErr);
+      return NextResponse.json({ error: updateErr.message, details: stockErrors }, { status: 500 });
+    }
+
+    if (stockErrors.length > 0) {
+      console.warn('[cancel] partial success - some stock restore failed:', stockErrors);
+    }
+
     return NextResponse.json(shape(updated), { status: 200 });
   }
 
