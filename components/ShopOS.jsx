@@ -54,6 +54,7 @@ const calcInterest=(amount, fromDate, rate=12)=>{
   const interestDays=days-60;
   return +(amount*(rate/100)*(interestDays/365)).toFixed(2);
 };
+const calcPaidAmount=(billId,Py)=>Py.filter(p=>p.billId===billId && !(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
 const qrU=(d,s=80)=>'/api/qr?data='+encodeURIComponent(d)+'&size='+s;
 const isBR=typeof window!=='undefined';
 const getToken=async()=>{const{data:{session}}=await supabase.auth.getSession();return session?.access_token||'';};
@@ -750,7 +751,7 @@ function Dashboard({P,B,C,Py,mob,firm,setPage,setShowSupport}){
         <div style={S.h3}>Recent Bills</div>
         {B.length===0?<MT msg='No bills yet'/>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
           <thead><tr>{['Invoice','Customer','Total','Status'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-          <tbody>{[...B].slice(0,6).map(b=>{const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={S.td}>{b.customerName}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(b.total)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
+          <tbody>{[...B].slice(0,6).map(b=>{const paid=calcPaidAmount(b.id,Py);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={S.td}>{b.customerName}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(b.total)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
           </tbody></table>}
       </div>
       <div style={S.card}>
@@ -1836,7 +1837,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
     const cust=C.find(c=>c.id===b.customerId);
     const phone=cust?.phone||b.customerPhone||'';
     if(!phone){showT('No phone number for customer','err');return;}
-    const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);
+    const paid=calcPaidAmount(b.id,Py);
     const bal=b.total-paid;
     setPdfBusy(true);
     try{
@@ -1870,7 +1871,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   const whatsappReminder=async b=>{
     const cust=C.find(c=>c.id===b.customerId);
     const phone=cust?.phone||b.customerPhone||'';
-    const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);
+    const paid=calcPaidAmount(b.id,Py);
     const bal=b.total-paid;
     if(bal<=0){showT('No outstanding balance on this bill','err');return;}
     if(!phone){showT('No phone number for customer','err');return;}
@@ -1950,7 +1951,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
         <thead><tr>{['Invoice','Date','Customer','Pcs','Total','Paid','Status','Transport & LR','Actions'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
         <tbody>
           {filteredBills.length===0&&<tr key='empty'><td colSpan={9}><MT msg={dateRange.from?'No bills in this date range':'No bills yet.'}/></td></tr>}
-          {filteredBills.map(b=>{const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';
+          {filteredBills.map(b=>{const paid=calcPaidAmount(b.id,Py);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';
             return<tr key={b.id}>
               <td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td>
               <td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td>
@@ -2451,7 +2452,7 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
     {cb.length===0?<MT msg='No bills yet'/>:<div style={{...S.card,padding:0,marginBottom:14,overflowX:'auto'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:500}}>
         <thead><tr>{['Invoice','Date','Pcs','Amount','Paid','Balance','Status'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-        <tbody>{cb.map(b=>{const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);const bbal=b.total-paid;const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td><td style={{...S.td,textAlign:'right',fontSize:11}}>{(b.items||[]).reduce((s,i)=>s+i.qty,0)}</td><td style={{...S.td,...S.mono,fontWeight:700}}>{fmt(b.total)}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:600}}>{fmt(paid)}</td><td style={{...S.td,...S.mono,fontWeight:700,color:bbal>0?RD:GR}}>{fmt(bbal)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
+        <tbody>{cb.map(b=>{const paid=calcPaidAmount(b.id,Py);const bbal=b.total-paid;const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td><td style={{...S.td,textAlign:'right',fontSize:11}}>{(b.items||[]).reduce((s,i)=>s+i.qty,0)}</td><td style={{...S.td,...S.mono,fontWeight:700}}>{fmt(b.total)}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:600}}>{fmt(paid)}</td><td style={{...S.td,...S.mono,fontWeight:700,color:bbal>0?RD:GR}}>{fmt(bbal)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
         </tbody>
       </table>
     </div>}
@@ -2511,7 +2512,7 @@ function PaymentReceivedTab({customer,payments,setPy,Py,B,firm}){
     <div style={S.h3}>Add Payment Received</div>
     {custBills.length===0?<div style={{...S.card,padding:20,textAlign:'center',color:MUT}}>No invoices for this customer. Create an invoice first to record payments.</div>:<div style={{...S.card,marginBottom:14}}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-        <Fld label='Invoice *'><select style={S.inp} value={bill} onChange={e=>setBill(e.target.value)}><option value=''>Select invoice...</option>{custBills.map(b=>{const paid=Py.filter(p=>p.billId===b.id).reduce((s,p)=>s+p.amount,0);const bal=b.total-paid;return<option key={b.id} value={b.id}>{b.invoiceNo||'#'+b.id} - ₹{bal.toFixed(2)} pending</option>})}</select></Fld>
+        <Fld label='Invoice *'><select style={S.inp} value={bill} onChange={e=>setBill(e.target.value)}><option value=''>Select invoice...</option>{custBills.map(b=>{const paid=calcPaidAmount(b.id,Py);const bal=b.total-paid;return<option key={b.id} value={b.id}>{b.invoiceNo||'#'+b.id} - ₹{bal.toFixed(2)} pending</option>})}</select></Fld>
         <Fld label='Date'><input style={S.inp} type='date' value={date} onChange={e=>setDate(e.target.value)}/></Fld>
         <Fld label='Mode'><select style={S.inp} value={mode} onChange={e=>setMode(e.target.value)}><option>Cash</option><option>Cheque</option><option>UPI</option><option>Bank Transfer</option></select></Fld>
         <Fld label='Amount (₹)'><input style={S.inp} type='number' value={amount} onChange={e=>setAmount(e.target.value)} placeholder='0.00'/></Fld>
