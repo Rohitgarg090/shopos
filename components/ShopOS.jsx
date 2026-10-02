@@ -1606,7 +1606,8 @@ function Invoice({bill,firm,payments=[]}){
   const paid=payments.filter(p=>p.billId===bill.id).reduce((s,p)=>s+p.amount,0),bal=bill.total-paid;
   const gstBkp=(bill.items||[]).reduce((acc,item)=>{const r=item.gstRate||0;if(!acc[r])acc[r]={cgst:0,sgst:0,taxable:0};acc[r].taxable+=item.rate*item.qty;acc[r].cgst+=item.gstAmt/2;acc[r].sgst+=item.gstAmt/2;return acc},{});
   const hasDiscount=(bill.discount||0)>0;
-  useEffect(()=>{if(firm.upiId&&typeof window!=='undefined'){const QRCode=require('qrcode');const canvas=document.getElementById('upiQrCanvas');if(canvas){const payload=`upi://pay?pa=${firm.upiId}&pn=${encodeURIComponent(firm.name)}&cu=INR`;QRCode.toCanvas(canvas,payload,{width:88,margin:0,errorCorrectionLevel:'H'},(err)=>{if(err)console.error('QR generation failed:',err);});}};},[firm.upiId,firm.name]);
+  const[upiQrUrl,setUpiQrUrl]=useState(null);
+  useEffect(()=>{if(firm.upiId&&typeof window!=='undefined'){const QRCode=require('qrcode');const payload=`upi://pay?pa=${firm.upiId}&pn=${encodeURIComponent(firm.name)}&cu=INR`;QRCode.toDataURL(payload,{width:88,margin:0,errorCorrectionLevel:'H'},(err,url)=>{if(err){console.error('QR generation failed:',err);}else{setUpiQrUrl(url);}});}},[firm.upiId,firm.name]);
   return<div id='invoice-print' style={{fontFamily:'Arial,sans-serif',color:'#111',fontSize:12,width:'100%',background:'#fff',padding:22,boxSizing:'border-box'}}>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:10}}><tbody><tr>
       <td style={{width:'60%',verticalAlign:'top'}}>
@@ -1619,7 +1620,7 @@ function Invoice({bill,firm,payments=[]}){
         {firm.gstin&&<div style={{fontSize:11,fontWeight:700,marginTop:3}}>GSTIN: {firm.gstin}</div>}
       </td>
       <td style={{width:'40%',textAlign:'right',verticalAlign:'top'}}>
-        {firm.upiQrImage?<div><img src={firm.upiQrImage} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:firm.upiId?<div><canvas id='upiQrCanvas' style={{width:88,height:88,border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:null}
+        {firm.upiQrImage?<div><img src={firm.upiQrImage} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:upiQrUrl?<div><img src={upiQrUrl} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:null}
       </td>
     </tr></tbody></table>
     <div style={{background:'#1B3A6B',color:'#fff',padding:'5px 14px',borderRadius:4,marginBottom:10,display:'flex',justifyContent:'space-between'}}>
