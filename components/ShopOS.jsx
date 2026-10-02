@@ -1006,8 +1006,26 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
       const igst=supplierBanner.igst||0;
       // If invoice total was extracted, use it; otherwise calculate
       const total=supplierBanner.invoiceTotal>0?supplierBanner.invoiceTotal:(subtotal-discount+cgst+sgst+igst);
-      // Convert date from DD-MM-YYYY to YYYY-MM-DD if needed
-      const convertDate=dateStr=>{if(!dateStr)return new Date().toISOString().split('T')[0];const parts=dateStr.split('-');if(parts.length===3&&parts[0].length===4)return dateStr;if(parts.length===3&&parts[0].length===2)return `${parts[2]}-${parts[1]}-${parts[0]}`;return dateStr;};
+      // Convert date from DD-MM-YYYY or DD/MM/YYYY to YYYY-MM-DD format
+      const convertDate=dateStr=>{
+        if(!dateStr)return new Date().toISOString().split('T')[0];
+        // Already in YYYY-MM-DD format
+        if(/^\d{4}-\d{2}-\d{2}$/.test(dateStr))return dateStr;
+        // Try DD-MM-YYYY format
+        const dashParts=dateStr.split('-');
+        if(dashParts.length===3&&dashParts[0].length===2&&dashParts[2].length===4){
+          return `${dashParts[2]}-${dashParts[1]}-${dashParts[0]}`;
+        }
+        // Try DD/MM/YYYY format
+        const slashParts=dateStr.split('/');
+        if(slashParts.length===3&&slashParts[0].length===2&&slashParts[2].length===4){
+          return `${slashParts[2]}-${slashParts[1]}-${slashParts[0]}`;
+        }
+        // Fallback: try to parse as Date
+        try{const d=new Date(dateStr);if(!isNaN(d.getTime()))return d.toISOString().split('T')[0];}catch(e){}
+        // Last resort: return as-is and let server handle
+        return dateStr;
+      };
       const siPayload={
         supplierName:supplierBanner.supplier,
         supplierGSTIN:supplierBanner.gstin||'',
