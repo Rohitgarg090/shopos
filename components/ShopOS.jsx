@@ -803,7 +803,7 @@ function Catalog({P,setP,mob}){
     <input style={{...S.inp,marginBottom:12}} placeholder='Search name, barcode, article no...' value={srch} onChange={e=>setSrch(e.target.value)}/>
     <button style={{...S.btn('pri'),marginBottom:12}} onClick={()=>{setF(BLK);setEid(null);setShowF(true)}}> + Add Product</button>
     <div style={{...S.card,padding:0,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:600}}>
-      <thead><tr>{['','QR','Product','Article','Category','Price','GST','Stock',''].map(h=><th key={h} style={S.th}>{h==='QR'?(<input type='checkbox' checked={selected.size===rows.length&&rows.length>0} onChange={toggleSelectAll} style={{cursor:'pointer'}}/>):h}</th>)}</tr></thead>
+      <thead><tr>{['','QR','Product','Article','Category','Price','GST','Stock',''].map((h,i)=><th key={i} style={S.th}>{h==='QR'?(<input type='checkbox' checked={selected.size===rows.length&&rows.length>0} onChange={toggleSelectAll} style={{cursor:'pointer'}}/>):h}</th>)}</tr></thead>
       <tbody>
         {rows.length===0&&<tr><td colSpan={9}><MT msg='No products'/></td></tr>}
         {rows.map(p=><tr key={p.id} style={{background:selected.has(p.id)?BLL:''}}>
