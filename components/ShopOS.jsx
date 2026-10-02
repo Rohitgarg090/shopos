@@ -1039,6 +1039,33 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
     setTimeout(()=>onDone(),1500);
   };
 
+  // Save supplier invoice WITHOUT catalog items (for failed extractions)
+  const saveInvoiceOnly=async()=>{
+    if(!supplierBanner?.supplier){showT('Supplier name required','err');return;}
+    const siPayload={
+      supplierName:supplierBanner.supplier,
+      supplierGSTIN:supplierBanner.gstin||'',
+      invoiceNo:supplierBanner.invoiceNo||'',
+      invoiceDate:supplierBanner.invoiceDate||'',
+      place:supplierBanner.place||'',
+      subtotal:+supplierBanner.subtotal||0,
+      discount:+supplierBanner.discount||0,
+      discountPct:+supplierBanner.discountPct||0,
+      cgst:+supplierBanner.cgst||0,
+      sgst:+supplierBanner.sgst||0,
+      igst:+supplierBanner.igst||0,
+      roundOff:0,
+      total:+supplierBanner.invoiceTotal||(supplierBanner.subtotal-supplierBanner.discount+supplierBanner.cgst+supplierBanner.sgst+supplierBanner.igst),
+      notes:'Scanned invoice - items not extracted',
+      items:[],
+    };
+    try{
+      const saved=await api.post('/api/supplier-invoices',siPayload);
+      if(saved?.error){showT('Failed to save: '+saved.error,'err');}else if(setSI){setSI(si=>[saved,...si]);showT('Invoice saved! Add items in Suppliers tab later.');}
+      setSupplierBanner(null);
+    }catch(err){showT('Error: '+err.message,'err');}
+  };
+
   return<div>
     <div style={S.h2}>Scan Supplier Invoice</div>{toast}
     {!gk()&&<div style={{padding:'10px 16px',borderRadius:8,background:AMBL,color:AMB,fontSize:13,marginBottom:12,fontWeight:500}}>Warning: Add Gemini API key in Settings to enable AI scanning.</div>}
@@ -1123,6 +1150,10 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
             <button style={S.btn('pur')} onClick={onLabels}>QR Labels</button>
             <button style={S.btn('suc')} onClick={addToCatalog}>Add to Catalog</button>
             <button style={{...S.btn('dan',true),fontSize:11}} onClick={()=>{setItems([]);setSupplierBanner(null);setMarkupPct('');}}>Clear</button>
+          </div>}
+          {supplierBanner&&items.length===0&&<div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+            <button style={S.btn('pri')} onClick={saveInvoiceOnly}>💾 Save Invoice Only</button>
+            <button style={{...S.btn('def',true),fontSize:11}} onClick={()=>setSupplierBanner(null)}>Dismiss</button>
           </div>}
         </div>
         {items.length===0?<MT msg='Upload a supplier invoice above, or add items manually.'/> :<div style={{maxHeight:600,overflowY:'auto',display:'flex',flexDirection:'column',gap:8}}>
