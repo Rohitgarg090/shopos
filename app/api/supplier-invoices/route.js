@@ -27,6 +27,7 @@ const shape = r => ({
   roundOff: +r.round_off || 0,
   total: +r.total || 0,
   notes: r.notes || '',
+  items: Array.isArray(r.items) ? r.items : (r.items ? JSON.parse(r.items) : []),
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -170,6 +171,7 @@ export async function POST(req) {
         round_off: +b.roundOff || 0,
         total: +b.total || 0,
         notes: b.notes || '',
+        items: b.items || [],
       }]).select().single();
 
       if (error) {
@@ -269,6 +271,7 @@ export async function PATCH(req) {
     round_off: +rest.roundOff || 0,
     total: +rest.total || 0,
     notes: rest.notes || '',
+    items: rest.items || [],
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await c.sb.from('supplier_invoices')
