@@ -561,20 +561,26 @@ export default function ShopOS(){
     </nav>}
 
     <div style={{padding:mob?12:16,maxWidth:1240,margin:'0 auto',marginTop:mob?48:0,paddingBottom:mob?70:0}}>
-      {page==='dash'&&<Dashboard P={P} B={B} C={C} Py={Py} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
-      }{page==='analytics'&&<Analytics P={P} B={B} C={C} Py={Py} Ret={Ret} mob={mob}/>}
+      {(() => {
+        // Filter out cancelled invoices for all totals - applies globally
+        const Bactive = B.filter(b => b.status !== 'cancelled');
+        return <>
+      {page==='dash'&&<Dashboard P={P} B={Bactive} C={C} Py={Py} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
+      }{page==='analytics'&&<Analytics P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob}/>}
       {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}
       {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={()=>setShowUpgradeBlock(true)} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
-      {page==='cust'&&<Customers C={C} setC={setC} B={B} Py={Py} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
+      {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} mob={mob}/>}
-      {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={B} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
-      {page==='ledger'&&<Ledger B={B} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
+      {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
+      {page==='ledger'&&<Ledger B={Bactive} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
       {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
+        </>;
+      })()}
     </div>
 
     {/* Trial Extension Modal */}
