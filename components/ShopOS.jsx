@@ -2422,13 +2422,13 @@ function CustomerBankStatements({customerId}){
 function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
   const cb=B.filter(b=>b.customerId===cust.id);
   const custPay=Py.filter(p=>cb.some(b=>b.id===p.billId));
+  const validPay=custPay.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
   const obAmt=cust.openingBalance||0;
   const tv=cb.reduce((s,b)=>s+b.total,0);
-  const tp=custPay.reduce((s,p)=>s+p.amount,0);
+  const tp=validPay.reduce((s,p)=>s+p.amount,0);
   const bal=(obAmt+tv)-tp;
   const upPay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const[caTab,setCaTab]=useState('statement'); // statement | reconcile | files
-  const validPay=custPay.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
   const entries=[
     ...(obAmt>0?[{type:'Opening Balance',date:cust.openingBalanceDate||'2000-01-01',ref:'OB',debit:obAmt,credit:0,id:'ob',payObj:null}]:[]),
     ...cb.map(b=>({type:'Invoice',date:b.date,ref:b.invoiceNo||'#'+b.id,debit:b.total,credit:0,id:'b'+b.id,payObj:null})),
