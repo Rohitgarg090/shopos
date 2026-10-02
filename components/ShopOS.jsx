@@ -690,7 +690,7 @@ function Dashboard({P,B,C,Py,mob,firm,setPage,setShowSupport}){
   const gk=()=>firm?.geminiKey||'';
   const td=new Date();
   const todayB=B.filter(b=>new Date(b.date).toDateString()===td.toDateString());
-  const totalBilled=B.reduce((s,b)=>s+b.total,0),totalPaid=Py.reduce((s,p)=>s+p.amount,0);
+  const totalBilled=B.reduce((s,b)=>s+b.total,0),totalPaid=Py.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
   const months=[];for(let i=5;i>=0;i--){const d=new Date(td);d.setMonth(d.getMonth()-i);months.push({lbl:d.toLocaleString('default',{month:'short'}),yr:d.getFullYear(),mo:d.getMonth()});}
   const mSales=months.map(m=>({...m,tot:B.filter(b=>{const d=new Date(b.date);return d.getMonth()===m.mo&&d.getFullYear()===m.yr}).reduce((s,b)=>s+b.total,0)}));
   const maxS=Math.max(...mSales.map(m=>m.tot),1);
@@ -1940,7 +1940,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   };
   const updatePay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const filteredBills=dateRange.from&&dateRange.to?B.filter(b=>{const d=new Date(b.date);return d>=new Date(dateRange.from)&&d<=new Date(dateRange.to+' 23:59:59');}):B;
-  const totalInvoiced=filteredBills.reduce((s,b)=>s+b.total,0);const totalPaid=filteredBills.reduce((s,b)=>{const paid=Py.filter(p=>p.billId===b.id).reduce((sum,p)=>sum+p.amount,0);return s+paid;},0);const netOutstanding=totalInvoiced-totalPaid;
+  const totalInvoiced=filteredBills.reduce((s,b)=>s+b.total,0);const totalPaid=filteredBills.reduce((s,b)=>s+calcPaidAmount(b.id,Py),0);const netOutstanding=totalInvoiced-totalPaid;
   return<div>
     <div style={{...S.h2, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
       <div style={{display:'flex',alignItems:'center',gap:12}}><span>Bills & Invoices</span><InvoiceHelp /><PaymentHelp /></div>
@@ -2768,9 +2768,10 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob}){
   const[dateRange,setDateRange]=useState({from:null,to:null});
   const downloadLedger=async(format='csv')=>{setDlLoading(true);try{const token=await getToken();const res=await fetch('/api/ledger',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'x-firm-id':_activeFirmId},body:JSON.stringify({customerId:selCust?.id||null,format})});if(!res.ok)throw new Error('Failed to download');const blob=await res.blob();const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`Ledger_${selCust?.name||'All'}_${new Date().toISOString().split('T')[0]}.${format==='csv'?'csv':'json'}`;link.click();showT('Ledger downloaded!');}catch(err){showT('Failed: '+err.message,'err');}finally{setDlLoading(false)};}
   const upPay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
+  const validPayments=Py.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
   const all=[
     ...B.map(b=>({tp:'Invoice',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,customerId:b.customerId,debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})),
-    ...Py.map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,customerId:null,debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p})),
+    ...validPayments.map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,customerId:null,debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p})),
     ...(Ret||[]).map(r=>({tp:r.type==='customer'?'Cust. Return':'Supp. Return',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',customerId:r.customerId,debit:r.type==='supplier'?r.total:0,credit:r.type==='customer'?r.total:0,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
     ...C.filter(c=>c.openingBalance>0).map(c=>({tp:'Opening Balance',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,customerId:c.id,debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -3613,7 +3614,7 @@ function Analytics({P,B,C,Py,Ret,mob}){
   const lastRev=lastMonthBills.reduce((s,b)=>s+b.total,0);
   const revGrowth=lastRev>0?((thisRev-lastRev)/lastRev*100):0;
   const totalRev=B.reduce((s,b)=>s+b.total,0);
-  const totalPaid=Py.reduce((s,p)=>s+p.amount,0);
+  const totalPaid=Py.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
   const outstanding=totalRev-totalPaid;
   const avgBillValue=B.length>0?totalRev/B.length:0;
   const totalReturnVal=(Ret||[]).reduce((s,r)=>s+r.total,0);
@@ -3654,7 +3655,7 @@ function Analytics({P,B,C,Py,Ret,mob}){
     const cPay=Py.filter(p=>cBills.some(b=>b.id===p.billId));
     const cRet=(Ret||[]).filter(r=>r.customerId===c.id);
     const totalBilled=cBills.reduce((s,b)=>s+b.total,0)+(c.openingBalance||0);
-    const totalPaid=cPay.reduce((s,p)=>s+p.amount,0);
+    const totalPaid=cPay.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
     const outstanding=totalBilled-totalPaid;
     const outstandingPct=totalBilled>0?(outstanding/totalBilled*100):0;
     const returnVal=cRet.reduce((s,r)=>s+r.total,0);
