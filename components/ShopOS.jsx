@@ -2428,10 +2428,11 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
   const bal=(obAmt+tv)-tp;
   const upPay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const[caTab,setCaTab]=useState('statement'); // statement | reconcile | files
+  const validPay=custPay.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
   const entries=[
     ...(obAmt>0?[{type:'Opening Balance',date:cust.openingBalanceDate||'2000-01-01',ref:'OB',debit:obAmt,credit:0,id:'ob',payObj:null}]:[]),
     ...cb.map(b=>({type:'Invoice',date:b.date,ref:b.invoiceNo||'#'+b.id,debit:b.total,credit:0,id:'b'+b.id,payObj:null})),
-    ...custPay.map(p=>({type:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),debit:0,credit:p.amount,id:'p'+p.id,payObj:p})),
+    ...validPay.map(p=>({type:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),debit:0,credit:p.amount,id:'p'+p.id,payObj:p})),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
   let run=0;const withBal=[...entries].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   return<Modal title={'Account: '+cust.name+(cust.shopname?' — '+cust.shopname:'')} onClose={onClose} wide>
