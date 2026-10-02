@@ -2928,14 +2928,14 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
     ...((ledgerType==='All'||ledgerType==='Sales')?B.map(b=>({tp:'Sales Inv',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,partyId:b.customerId,partyType:'customer',debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})):[]),
     // Purchase Invoices (if ledgerType includes Purchase)
     ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.date,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',debit:0,credit:s.total,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
-    // Payments
-    ...validPayments.map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,partyId:p.customerId||p.supplierId,partyType:p.customerId?'customer':'supplier',debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p})),
-    // Returns
-    ...(Ret||[]).map(r=>({tp:r.type==='customer'?'Cust Ret':'Supp Ret',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',partyId:r.customerId||r.supplierId,partyType:r.type==='customer'?'customer':'supplier',debit:r.type==='supplier'?r.total:0,credit:r.type==='customer'?r.total:0,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
-    // Opening Balances
-    ...C.filter(c=>c.openingBalance>0).map(c=>({tp:'OB',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,partyId:c.id,partyType:'customer',debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})),
+    // Payments - FILTERED by ledger type (Sales=customers only, Purchase=suppliers only)
+    ...((ledgerType==='Sales'?validPayments.filter(p=>p.customerId&&!p.supplierId):ledgerType==='Purchase'?validPayments.filter(p=>!p.customerId||p.supplierId):validPayments).map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,partyId:p.customerId||p.supplierId,partyType:p.customerId&&!p.supplierId?'customer':'supplier',debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p}))),
+    // Returns - FILTERED by ledger type
+    ...((Ret||[]).filter(r=>(ledgerType==='All'||(ledgerType==='Sales'&&r.type==='customer')||(ledgerType==='Purchase'&&r.type==='supplier')))).map(r=>({tp:r.type==='customer'?'Cust Ret':'Supp Ret',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',partyId:r.customerId||r.supplierId,partyType:r.type==='customer'?'customer':'supplier',debit:r.type==='supplier'?r.total:0,credit:r.type==='customer'?r.total:0,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
+    // Opening Balances - SALES ONLY (customers only)
+    ...((ledgerType==='All'||ledgerType==='Sales')?C.filter(c=>c.openingBalance>0).map(c=>({tp:'OB',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,partyId:c.id,partyType:'customer',debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})):[]),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||((ft==='Invoice'||ft==='Sales Inv')&&(e.tp==='Sales Inv'||e.tp==='OB'))||((ft==='Purchase Inv'||ft==='Purch Inv')&&e.tp==='Purch Inv');const dok=!dateRange.from||!dateRange.to||(new Date(e.date)>=new Date(dateRange.from)&&new Date(e.date)<=new Date(dateRange.to+' 23:59:59'));return pok&&tok&&dok;});
+  const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||(ft==='Sales Inv'&&(e.tp==='Sales Inv'||e.tp==='OB'))||(ft==='Purch Inv'&&e.tp==='Purch Inv');const dok=!dateRange.from||!dateRange.to||(new Date(e.date)>=new Date(dateRange.from)&&new Date(e.date)<=new Date(dateRange.to+' 23:59:59'));return pok&&tok&&dok;});
   let run=0;const withBal=[...rows].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   const tD=rows.reduce((s,e)=>s+e.debit,0),tC=rows.reduce((s,e)=>s+e.credit,0);
   const parties=[...new Set(all.map(e=>e.party).filter(Boolean))].sort();
