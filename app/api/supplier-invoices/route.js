@@ -109,6 +109,7 @@ export async function POST(req) {
     console.log('[supplier-invoices] Trial check PASSED, creating invoice');
 
     // Create invoice
+    let invoiceData = null;
     const b = await req.json();
     console.log('[supplier-invoices] Invoice data:', {
       supplierName: b.supplierName,
@@ -180,12 +181,14 @@ export async function POST(req) {
         console.error('[supplier-invoices] No data returned after insert');
         return NextResponse.json({ error: 'Failed to create invoice' }, { status: 500 });
       }
+
+      invoiceData = data;
     } catch (dbError) {
       console.error('[supplier-invoices] Database exception:', dbError);
       return NextResponse.json({ error: dbError.message || 'Database error' }, { status: 500 });
     }
 
-    console.log('[supplier-invoices] Invoice created:', { id: data.id });
+    console.log('[supplier-invoices] Invoice created:', { id: invoiceData.id });
 
     // Increment counter AFTER successful invoice creation
     if (trial) {
@@ -227,7 +230,7 @@ export async function POST(req) {
     }
 
     console.log('=== [supplier-invoices] POST END ===\n');
-    return NextResponse.json(shape(data), { status: 201 });
+    return NextResponse.json(shape(invoiceData), { status: 201 });
 
   } catch (error) {
     console.error('[supplier-invoices] ❌ POST ERROR:', error);
