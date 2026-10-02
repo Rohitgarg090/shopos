@@ -992,6 +992,9 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
         n++;
       }
     }
+    // Show catalog update toast
+    showT(n+' variant'+(n!==1?'s':'')+' added/updated!');
+
     // Save supplier invoice record (if supplier name exists, with or without items)
     if(supplierBanner&&supplierBanner.supplier){
       // Use extracted invoice totals (from Gemini) as primary source
@@ -1028,15 +1031,19 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
           showT('Failed to save invoice: '+saved.error,'err');
         }else if(setSI){
           setSI(si=>[saved,...si]);
-          showT('Supplier invoice saved with '+items.length+' items');
+          showT('✅ Supplier invoice saved!');
+          // NOW navigate after invoice is saved
+          setItems([]);setSupplierBanner(null);setMarkupPct('');
+          setTimeout(()=>onDone(),800);
+          return;
         }
       }catch(err){showT('Failed to save supplier invoice: '+err.message,'err');}
     }else if(supplierBanner&&!supplierBanner.supplier){
       showT('Could not identify supplier name from invoice','err');
     }
+    // If no supplier invoice to save, just clear and go to catalog
     setItems([]);setSupplierBanner(null);setMarkupPct('');
-    showT(n+' variant'+(n!==1?'s':'')+' added/updated!');
-    setTimeout(()=>onDone(),1500);
+    setTimeout(()=>onDone(),800);
   };
 
   // Save supplier invoice WITHOUT catalog items (for failed extractions)
