@@ -1050,7 +1050,8 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
         }
       }catch(err){
         console.error('[ScanBill] Exception saving invoice:', err);
-        showT('Failed to save supplier invoice: '+err.message,'err');
+        console.error('[ScanBill] Error details:', err?.message, err?.response?.status);
+        showT('Failed to save: '+err.message,'err');
       }
     }else if(supplierBanner&&!supplierBanner.supplier){
       showT('Could not identify supplier name from invoice','err');

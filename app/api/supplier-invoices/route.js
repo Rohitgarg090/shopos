@@ -42,9 +42,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
+  console.log('\n=== [supplier-invoices] POST START ===');
   try {
-    console.log('\n=== [supplier-invoices] POST START ===');
-
     const c = await ctx(req);
     console.log('[supplier-invoices] Auth context:', { userId: c?.user?.id, firmId: c?.firmId });
 
@@ -220,9 +219,14 @@ export async function POST(req) {
     return NextResponse.json(shape(data), { status: 201 });
 
   } catch (error) {
-    console.error('[supplier-invoices] ❌ POST ERROR:', error.message);
+    console.error('[supplier-invoices] ❌ POST ERROR:', error);
+    console.error('[supplier-invoices] Error message:', error?.message);
+    console.error('[supplier-invoices] Error stack:', error?.stack);
     console.log('=== [supplier-invoices] POST END (ERROR) ===\n');
-    return NextResponse.json({ error: error.message || 'Failed to create invoice' }, { status: 500 });
+    return NextResponse.json({
+      error: error?.message || 'Failed to create invoice',
+      details: error?.toString?.()
+    }, { status: 500 });
   }
 }
 
