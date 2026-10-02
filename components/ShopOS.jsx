@@ -1619,8 +1619,8 @@ function Invoice({bill,firm,payments=[]}){
         {firm.email&&<div style={{fontSize:11}}>Email: {firm.email}</div>}
         {firm.gstin&&<div style={{fontSize:11,fontWeight:700,marginTop:3}}>GSTIN: {firm.gstin}</div>}
       </td>
-      <td style={{width:'40%',textAlign:'right',verticalAlign:'top'}}>
-        {firm.upiQrImage?<div><img src={firm.upiQrImage} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:upiQrUrl?<div><img src={upiQrUrl} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd'}}/><div style={{fontSize:9,color:'#999',marginTop:2}}>Scan to pay</div></div>:null}
+      <td style={{width:'40%',textAlign:'right',verticalAlign:'middle',paddingTop:8}}>
+        {firm.upiQrImage?<div style={{display:'inline-block'}}><img src={firm.upiQrImage} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd',display:'block'}}/><div style={{fontSize:9,color:'#999',marginTop:3,textAlign:'right'}}>Scan to pay</div></div>:upiQrUrl?<div style={{display:'inline-block'}}><img src={upiQrUrl} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd',display:'block'}}/><div style={{fontSize:9,color:'#999',marginTop:3,textAlign:'right'}}>Scan to pay</div></div>:null}
       </td>
     </tr></tbody></table>
     <div style={{background:'#1B3A6B',color:'#fff',padding:'5px 14px',borderRadius:4,marginBottom:10,display:'flex',justifyContent:'space-between'}}>
