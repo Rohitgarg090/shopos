@@ -2652,7 +2652,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
   };
   const del=async id=>{if(!confirm('Remove?'))return;await api.del('/api/customers?id='+id);setC(cs=>cs.filter(c=>c.id!==id))};
   const filtered=C.filter(c=>(c.name+' '+(c.phone||'')+' '+(c.shopname||'')+' '+(c.gst||'')+' '+(c.addr||'')+' '+(c.email||'')).toLowerCase().includes(srch.toLowerCase()));
-  const enriched=filtered.map(c=>{const cb=B.filter(b=>b.customerId===c.id);const tv=cb.reduce((s,b)=>s+b.total,0);const tp=Py.filter(p=>cb.some(b=>b.id===p.billId)).reduce((s,p)=>s+p.amount,0);const ob=c.openingBalance||0;const bal=(ob+tv)-tp;return{...c,billCount:cb.length,totalBilled:ob+tv,paid:tp,balance:bal};});
+  const enriched=filtered.map(c=>{const cb=B.filter(b=>b.customerId===c.id);const tv=cb.reduce((s,b)=>s+b.total,0);const tp=Py.filter(p=>cb.some(b=>b.id===p.billId) && !(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);const ob=c.openingBalance||0;const bal=(ob+tv)-tp;return{...c,billCount:cb.length,totalBilled:ob+tv,paid:tp,balance:bal};});
   const sorted=enriched.sort((a,b)=>{let aVal=a[sortBy],bVal=b[sortBy];if(typeof aVal==='string')aVal=aVal.toLowerCase();if(typeof bVal==='string')bVal=bVal.toLowerCase();const cmp=aVal<bVal?-1:aVal>bVal?1:0;return sortOrder==='asc'?cmp:-cmp;});
   const total=sorted.length;const pages=Math.ceil(total/itemsPerPage);const start=(currentPage-1)*itemsPerPage;const paginated=sorted.slice(start,start+itemsPerPage);
   return<div>
