@@ -19,6 +19,7 @@ const shape = p => ({
   chequeNo: p.cheque_no||'', bank: p.bank||'', receivedDate: p.received_date||'',
   chequeDate: p.cheque_date||'', clearanceDate: p.clearance_date||'',
   areaName: p.area_name||'', chequeStatus: p.cheque_status||'',
+  paymentType: p.payment_type||'customer', customerId: p.customer_id||null, supplierId: p.supplier_id||null,
   createdAt: p.created_at,
 });
 
@@ -58,6 +59,7 @@ export async function POST(req) {
     cheque_no: b.chequeNo||'', bank: b.bank||'', received_date: b.receivedDate||null,
     cheque_date: b.chequeDate||null, clearance_date: b.clearanceDate||null,
     area_name: b.areaName||'', cheque_status: b.chequeStatus||'',
+    payment_type: b.paymentType||'customer', customer_id: b.customerId||null, supplier_id: b.supplierId||null,
   }]).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(shape(data), { status: 201 });
