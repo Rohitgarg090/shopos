@@ -1981,18 +1981,13 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
     if(selectedBills.size>50){showT('Max 50 invoices per ZIP. Please select fewer.','err');return;}
     setZipBusy(true);
     try{
+      const {default: jsPDF}=await import('jspdf');
       const selected=activeBills.filter(b=>selectedBills.has(b.id));
       const zip=new JSZip();
       for(let i=0;i<selected.length;i++){
         const b=selected[i];
         showT(`Generating ${i+1}/${selected.length}...`);
-        // Create a temporary container and render Invoice there
-        const tempDiv=document.createElement('div');
-        tempDiv.style.display='none';
-        tempDiv.id=`zip-invoice-${b.id}`;
-        document.body.appendChild(tempDiv);
         // Create a simple PDF using jsPDF with invoice content
-        const {jsPDF}=window;
         const pdf=new jsPDF();
         const pageWidth=pdf.internal.pageSize.getWidth();
         let yPos=10;
@@ -2014,11 +2009,9 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
         pdf.text('Items:',10,yPos);
         yPos+=6;
         pdf.setFontSize(9);
-        let totalQty=0;
         for(const item of (b.items||[])){
           pdf.text(`${item.name} x${item.qty} @ Rs.${item.rate}`,10,yPos);
           yPos+=4;
-          totalQty+=item.qty;
         }
         yPos+=6;
         pdf.setFontSize(11);
@@ -2040,7 +2033,6 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
         pdf.text(`Balance Due: Rs. ${(b.total-paid).toFixed(2)}`,10,yPos);
         const fileName=`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.pdf`;
         zip.file(fileName,pdf.output('blob'));
-        document.body.removeChild(tempDiv);
         if(i%5===4)await new Promise(r=>setTimeout(r,200));
       }
       const blob=await zip.generateAsync({type:'blob'});
@@ -2599,7 +2591,7 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
       <div style={{display:'flex',gap:6,borderBottom:'0.5px solid '+BORD,paddingBottom:10,flex:1,minWidth:300}}>
         {[['statement','Transactions'],['payment','Payment Received'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
       </div>
-      <button onClick={async()=>{try{const S=_theme==='modern'?MODERN_S:MINIMAL_S;const entries=buildStatementRows(B,Py,C,cust.id);const pdf=generateCustomerPDF(firm,cust,entries,C);pdf.save(`${cust.name}_Account_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){alert('PDF failed: '+e.message);}}} style={{...S.btn('pur'),marginTop:2}}>⬇ PDF</button>
+      <button onClick={async()=>{try{const entries=buildStatementRows(B,Py,C,cust.id);const pdf=generateCustomerPDF(firm,cust,entries,C);pdf.save(`${cust.name}_Account_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){alert('PDF failed: '+e.message);}}} style={S.btn('pur')}>⬇ PDF</button>
     </div>
 
     {caTab==='statement'&&<div>
@@ -2933,7 +2925,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob}){
       <div style={{display:'flex',gap:6}}>
         <button style={S.btn('def')} disabled={dlLoading} onClick={()=>downloadLedger('csv')}>📥 {dlLoading?'Downloading...':'Download CSV'}</button>
         <button style={S.btn('def')} disabled={dlLoading} onClick={()=>downloadLedger('json')}>📥 {dlLoading?'Downloading...':'Download JSON'}</button>
-        <button style={S.btn('pur')} onClick={async()=>{try{const pdf=generateLedgerPDF(firm,withBal,{dateFrom:dateRange.from,dateTo:dateRange.to,party:fp,type:ft});pdf.save(`Ledger_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){showT('PDF failed: '+e.message,'err');}}} >⬇ PDF</button>
+        <button style={S.btn('pur')} onClick={async()=>{try{const pdf=generateLedgerPDF(firm,withBal,{dateFrom:dateRange.from,dateTo:dateRange.to,party:fp,type:ft});pdf.save(`Ledger_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){console.error('Ledger PDF error:',e);showT('PDF failed: '+e.message,'err');}}} >⬇ PDF</button>
       </div>
     </div>
     <DateRangeFilter onDateChange={setDateRange}/>
