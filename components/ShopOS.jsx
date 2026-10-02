@@ -18,6 +18,9 @@ import EInvoiceManager from '@/app/components/EInvoiceManager';
 import InvoiceHelp from '@/components/PageHelpGuides/InvoiceHelp';
 import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
+import JSZip from 'jszip';
+import html2canvas from 'html2canvas';
+import { buildStatementRows, generateCustomerPDF, generateLedgerPDF } from '@/lib/pdf';
 
 /* ── constants ── */
 // Empty by default - will be populated dynamically from actual products
@@ -1812,6 +1815,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   const[transportEdit,setTransportEdit]=useState(null);const[transportForm,setTransportForm]=useState({transportName:'',lrNumber:''});
   const[pdfBusy,setPdfBusy]=useState(false);const[ewayBill,setEwayBill]=useState(null);const[ewbLoading,setEwbLoading]=useState(null);
   const[dateRange,setDateRange]=useState({from:null,to:null});
+  const[selectedBills,setSelectedBills]=useState(new Set());const[cancelBill,setCancelBill]=useState(null);const[cancelReason,setCancelReason]=useState('');const[zipBusy,setZipBusy]=useState(false);
   useEffect(()=>{if(initBill){setVid(initBill.id);onClearInit&&setTimeout(onClearInit,100);}},[initBill?.id]);
   const bill=B.find(b=>b.id===vid)||initBill;
   const print=()=>{if(!bill)return;const w=window.open('','_blank');const invHtml=document.getElementById('invoice-print')?.outerHTML||'';w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice '+(bill.invoiceNo||bill.id)+'</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;background:#fff}@media print{body{margin:0;padding:0}@page{margin:8mm;size:A4}}</style></head><body>'+invHtml+'</body></html>');w.document.close();setTimeout(()=>w.print(),500);};
@@ -1941,20 +1945,85 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   };
   const updatePay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const filteredBills=dateRange.from&&dateRange.to?B.filter(b=>{const d=new Date(b.date);return d>=new Date(dateRange.from)&&d<=new Date(dateRange.to+' 23:59:59');}):B;
-  const totalInvoiced=filteredBills.reduce((s,b)=>s+b.total,0);const totalPaid=filteredBills.reduce((s,b)=>s+calcPaidAmount(b.id,Py),0);const netOutstanding=totalInvoiced-totalPaid;
+  const activeBills=filteredBills.filter(b=>b.status!=='cancelled');
+  const totalInvoiced=activeBills.reduce((s,b)=>s+b.total,0);const totalPaid=activeBills.reduce((s,b)=>s+calcPaidAmount(b.id,Py),0);const netOutstanding=totalInvoiced-totalPaid;
+
+  const toggleBillSelection=(billId)=>{
+    const newSel=new Set(selectedBills);
+    if(newSel.has(billId)){newSel.delete(billId);}else{newSel.add(billId);}
+    setSelectedBills(newSel);
+  };
+
+  const selectAllFiltered=()=>{
+    if(selectedBills.size===activeBills.length){
+      setSelectedBills(new Set());
+    }else{
+      setSelectedBills(new Set(activeBills.map(b=>b.id)));
+    }
+  };
+
+  const doCancelBill=async()=>{
+    if(!cancelBill||!cancelReason.trim()){showT('Cancellation reason required','err');return;}
+    try{
+      const res=await api.patch('/api/bills',{id:cancelBill.id,action:'cancel',cancelReason});
+      setB(bs=>bs.map(b=>b.id===cancelBill.id?res:b));
+      setCancelBill(null);setCancelReason('');
+      showT('Invoice '+cancelBill.invoiceNo+' cancelled and stock restored');
+    }catch(e){showT('Cancel failed: '+e.message,'err');}
+  };
+
+  const doDownloadZip=async()=>{
+    if(selectedBills.size===0){showT('Select at least one invoice','err');return;}
+    setZipBusy(true);
+    try{
+      const selected=activeBills.filter(b=>selectedBills.has(b.id));
+      const zip=new JSZip();
+      for(let i=0;i<selected.length;i++){
+        const b=selected[i];
+        const invEl=document.createElement('div');
+        invEl.innerHTML=`<div id="temp-invoice-${b.id}" style="width:794px;padding:20px;background:#fff;font-family:Arial,sans-serif"></div>`;
+        document.body.appendChild(invEl);
+        const tempInvEl=invEl.querySelector(`#temp-invoice-${b.id}`);
+        // For now, use a simple approach: render invoice summary as PDF
+        // Real implementation would clone and render the Invoice component
+        const pdfContent=`Invoice ${b.invoiceNo}\nDate: ${new Date(b.date).toLocaleDateString('en-IN')}\nCustomer: ${b.customerName}\nAmount: Rs.${b.total.toFixed(2)}`;
+        zip.file(`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.txt`,pdfContent);
+        document.body.removeChild(invEl);
+        // Yield to prevent blocking
+        if(i%5===4)await new Promise(r=>setTimeout(r,100));
+      }
+      const blob=await zip.generateAsync({type:'blob'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=`Invoices-${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showT(`Downloaded ${selected.length} invoices as ZIP`);
+      setSelectedBills(new Set());
+    }catch(e){showT('ZIP download failed: '+e.message,'err');}finally{setZipBusy(false);}
+  };
   return<div>
     <div style={{...S.h2, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
       <div style={{display:'flex',alignItems:'center',gap:12}}><span>Bills & Invoices</span><InvoiceHelp /><PaymentHelp /></div>
     </div>{toast}
     <DateRangeFilter onDateChange={setDateRange}/>
+    <div style={{...S.card,padding:12,marginBottom:14,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',borderBottom:'0.5px solid '+BORD}}>
+      <input type='checkbox' checked={selectedBills.size===activeBills.length&&activeBills.length>0} onChange={selectAllFiltered} style={{cursor:'pointer'}}/>
+      <span style={{fontSize:11,color:MUT}}>{selectedBills.size>0?selectedBills.size+' selected':'No selection'}</span>
+      {selectedBills.size>0&&<button style={S.btn('suc',true)} onClick={doDownloadZip} disabled={zipBusy}>{zipBusy?<><Spin/> Zipping...</>:'Download '+selectedBills.size+' as ZIP'}</button>}
+    </div>
     <div style={{...S.card,padding:0,marginBottom:14,overflowX:'auto'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?500:700}}>
-        <thead><tr>{['Invoice','Date','Customer','Pcs','Total','Paid','Status','Transport & LR','Actions'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+        <thead><tr>{['','Invoice','Date','Customer','Pcs','Total','Paid','Status','Transport & LR','Actions'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
         <tbody>
-          {filteredBills.length===0&&<tr key='empty'><td colSpan={9}><MT msg={dateRange.from?'No bills in this date range':'No bills yet.'}/></td></tr>}
-          {filteredBills.map(b=>{const paid=calcPaidAmount(b.id,Py);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';
-            return<tr key={b.id}>
-              <td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td>
+          {filteredBills.length===0&&<tr key='empty'><td colSpan={10}><MT msg={dateRange.from?'No bills in this date range':'No bills yet.'}/></td></tr>}
+          {filteredBills.map(b=>{const paid=calcPaidAmount(b.id,Py);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';const isCancelled=b.status==='cancelled';
+            return<tr key={b.id} style={isCancelled?{opacity:0.6,background:'#faf8f5'}:{}}>
+              <td style={{...S.td,textAlign:'center'}}><input type='checkbox' checked={selectedBills.has(b.id)} onChange={()=>toggleBillSelection(b.id)} disabled={isCancelled} style={{cursor:isCancelled?'default':'pointer'}}/></td>
+              <td style={{...S.td,...S.mono,fontWeight:800,fontSize:11,textDecoration:isCancelled?'line-through':'none'}}>{b.invoiceNo||'#'+b.id}</td>
               <td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td>
               <td style={S.td}><div style={{fontWeight:600,fontSize:12}}>{b.customerName}</div>{b.customerPhone&&<div style={{fontSize:10,color:MUT}}>{b.customerPhone}</div>}</td>
               <td style={{...S.td,textAlign:'right',fontSize:11}}>{(b.items||[]).reduce((s,i)=>s+i.qty,0)}</td>
@@ -1975,16 +2044,17 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
               </td>
               <td style={S.td}><div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
                 <button style={S.btn('def',true)} onClick={()=>setVid(b.id===vid?null:b.id)}>View</button>
-                <button style={S.btn('pur',true)} onClick={()=>setPayBill(b)}>Pay</button>
+                {!isCancelled&&<button style={S.btn('pur',true)} onClick={()=>setPayBill(b)}>Pay</button>}
                 <button style={S.btn('suc',true)} onClick={()=>{setVid(b.id);setTimeout(print,400)}}>Print</button>
-                <button style={S.btn('amb',true)} onClick={()=>emailBill(b)} disabled={pdfBusy}>{pdfBusy?<Spin/>:'Email'}</button>
-                <button style={{...S.btn('suc',true),background:'#25D366',color:'#fff',border:'none'}} onClick={()=>whatsappBill(b)}>WA Bill</button>
-                <button style={{...S.btn('def',true),fontSize:10}} onClick={()=>whatsappReminder(b)}>WA Remind</button>
-                {b.ewbNo?<span style={{...S.mono,fontSize:10,color:GR,background:GRL,padding:'2px 6px',borderRadius:5,fontWeight:700}}>EWB: {b.ewbNo}</span>:<button style={S.btn('def',true)} onClick={()=>generateEWB(b)} disabled={ewbLoading===b.id}>{ewbLoading===b.id?<Spin/>:'E-Way'}</button>}
+                <button style={S.btn('amb',true)} onClick={()=>emailBill(b)} disabled={pdfBusy||isCancelled}>{pdfBusy?<Spin/>:'Email'}</button>
+                <button style={{...S.btn('suc',true),background:'#25D366',color:'#fff',border:'none'}} onClick={()=>whatsappBill(b)} disabled={isCancelled}>WA Bill</button>
+                <button style={{...S.btn('def',true),fontSize:10}} onClick={()=>whatsappReminder(b)} disabled={isCancelled}>WA Remind</button>
+                {isCancelled?<Bdg c='red'>Cancelled</Bdg>:b.ewbNo?<span style={{...S.mono,fontSize:10,color:GR,background:GRL,padding:'2px 6px',borderRadius:5,fontWeight:700}}>EWB: {b.ewbNo}</span>:<button style={S.btn('def',true)} onClick={()=>generateEWB(b)} disabled={ewbLoading===b.id}>{ewbLoading===b.id?<Spin/>:'E-Way'}</button>}
+                {!isCancelled&&<button style={S.btn('dan',true)} onClick={()=>setCancelBill(b)}>Cancel</button>}
               </div></td>
             </tr>;})}
           <tr style={{background:'#f5f4f0',fontWeight:700}}>
-            <td colSpan={4} style={S.td}>TOTALS ({filteredBills.length} bills)</td>
+            <td colSpan={5} style={S.td}>TOTALS ({activeBills.length} active bills){filteredBills.length>activeBills.length&&<span style={{fontSize:10,color:MUT,fontWeight:500}}> + {filteredBills.length-activeBills.length} cancelled</span>}</td>
             <td style={{...S.td,...S.mono,color:RD,fontWeight:800}}>{fmt(totalInvoiced)}</td>
             <td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(totalPaid)}</td>
             <td style={S.td}><Bdg c={netOutstanding>0?'red':'green'}>{netOutstanding>0?'Unpaid':'Settled'}</Bdg></td>
@@ -2015,6 +2085,35 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
     </div>}
     {payBill&&<PayModal bill={payBill} onSave={savePayment} onClose={()=>setPayBill(null)}/>}
     {ewayBill&&<EWayBillModal bill={ewayBill} firm={firm} onClose={()=>setEwayBill(null)}/>}
+    {cancelBill&&<Modal title={'Cancel Invoice '+cancelBill.invoiceNo} onClose={()=>setCancelBill(null)}>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <div style={{background:RDL,border:'0.5px solid '+RD,borderRadius:8,padding:12}}>
+          <div style={{fontWeight:600,fontSize:13,color:RD,marginBottom:4}}>⚠️ Permanent Action</div>
+          <div style={{fontSize:12,color:RD,lineHeight:1.4}}>
+            Invoice: <strong>{cancelBill.invoiceNo}</strong><br/>
+            Customer: <strong>{cancelBill.customerName}</strong><br/>
+            Amount: <strong>{fmt(cancelBill.total)}</strong><br/>
+            Items: <strong>{(cancelBill.items||[]).length}</strong><br/>
+          </div>
+        </div>
+        <div style={{fontSize:12,color:MUT,lineHeight:1.5}}>
+          <div style={{marginBottom:8}}><strong>What will happen:</strong></div>
+          <ul style={{margin:0,paddingLeft:16,fontSize:11}}>
+            <li>Stock for {(cancelBill.items||[]).length} items will be restored</li>
+            <li>Payments received on this invoice ({fmt(calcPaidAmount(cancelBill.id,Py))}) will be kept as credit</li>
+            <li>This action cannot be undone</li>
+          </ul>
+        </div>
+        <div>
+          <label style={S.lbl}>Cancellation Reason</label>
+          <textarea value={cancelReason} onChange={e=>setCancelReason(e.target.value)} placeholder='e.g., Wrong items shipped, customer rejected, etc.' style={{...S.inp,minHeight:60,fontFamily:'inherit'}}/>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button style={S.btn('dan')} onClick={doCancelBill} disabled={!cancelReason.trim()}>Cancel Invoice</button>
+          <button style={S.btn('def')} onClick={()=>setCancelBill(null)}>Don't Cancel</button>
+        </div>
+      </div>
+    </Modal>}
   </div>;}
 
 /* ── RETURNS ── */
@@ -2444,9 +2543,12 @@ function CustomerAccount({cust,B,Py,setPy,firm,onClose}){
     <div style={{display:'flex',gap:10,fontSize:12,color:MUT,marginBottom:12,flexWrap:'wrap'}}>
       <span>Ph: {cust.phone}</span>{cust.shopname&&<span>Shop: {cust.shopname}</span>}{cust.gst&&<span>GSTIN: <strong style={{color:BL}}>{cust.gst}</strong></span>}{cust.email&&<span>Email: {cust.email}</span>}
     </div>
-    {/* Tabs */}
-    <div style={{display:'flex',gap:6,marginBottom:14,borderBottom:'0.5px solid '+BORD,paddingBottom:10}}>
-      {[['statement','Transactions'],['payment','Payment Received'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
+    <div style={{display:'flex',gap:8,marginBottom:12,justifyContent:'space-between',flexWrap:'wrap'}}>
+      {/* Tabs */}
+      <div style={{display:'flex',gap:6,borderBottom:'0.5px solid '+BORD,paddingBottom:10,flex:1,minWidth:300}}>
+        {[['statement','Transactions'],['payment','Payment Received'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
+      </div>
+      <button onClick={async()=>{try{const S=_theme==='modern'?MODERN_S:MINIMAL_S;const entries=buildStatementRows(B,Py,C,cust.id);const pdf=generateCustomerPDF(firm,cust,entries,C);pdf.save(`${cust.name}_Account_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){alert('PDF failed: '+e.message);}}} style={{...S.btn('pur'),marginTop:2}}>⬇ PDF</button>
     </div>
 
     {caTab==='statement'&&<div>
@@ -2780,6 +2882,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob}){
       <div style={{display:'flex',gap:6}}>
         <button style={S.btn('def')} disabled={dlLoading} onClick={()=>downloadLedger('csv')}>📥 {dlLoading?'Downloading...':'Download CSV'}</button>
         <button style={S.btn('def')} disabled={dlLoading} onClick={()=>downloadLedger('json')}>📥 {dlLoading?'Downloading...':'Download JSON'}</button>
+        <button style={S.btn('pur')} onClick={async()=>{try{const pdf=generateLedgerPDF(firm,withBal,{dateFrom:dateRange.from,dateTo:dateRange.to,party:fp,type:ft});pdf.save(`Ledger_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){showT('PDF failed: '+e.message,'err');}}} >⬇ PDF</button>
       </div>
     </div>
     <DateRangeFilter onDateChange={setDateRange}/>

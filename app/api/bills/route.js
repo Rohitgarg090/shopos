@@ -20,6 +20,7 @@ const shape = b => ({
   gst: +b.gst_total, markup: +b.markup||0, total: +b.total,
   biltyNo: b.bilty_no||'', transportName: b.transport_name||'',
   lrNumber: b.lr_number||'', ewbNo: b.ewb_no||'', ewbValidUpto: b.ewb_valid_upto||'',
+  status: b.status||'active', cancelledAt: b.cancelled_at||null, cancelReason: b.cancel_reason||'',
 });
 
 export async function GET(req) {
@@ -72,12 +73,37 @@ export async function PATCH(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
-  const { id, biltyNo, transportName, lrNumber, ewbNo, ewbValidUpto } = body;
+  const { id, action, cancelReason, biltyNo, transportName, lrNumber, ewbNo, ewbValidUpto } = body;
 
   // Verify bill belongs to this firm
-  const { data: bill } = await c.sb.from('bills').select('firm_id').eq('id', id).single();
+  const { data: bill, error: billErr } = await c.sb.from('bills').select('*, bill_items(*)').eq('id', id).single();
   if (!bill || bill.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  // Handle cancel action
+  if (action === 'cancel') {
+    if (bill.status === 'cancelled') {
+      return NextResponse.json({ error: 'Bill already cancelled' }, { status: 400 });
+    }
+
+    // Restore stock for all bill items
+    for (const item of (bill.bill_items || [])) {
+      if (item.product_sku) {
+        await c.sb.rpc('increment_stock', { p_sku: item.product_sku, p_qty: item.qty });
+      }
+    }
+
+    // Mark bill as cancelled
+    const { data: updated, error: updateErr } = await c.sb.from('bills')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: cancelReason || '' })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    return NextResponse.json(shape(updated), { status: 200 });
+  }
+
+  // Handle shipment details update (existing logic)
   const updates = {};
   if (biltyNo       !== undefined) updates.bilty_no        = biltyNo;
   if (transportName !== undefined) updates.transport_name  = transportName;
