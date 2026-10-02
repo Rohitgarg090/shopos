@@ -1990,59 +1990,59 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
         const b=selected[i];
         showT(`Generating ${i+1}/${selected.length}...`);
 
-        // Create hidden container with Invoice component rendered
+        // Show invoice in Bills view to render it
+        setVid(b.id);
+        await new Promise(r=>setTimeout(r,1000));
+
+        // Get the rendered invoice element
+        const invoiceEl=document.getElementById('invoice-print');
+        if(!invoiceEl){
+          console.error('Invoice element not found for',b.invoiceNo);
+          continue;
+        }
+
+        // Clone to hidden container
         const container=document.createElement('div');
         container.style.position='fixed';
         container.style.left='-9999px';
         container.style.top='-9999px';
         container.style.width='794px';
         container.style.background='white';
-        container.id=`invoice-zip-${b.id}`;
+        container.innerHTML=invoiceEl.innerHTML;
         document.body.appendChild(container);
 
-        // Render Invoice component
-        const root=window.React?.createRoot?window.React.createRoot(container):null;
-        if(root){
-          const invoiceEl=React.createElement(Invoice,{bill:b,firm,payments:Py});
-          root.render(invoiceEl);
-          // Wait for render
-          await new Promise(r=>setTimeout(r,500));
-        }else{
-          // Fallback: use existing invoice HTML
-          const existingInv=document.getElementById('invoice-print');
-          if(existingInv){
-            container.innerHTML=existingInv.innerHTML;
+        try{
+          // Capture with html2canvas
+          const canvas=await html2canvas_(container,{scale:2,allowTaint:true,useCORS:true,backgroundColor:'#ffffff'});
+          const imgData=canvas.toDataURL('image/jpeg',0.95);
+
+          // Create PDF
+          const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+          const imgWidth=210;
+          const imgHeight=(canvas.height*imgWidth)/canvas.width;
+          const pageHeight=pdf.internal.pageSize.getHeight();
+
+          let yPos=0;
+          let heightLeft=imgHeight;
+          while(heightLeft>0){
+            pdf.addImage(imgData,'JPEG',0,yPos,imgWidth,imgHeight);
+            heightLeft-=pageHeight;
+            if(heightLeft>0)pdf.addPage();
+            yPos=-pageHeight;
           }
+
+          const fileName=`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.pdf`;
+          zip.file(fileName,pdf.output('blob'));
+        }catch(e){
+          console.error('ZIP PDF error:',e);
+        }finally{
+          document.body.removeChild(container);
         }
 
-        // Capture with html2canvas
-        const canvas=await html2canvas_(container,{scale:2,allowTaint:true,useCORS:true});
-        const imgData=canvas.toDataURL('image/jpeg',0.95);
-
-        // Create PDF
-        const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-        const imgWidth=210;
-        const imgHeight=(canvas.height*imgWidth)/canvas.width;
-        const pageHeight=pdf.internal.pageSize.getHeight();
-
-        let yPos=0;
-        let heightLeft=imgHeight;
-        while(heightLeft>0){
-          pdf.addImage(imgData,'JPEG',0,yPos,imgWidth,imgHeight);
-          heightLeft-=pageHeight;
-          if(heightLeft>0)pdf.addPage();
-          yPos=-pageHeight;
-        }
-
-        const fileName=`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.pdf`;
-        zip.file(fileName,pdf.output('blob'));
-
-        // Cleanup
-        if(root)root.unmount();
-        document.body.removeChild(container);
-
-        if(i%3===2)await new Promise(r=>setTimeout(r,300));
+        if(i%2===1)await new Promise(r=>setTimeout(r,400));
       }
+
+      setVid(null);
 
       const blob=await zip.generateAsync({type:'blob'});
       const url=URL.createObjectURL(blob);
