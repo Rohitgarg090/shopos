@@ -4,6 +4,6 @@ alter table payments add column if not exists payment_type text default 'custome
 -- Create index for filtering by payment type
 create index if not exists idx_payments_type on payments(payment_type);
 
--- Add supplier reference for supplier payments
-alter table payments add column if not exists supplier_id uuid;
+-- Add supplier reference for supplier payments (supplier_id stores supplier name as text)
+alter table payments add column if not exists supplier_id text;
 alter table payments add column if not exists supplier_invoice_id uuid;

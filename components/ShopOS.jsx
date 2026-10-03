@@ -573,7 +573,7 @@ export default function ShopOS(){
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
-      {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
+      {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} Py={Py} setPy={setPy} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
       {page==='ledger'&&<Ledger B={Bactive} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob} SI={SI}/>}
@@ -2998,7 +2998,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
     // Sales Invoices (if ledgerType includes Sales)
     ...((ledgerType==='All'||ledgerType==='Sales')?B.map(b=>({tp:'Sales Inv',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,partyId:b.customerId,partyType:'customer',debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})):[]),
     // Purchase Invoices (if ledgerType includes Purchase)
-    ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.date,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',debit:s.total,credit:0,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
+    ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.invoiceDate,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',debit:s.total,credit:0,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
     // Payments - FILTERED by ledger type using paymentType field
     ...((ledgerType==='Sales'?validPayments.filter(p=>p.paymentType==='customer'):ledgerType==='Purchase'?validPayments.filter(p=>p.paymentType==='supplier'):validPayments).map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,partyId:p.customerId||p.supplierId,partyType:p.paymentType||'customer',debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p}))),
     // Returns - FILTERED by ledger type
@@ -3060,7 +3060,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
       <tbody>
         {rows.length===0&&<tr><td colSpan={8}><MT msg='No transactions found'/></td></tr>}
         {withBal.map(e=><tr key={e.id} style={{background:e.tp==='Opening Balance'?AMBL:''}}>
-          <td style={{...S.td,fontSize:11}}>{new Date(e.date).toLocaleDateString('en-IN')}</td>
+          <td style={{...S.td,fontSize:11}}>{e.date?new Date(e.date).toLocaleDateString('en-IN'):'—'}</td>
           <td style={S.td}><Bdg c={e.tp==='Invoice'||e.tp==='Opening Balance'?'red':e.tp==='Payment'?'green':e.tp==='Cust. Return'?'green':'amber'}>{e.tp}</Bdg></td>
           <td style={{...S.td,...S.mono,fontSize:10,fontWeight:600}}>{e.ref}</td>
           <td style={S.td}>
@@ -4180,7 +4180,7 @@ function Analytics({P,B,C,Py,Ret,mob}){
   </div>;}
 
 /* ── SUPPLIERS ── */
-function Suppliers({SI,setSI,SS,setSS,firm,gk,mob}){
+function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   console.log('[Suppliers] Rendered with SI:', SI, 'Length:', SI?.length);
   const[srch,setSrch]=useState('');
@@ -4189,6 +4189,11 @@ function Suppliers({SI,setSI,SS,setSS,firm,gk,mob}){
   const[tab,setTab]=useState('invoices');const[uploading,setUploading]=useState(false);
   const[expandedInvoices,setExpandedInvoices]=useState({}); // track which invoices are expanded
   const[toast,showT]=useToast();
+  const[payDate,setPayDate]=useState(new Date().toISOString().split('T')[0]);
+  const[payAmount,setPayAmount]=useState('');
+  const[payMode,setPayMode]=useState('Cash');
+  const[payRef,setPayRef]=useState('');
+  const[payCity,setPayCity]=useState('');
   const handleStatementUpload=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>(10*1024*1024)){showT('File too large (max 10MB)','err');return;}setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const res=await api.post('/api/supplier-statements',{supplierId:null,supplierName:selSupplier||'',fileName:file.name,fileType:file.type,fileData:b64,fileSize:file.size,description:'',statementDate:new Date().toISOString().split('T')[0]});setSS(ss=>[res,...ss]);showT('Statement uploaded!');};r.readAsDataURL(file);}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
   const relatedStatements=selSupplier?SS.filter(s=>s.supplierName===selSupplier):[];
   const BLANK={supplierName:'',supplierGSTIN:'',invoiceNo:'',invoiceDate:'',place:'',subtotal:'',discount:'',discountPct:'',cgst:'',sgst:'',igst:'',roundOff:'',total:'',notes:''};
@@ -4237,6 +4242,7 @@ function Suppliers({SI,setSI,SS,setSS,firm,gk,mob}){
       <div style={{display:'flex',gap:6}}>
         <button onClick={()=>setTab('invoices')} style={{padding:'5px 14px',borderRadius:20,border:'0.5px solid '+(tab==='invoices'?BL:BORD),background:tab==='invoices'?BL:'#fff',color:tab==='invoices'?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>Invoices</button>
         <button onClick={()=>setTab('statements')} style={{padding:'5px 14px',borderRadius:20,border:'0.5px solid '+(tab==='statements'?BL:BORD),background:tab==='statements'?BL:'#fff',color:tab==='statements'?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>Statements</button>
+        <button onClick={()=>setTab('payments')} style={{padding:'5px 14px',borderRadius:20,border:'0.5px solid '+(tab==='payments'?BL:BORD),background:tab==='payments'?BL:'#fff',color:tab==='payments'?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>Payments</button>
         <button onClick={()=>setTab('reconciliation')} style={{padding:'5px 14px',borderRadius:20,border:'0.5px solid '+(tab==='reconciliation'?BL:BORD),background:tab==='reconciliation'?BL:'#fff',color:tab==='reconciliation'?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600}}>Reconciliation</button>
       </div>
     </div>
@@ -4379,5 +4385,77 @@ function Suppliers({SI,setSI,SS,setSS,firm,gk,mob}){
         </table>
       </div>}
     </div>}
-    {tab==='reconciliation'&&<SupplierRecon SI={SI} firm={firm} gk={gk} mob={mob}/>}
+    {tab==='payments'&&<div>
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 2fr',gap:14}}>
+        {/* Supplier list with balance */}
+        <div>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:TXT}}>Outstanding Balance</div>
+          {suppliers.length===0?<MT msg='No suppliers yet'/>:
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {suppliers.map(sup=>{
+              const invs=SI.filter(i=>i.supplierName===sup);
+              const totInv=invs.reduce((s,i)=>s+i.total,0);
+              const totPaid=Py.filter(p=>p.supplierId===sup&&p.paymentType==='supplier').reduce((s,p)=>s+p.amount,0);
+              const balance=totInv-totPaid;
+              return<div key={sup} onClick={()=>setSelSupplier(sel=>sel===sup?null:sup)} style={{padding:'10px 14px',border:'0.5px solid '+(selSupplier===sup?AMB:BORD),borderRadius:8,cursor:'pointer',background:selSupplier===sup?AMBL:'#fff'}}>
+                <div style={{fontWeight:700,color:selSupplier===sup?AMB:TXT,fontSize:13}}>{sup}</div>
+                <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+                  <span style={{fontSize:10,color:MUT}}>Inv: {fmt(totInv)}</span>
+                  <span style={{fontSize:10,color:GR}}>Paid: {fmt(totPaid)}</span>
+                </div>
+                <div style={{marginTop:3,fontSize:12,fontWeight:700,color:balance>0?RD:GR}}>{balance>0?'Due: ':'Advance: '}{fmt(Math.abs(balance))}</div>
+              </div>;
+            })}
+          </div>}
+        </div>
+
+        {/* Payment form & history */}
+        <div>
+          <div style={{...S.card,marginBottom:14,border:'0.5px solid '+AMB+'40'}}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:12,color:AMB}}>Record Supplier Payment</div>
+            {!selSupplier?<div style={{padding:'20px',background:BG,borderRadius:6,color:MUT,fontSize:11,textAlign:'center'}}>Select a supplier on the left to record payment</div>:<div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <Fld label='Date'><input style={S.inp} type='date' value={payDate} onChange={e=>setPayDate(e.target.value)}/></Fld>
+                <Fld label='Amount'><input style={S.inp} type='number' value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder='0.00'/></Fld>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <Fld label='Mode'><select style={S.inp} value={payMode} onChange={e=>setPayMode(e.target.value)}><option value='Cash'>Cash</option><option value='Cheque'>Cheque</option><option value='UPI'>UPI</option><option value='Bank Transfer'>Bank Transfer</option></select></Fld>
+                <Fld label={payMode==='Cheque'?'Cheque Number':payMode==='UPI'?'UPI Reference':'Reference'} ><input style={S.inp} value={payRef} onChange={e=>setPayRef(e.target.value)} placeholder={payMode==='Cheque'?'CHQ-001':'Optional'}/></Fld>
+              </div>
+              <Fld label='City (Optional)'><input style={S.inp} value={payCity} onChange={e=>setPayCity(e.target.value)} placeholder='Surat, Mumbai...'/></Fld>
+              <button style={S.btn('pri')} onClick={async()=>{
+                if(!payAmount||!parseFloat(payAmount)){showT('Enter amount','err');return;}
+                if(!selSupplier){showT('Select a supplier','err');return;}
+                try{
+                  const supInvoices=SI.filter(i=>i.supplierName===selSupplier);
+                  const billId=supInvoices.length>0?supInvoices[0].id:null;
+                  const p=await api.post('/api/payments',{billId,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:selSupplier});
+                  setPy([...Py,p]);
+                  setPayAmount('');setPayRef('');setPayCity('');setPayDate(new Date().toISOString().split('T')[0]);
+                  showT('Payment recorded!');
+                }catch(e){showT('Error: '+e.message,'err');}
+              }}>Record Payment</button>
+            </div>}
+          </div>
+
+          {/* Payment history for selected supplier */}
+          {selSupplier&&<>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:TXT}}>Payment History</div>
+            {Py.filter(p=>p.supplierId===selSupplier&&p.paymentType==='supplier').length===0?<div style={{...S.card,padding:'20px',textAlign:'center',color:MUT,fontSize:11}}>No payments recorded yet</div>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:mob?400:500}}>
+                <thead><tr>{['Date','Mode','Amount','Reference','City',''].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>{Py.filter(p=>p.supplierId===selSupplier&&p.paymentType==='supplier').sort((a,b)=>new Date(b.date||b.createdAt)-new Date(a.date||a.createdAt)).map(p=><tr key={p.id}>
+                  <td style={{...S.td,fontSize:10}}>{p.date?new Date(p.date).toLocaleDateString('en-IN'):new Date(p.createdAt).toLocaleDateString('en-IN')}</td>
+                  <td style={S.td}><Bdg c={p.mode==='Cash'?'green':p.mode==='Cheque'?'amber':'blue'}>{p.mode}</Bdg></td>
+                  <td style={{...S.td,...S.mono,fontWeight:700,color:GR}}>₹{parseFloat(p.amount).toLocaleString('en-IN')}</td>
+                  <td style={{...S.td,fontSize:10}}>{p.chequeNo?'Chq #'+p.chequeNo:p.upiRef?'UTR: '+p.upiRef:p.reference||'—'}</td>
+                  <td style={{...S.td,fontSize:10,color:MUT}}>{p.city||'—'}</td>
+                  <td style={S.td}><button style={S.btn('dan',true)} onClick={async()=>{if(!confirm('Delete payment?'))return;await api.del('/api/payments?id='+p.id);setPy(Py.filter(x=>x.id!==p.id));showT('Deleted');}} >×</button></td>
+                </tr>)}</tbody>
+              </table>
+            </div>}
+          </>}
+        </div>
+      </div>
+    </div>}
   </div>;}
