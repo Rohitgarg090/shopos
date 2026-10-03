@@ -585,7 +585,7 @@ export default function ShopOS(){
       {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={()=>setShowUpgradeBlock(true)} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
-      {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
+      {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} Ret={Ret} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} Py={Py} setPy={setPy} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} SI={SI} mob={mob}/>}
@@ -2759,26 +2759,30 @@ function CustomerBankStatements({customerId}){
 }
 
 /* ── CUSTOMER ACCOUNT VIEW ── */
-function CustomerAccount({cust,B,Py,setPy,firm,C,onClose}){
+function CustomerAccount({cust,B,Py,setPy,firm,C,Ret=[],onClose}){
   const cb=B.filter(b=>b.customerId===cust.id);
+  const custRet=Ret.filter(r=>r.type==='customer'&&(r.customerId===cust.id||cb.some(b=>b.id===r.billId)));
+  const tr=custRet.reduce((s,r)=>s+r.total,0);
+  const retFor=billId=>custRet.filter(r=>r.billId===billId).reduce((s,r)=>s+r.total,0);
   const custPay=Py.filter(p=>cb.some(b=>b.id===p.billId));
   const validPay=custPay.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
   const obAmt=cust.openingBalance||0;
   const tv=cb.reduce((s,b)=>s+b.total,0);
   const tp=validPay.reduce((s,p)=>s+p.amount,0);
-  const bal=(obAmt+tv)-tp;
+  const bal=(obAmt+tv)-tp-tr;
   const upPay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const[caTab,setCaTab]=useState('statement'); // statement | reconcile | files
   const entries=[
     ...(obAmt>0?[{type:'Opening Balance',date:cust.openingBalanceDate||'2000-01-01',ref:'OB',order:0,debit:obAmt,credit:0,id:'ob',payObj:null}]:[]),
     ...cb.map(b=>({type:'Invoice',date:b.date,createdAt:b.date,ref:b.invoiceNo||'#'+b.id,debit:b.total,credit:0,id:'b'+b.id,payObj:null})),
     ...validPay.map(p=>({type:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),createdAt:p.createdAt,debit:0,credit:p.amount,id:'p'+p.id,payObj:p})),
+    ...custRet.map(r=>{const inv=cb.find(b=>b.id===r.billId)?.invoiceNo;return{type:'Return',date:r.date,createdAt:r.createdAt,ref:'Return'+(inv?' vs '+inv:'')+' · '+r.items.reduce((s,i)=>s+i.qty,0)+' pcs',debit:0,credit:r.total,id:'r'+r.id,payObj:null};}),
   ].sort((a,b)=>compareEntries(b,a));
   let run=0;const withBal=[...entries].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   return<Modal title={'Account: '+cust.name+(cust.shopname?' — '+cust.shopname:'')} onClose={onClose} wide>
     {obAmt>0&&<div style={{padding:'7px 12px',background:AMBL,borderRadius:7,marginBottom:12,fontSize:12,color:AMB}}>Opening Balance: <strong>{fmt(obAmt)}</strong>{cust.openingBalanceDate?' as of '+new Date(cust.openingBalanceDate).toLocaleDateString('en-IN'):''}</div>}
-    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:14}}>
-      {[['Total Billed',fmt(obAmt+tv),RD,RDL],['Total Paid',fmt(tp),GR,GRL],['Balance Due',fmt(bal),bal>0?RD:GR,bal>0?RDL:GRL]].map(([l,v,c,bg])=><div key={l} style={{background:bg,borderRadius:8,padding:'10px 14px',border:'0.5px solid '+c+'30'}}><div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',color:c+'aa',marginBottom:3}}>{l}</div><div style={{fontSize:20,fontWeight:800,fontFamily:'DM Mono,monospace',color:c}}>{v}</div></div>)}
+    <div style={{display:'grid',gridTemplateColumns:tr>0?'repeat(auto-fit,minmax(150px,1fr))':'1fr 1fr 1fr',gap:10,marginBottom:14}}>
+      {[['Total Billed',fmt(obAmt+tv),RD,RDL],['Total Paid',fmt(tp),GR,GRL],tr>0&&['Sales Returns',fmt(tr),PUR,PURL],['Balance Due',fmt(bal),bal>0?RD:GR,bal>0?RDL:GRL]].filter(Boolean).map(([l,v,c,bg])=><div key={l} style={{background:bg,borderRadius:8,padding:'10px 14px',border:'0.5px solid '+c+'30'}}><div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',color:c+'aa',marginBottom:3}}>{l}</div><div style={{fontSize:20,fontWeight:800,fontFamily:'DM Mono,monospace',color:c}}>{v}</div></div>)}
     </div>
     <div style={{display:'flex',gap:10,fontSize:12,color:MUT,marginBottom:12,flexWrap:'wrap'}}>
       <span>Ph: {cust.phone}</span>{cust.shopname&&<span>Shop: {cust.shopname}</span>}{cust.gst&&<span>GSTIN: <strong style={{color:BL}}>{cust.gst}</strong></span>}{cust.email&&<span>Email: {cust.email}</span>}
@@ -2788,15 +2792,15 @@ function CustomerAccount({cust,B,Py,setPy,firm,C,onClose}){
       <div style={{display:'flex',gap:6,borderBottom:'0.5px solid '+BORD,paddingBottom:10,flex:1,minWidth:300}}>
         {[['statement','Transactions'],['payment','Payment Received'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
       </div>
-      <button onClick={async()=>{try{const entries=buildStatementRows(B,Py,C,cust.id);const pdf=generateCustomerPDF(firm,cust,entries,C);pdf.save(`${cust.name}_Account_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){alert('PDF failed: '+e.message);}}} style={S.btn('pur')}>⬇ PDF</button>
+      <button onClick={async()=>{try{const entries=buildStatementRows(B,Py,C,cust.id,null,null,Ret);const pdf=generateCustomerPDF(firm,cust,entries,C);pdf.save(`${cust.name}_Account_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){alert('PDF failed: '+e.message);}}} style={S.btn('pur')}>⬇ PDF</button>
     </div>
 
     {caTab==='statement'&&<div>
     <div style={S.h3}>Bills ({cb.length})</div>
     {cb.length===0?<MT msg='No bills yet'/>:<div style={{...S.card,padding:0,marginBottom:14,overflowX:'auto'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:500}}>
-        <thead><tr>{['Invoice','Date','Pcs','Amount','Paid','Balance','Status'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-        <tbody>{cb.map(b=>{const paid=calcPaidAmount(b.id,Py);const bbal=b.total-paid;const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td><td style={{...S.td,textAlign:'right',fontSize:11}}>{(b.items||[]).reduce((s,i)=>s+i.qty,0)}</td><td style={{...S.td,...S.mono,fontWeight:700}}>{fmt(b.total)}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:600}}>{fmt(paid)}</td><td style={{...S.td,...S.mono,fontWeight:700,color:bbal>0?RD:GR}}>{fmt(bbal)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
+        <thead><tr>{['Invoice','Date','Pcs','Amount','Paid',tr>0?'Returned':null,'Balance','Status'].filter(Boolean).map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+        <tbody>{cb.map(b=>{const paid=calcPaidAmount(b.id,Py);const rt=retFor(b.id);const bbal=b.total-paid-rt;const st=bbal<=0.009?'Paid':(paid+rt)>0?'Partial':'Unpaid';return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td><td style={{...S.td,textAlign:'right',fontSize:11}}>{(b.items||[]).reduce((s,i)=>s+i.qty,0)}</td><td style={{...S.td,...S.mono,fontWeight:700}}>{fmt(b.total)}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:600}}>{fmt(paid)}</td>{tr>0&&<td style={{...S.td,...S.mono,color:rt>0?PUR:MUT,fontWeight:600}}>{rt>0?fmt(rt):'—'}</td>}<td style={{...S.td,...S.mono,fontWeight:700,color:bbal>0?RD:GR}}>{fmt(bbal)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
         </tbody>
       </table>
     </div>}
@@ -2821,7 +2825,7 @@ function CustomerAccount({cust,B,Py,setPy,firm,C,onClose}){
             const obInterest=(firm?.interestEnabled&&firm?.interestOnOpeningBalance&&e.type==='Opening Balance')?calcInterest(e.debit,e.date):0;
             return<tr key={e.id} style={{background:e.type==='Opening Balance'?AMBL:''}}>
               <td style={{...S.td,fontSize:11}}>{new Date(e.date).toLocaleDateString('en-IN')}</td>
-              <td style={S.td}><Bdg c={e.type==='Invoice'?'red':e.type==='Payment'?'green':'amber'}>{e.type}</Bdg></td>
+              <td style={S.td}><Bdg c={e.type==='Invoice'?'red':e.type==='Payment'?'green':e.type==='Return'?'purple':'amber'}>{e.type}</Bdg></td>
               <td style={{...S.td,...S.mono,fontSize:11,fontWeight:600}}>{e.ref}</td>
               <td style={{...S.td,...S.mono,color:e.debit>0?RD:MUT,fontWeight:e.debit>0?700:400}}>{e.debit>0?fmt(e.debit):'—'}</td>
               <td style={{...S.td,...S.mono,color:e.credit>0?GR:MUT,fontWeight:e.credit>0?700:400}}>{e.credit>0?fmt(e.credit):'—'}</td>
@@ -2829,7 +2833,7 @@ function CustomerAccount({cust,B,Py,setPy,firm,C,onClose}){
               {firm?.interestEnabled&&firm?.interestOnOpeningBalance&&<td style={{...S.td,...S.mono,color:obInterest>0?AMB:MUT,fontSize:11}}>{obInterest>0?fmt(obInterest):'—'}</td>}
               <td style={{...S.td,...S.mono,fontWeight:700,color:e.bal>0?RD:GR}}>{fmt(e.bal)}</td>
             </tr>;})}
-          <tr style={{background:'#f5f4f0',fontWeight:700}}><td colSpan={3} style={S.td}>TOTALS</td><td style={{...S.td,...S.mono,color:RD,fontWeight:800}}>{fmt(obAmt+tv)}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(tp)}</td><td style={{...S.td,...S.mono,fontWeight:800,color:bal>0?RD:GR}}>{fmt(bal)}</td></tr>
+          <tr style={{background:'#f5f4f0',fontWeight:700}}><td colSpan={3} style={S.td}>TOTALS</td><td style={{...S.td,...S.mono,color:RD,fontWeight:800}}>{fmt(obAmt+tv)}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(tp+tr)}</td>{firm?.interestEnabled&&<td style={S.td}/>}{firm?.interestEnabled&&firm?.interestOnOpeningBalance&&<td style={S.td}/>}<td style={{...S.td,...S.mono,fontWeight:800,color:bal>0?RD:GR}}>{fmt(bal)}</td></tr>
         </tbody>
       </table>
     </div>
@@ -2955,7 +2959,7 @@ function BroadcastModal({firm,C,B,Py,onClose,onSent}){
 }
 
 /* ── CUSTOMERS ── */
-function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
+function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh,Ret=[]}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[show,setShow]=useState(false);const[srch,setSrch]=useState('');const[selCust,setSelCust]=useState(null);
   const[editId,setEditId]=useState(null); // null=new, id=editing
@@ -2988,7 +2992,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
   };
   const del=async id=>{if(!confirm('Remove?'))return;await api.del('/api/customers?id='+id);setC(cs=>cs.filter(c=>c.id!==id))};
   const filtered=C.filter(c=>(c.name+' '+(c.phone||'')+' '+(c.shopname||'')+' '+(c.gst||'')+' '+(c.addr||'')+' '+(c.email||'')).toLowerCase().includes(srch.toLowerCase()));
-  const enriched=filtered.map(c=>{const cb=B.filter(b=>b.customerId===c.id);const tv=cb.reduce((s,b)=>s+b.total,0);const tp=Py.filter(p=>cb.some(b=>b.id===p.billId) && !(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);const ob=c.openingBalance||0;const bal=(ob+tv)-tp;return{...c,billCount:cb.length,totalBilled:ob+tv,paid:tp,balance:bal};});
+  const enriched=filtered.map(c=>{const cb=B.filter(b=>b.customerId===c.id);const tv=cb.reduce((s,b)=>s+b.total,0);const tp=Py.filter(p=>cb.some(b=>b.id===p.billId) && !(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);const ob=c.openingBalance||0;const rt=Ret.filter(r=>r.type==='customer'&&(r.customerId===c.id||cb.some(b=>b.id===r.billId))).reduce((s,r)=>s+r.total,0);const bal=(ob+tv)-tp-rt;return{...c,billCount:cb.length,totalBilled:ob+tv,paid:tp,returned:rt,balance:bal};});
   const sorted=enriched.sort((a,b)=>{let aVal=a[sortBy],bVal=b[sortBy];if(typeof aVal==='string')aVal=aVal.toLowerCase();if(typeof bVal==='string')bVal=bVal.toLowerCase();const cmp=aVal<bVal?-1:aVal>bVal?1:0;return sortOrder==='asc'?cmp:-cmp;});
   const total=sorted.length;const pages=Math.ceil(total/itemsPerPage);const start=(currentPage-1)*itemsPerPage;const paginated=sorted.slice(start,start+itemsPerPage);
   return<div>
@@ -3094,7 +3098,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
       </div>
     </div>}
     <div style={{marginTop:8,fontSize:11,color:MUT}}>Click any row to view full account — bills, payments and running balance.</div>
-    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} C={C} onClose={()=>setSelCust(null)}/>}
+    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} C={C} Ret={Ret} onClose={()=>setSelCust(null)}/>}
   </div>;}
 
 /* ── LEDGER ── */
@@ -3192,7 +3196,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
         </tr>
       </tbody>
     </table></div>
-    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} C={C} onClose={()=>setSelCust(null)}/>}
+    {selCust&&<CustomerAccount cust={selCust} B={B} Py={Py} setPy={setPy} firm={firm} C={C} Ret={Ret} onClose={()=>setSelCust(null)}/>}
   </div>;}
 
 /* ── BANK STATEMENTS ── */
