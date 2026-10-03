@@ -41,11 +41,15 @@ export async function GET(req) {
   // Get bill IDs for this firm
   const { data: firmBills } = await c.sb.from('bills').select('id').eq('firm_id', c.firmId);
   const billIds = (firmBills || []).map(b => b.id);
+  const { data: firmCusts } = await c.sb.from('customers').select('id').eq('firm_id', c.firmId);
+  const custIds = new Set((firmCusts || []).map(x => String(x.id)));
 
-  // Filter: include customer payments linked to firm's bills, and all supplier payments
+  // Include supplier payments, payments linked to this firm's bills, and
+  // opening-balance payments (no bill) for this firm's customers
   const filtered = (data || []).filter(p =>
     (p.payment_type === 'supplier' && p.supplier_id) ||
-    (billIds.includes(p.bill_id))
+    (billIds.includes(p.bill_id)) ||
+    (!p.bill_id && p.customer_id && custIds.has(String(p.customer_id)))
   );
 
   return NextResponse.json(filtered.map(shape));
@@ -99,11 +103,13 @@ export async function DELETE(req) {
   const id = new URL(req.url).searchParams.get('id');
 
   // Verify payment exists
-  const { data: payment } = await c.sb.from('payments').select('bill_id, payment_type, supplier_id').eq('id', id).single();
+  const { data: payment } = await c.sb.from('payments').select('bill_id, payment_type, supplier_id, customer_id').eq('id', id).single();
   if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
 
-  // If it's a customer payment, verify it belongs to a bill in this firm
-  if (payment.payment_type === 'customer' || payment.payment_type === null) {
+  if (!payment.bill_id && payment.customer_id && payment.payment_type !== 'supplier') {
+    const { data: cust } = await c.sb.from('customers').select('firm_id').eq('id', payment.customer_id).single();
+    if (!cust || cust.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  } else if (payment.payment_type === 'customer' || payment.payment_type === null) {
     const { data: bill } = await c.sb.from('bills').select('firm_id').eq('id', payment.bill_id).single();
     if (!bill || bill.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
