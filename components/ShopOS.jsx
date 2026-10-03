@@ -1218,13 +1218,11 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
             {mob&&<div style={{marginBottom:6}}>
               <label style={S.lbl}>HSN Code</label><input style={{...S.inp,fontSize:12,fontFamily:'DM Mono,monospace',fontWeight:600}} value={item.hsn||''} onChange={e=>upd(i,'hsn',e.target.value)} placeholder='6203 (e.g., 6203 for jeans, 6204 for shirts)'/>
             </div>}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:5}}>
-              <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
-                <input style={{...S.inp,width:'120px',fontSize:11,padding:'2px 6px'}} placeholder='Category' value={item.cat||''} onChange={e=>upd(i,'cat',e.target.value)}/>
-                <select style={{...S.inp,width:70,fontSize:11,padding:'2px 6px'}} value={item.gst} onChange={e=>upd(i,'gst',+e.target.value)}>{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select>
-                {(item.sizes||'').split(',').filter(s=>s.trim()).map(s=><Bdg key={s} c='gray'>{s.trim()}</Bdg>)}
-                <Bdg c={markupPct?'amber':'gray'}>{fmt(item.price)}</Bdg>
-                {item.hsn&&<span style={{...S.mono,fontSize:9,color:MUT,background:'#f0ede8',padding:'1px 5px',borderRadius:4}}>HSN {item.hsn}</span>}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,flex:1}}>
+                <input style={{...S.inp,width:'110px',fontSize:11,padding:'2px 6px'}} placeholder='Category' value={item.cat||''} onChange={e=>upd(i,'cat',e.target.value)}/>
+                <select style={{...S.inp,width:60,fontSize:11,padding:'2px 6px'}} value={item.gst} onChange={e=>upd(i,'gst',+e.target.value)}>{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select>
+                <div style={{...S.mono,fontSize:12,fontWeight:700,color:BL,background:'#f0ede8',padding:'4px 8px',borderRadius:5,minWidth:100,textAlign:'right'}}>Total: {fmt(item.qty*item.price)}</div>
               </div>
               <button onClick={()=>rem(i)} style={{background:'none',border:'none',cursor:'pointer',color:'#ccc',fontSize:18}}>x</button>
             </div>
