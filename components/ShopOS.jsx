@@ -120,6 +120,19 @@ const getStyle=(minimalStyle,modernStyle)=>_theme==='modern'?modernStyle:minimal
 const S=MINIMAL_S;
 
 /* ── mini helpers ── */
+function MoreMenu({items,label='⋯',btnStyle}){
+  const[pos,setPos]=useState(null);const btn=useRef(null);
+  useEffect(()=>{if(!pos)return;const close=e=>{if(!e.target.closest?.('[data-moremenu]'))setPos(null);};const off=()=>setPos(null);document.addEventListener('mousedown',close);window.addEventListener('scroll',off,true);window.addEventListener('resize',off);return()=>{document.removeEventListener('mousedown',close);window.removeEventListener('scroll',off,true);window.removeEventListener('resize',off);};},[pos]);
+  if(!items.some(Boolean))return null;
+  const toggle=()=>{if(pos){setPos(null);return}const r=btn.current.getBoundingClientRect();const h=items.filter(Boolean).length*34+10;setPos({right:window.innerWidth-r.right,top:r.bottom+h>window.innerHeight?r.top-h-4:r.bottom+4});};
+  return<span data-moremenu style={{display:'inline-flex'}}>
+    <button ref={btn} onClick={toggle} title='More actions' style={btnStyle||{width:30,height:28,border:'1px solid '+BORD,borderRadius:7,background:pos?BLL:'#fff',cursor:'pointer',fontSize:16,lineHeight:1,color:TXT}}>{label}</button>
+    {pos&&<div data-moremenu style={{position:'fixed',top:pos.top,right:pos.right,zIndex:1000,background:'#fff',border:'1px solid '+BORD,borderRadius:9,boxShadow:'0 10px 30px rgba(0,0,0,0.12)',padding:5,minWidth:170}}>
+      {items.filter(Boolean).map((it,i)=><button key={i} disabled={it.disabled} onClick={()=>{setPos(null);it.onClick();}}
+        onMouseEnter={e=>{if(!it.disabled)e.currentTarget.style.background=it.danger?RDL:'#F4F2EE'}} onMouseLeave={e=>e.currentTarget.style.background='none'}
+        style={{display:'block',width:'100%',textAlign:'left',padding:'7px 10px',border:'none',background:'none',borderRadius:6,fontSize:12,fontWeight:600,cursor:it.disabled?'default':'pointer',color:it.disabled?'#bbb':it.danger?RD:TXT,borderTop:it.danger&&i>0?'1px solid #f0ede8':'none'}}>{it.label}</button>)}
+    </div>}
+  </span>;}
 function Bdg({c,children}){const m={green:[GRL,GR],amber:[AMBL,AMB],red:[RDL,RD],blue:[BLL,BL],gray:['#F1EFE8','#555'],purple:[PURL,PUR]};const[bg,co]=m[c]||m.gray;return<span style={_theme==='modern'?{background:bg,color:co,padding:'3px 8px',borderRadius:6,fontSize:11,fontWeight:600,display:'inline-block',letterSpacing:'0.3px'}:{background:bg,color:co,padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:700,display:'inline-block'}}>{children}</span>;}
 function Fld({label,children,span2}){return<div style={{marginBottom:8,gridColumn:span2?'span 2':'auto'}}><label style={S.lbl}>{label}</label>{children}</div>}
 function MT({msg='Nothing here yet'}){return<div style={{textAlign:'center',padding:'28px',color:MUT,fontSize:13}}>{msg}</div>}
@@ -2161,73 +2174,85 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
       <div style={{display:'flex',alignItems:'center',gap:12}}><span>Bills & Invoices</span><InvoiceHelp /><PaymentHelp /></div>
     </div>{toast}
     <DateRangeFilter onDateChange={setDateRange}/>
-    <div style={{...S.card,padding:12,marginBottom:14,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',borderBottom:'0.5px solid '+BORD}}>
-      <input type='checkbox' checked={selectedBills.size===activeBills.length&&activeBills.length>0} onChange={selectAllFiltered} style={{cursor:'pointer'}}/>
-      <span style={{fontSize:11,color:MUT}}>{selectedBills.size>0?selectedBills.size+' selected':'No selection'}</span>
-      {selectedBills.size>0&&<button style={S.btn('suc',true)} onClick={doDownloadZip} disabled={zipBusy}>{zipBusy?<><Spin/> Zipping...</>:'Download '+selectedBills.size+' as ZIP'}</button>}
-    </div>
+    {selectedBills.size>0&&<div style={{display:'flex',gap:10,alignItems:'center',padding:'8px 14px',marginBottom:10,background:BLL,border:'1px solid '+BL+'30',borderRadius:10}}>
+      <span style={{fontSize:12,fontWeight:700,color:BL}}>{selectedBills.size} selected</span>
+      <button style={S.btn('pri',true)} onClick={doDownloadZip} disabled={zipBusy}>{zipBusy?<><Spin/> Zipping...</>:'Download as ZIP'}</button>
+      <button style={{...S.btn('def',true),marginLeft:'auto'}} onClick={()=>setSelectedBills(new Set())}>Clear</button>
+    </div>}
     <div style={{...S.card,padding:0,marginBottom:14,overflowX:'auto'}}>
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?500:700}}>
-        <thead><tr>{['','Invoice','Date','Customer','Pcs','Total','Paid','Status','Transport & LR','Actions'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?620:760}}>
+        <thead><tr>
+          <th style={{...S.th,width:34,textAlign:'center'}}><input type='checkbox' title='Select all' checked={selectedBills.size===activeBills.length&&activeBills.length>0} onChange={selectAllFiltered} style={{cursor:'pointer'}}/></th>
+          {['Invoice','Date','Customer','Pcs','Total','Paid','Status','Transport & LR',''].map((h,i)=><th key={h||'act'+i} style={{...S.th,textAlign:h==='Pcs'||h==='Total'||h==='Paid'?'right':'left'}}>{h}</th>)}
+        </tr></thead>
         <tbody>
           {filteredBills.length===0&&<tr key='empty'><td colSpan={10}><MT msg={dateRange.from?'No bills in this date range':'No bills yet.'}/></td></tr>}
           {filteredBills.map(b=>{const paid=calcPaidAmount(b.id,Py);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';const isCancelled=b.status==='cancelled';
             return<tr key={b.id} style={isCancelled?{opacity:0.6,background:'#faf8f5'}:{}}>
               <td style={{...S.td,textAlign:'center'}}><input type='checkbox' checked={selectedBills.has(b.id)} onChange={()=>toggleBillSelection(b.id)} disabled={isCancelled} style={{cursor:isCancelled?'default':'pointer'}}/></td>
-              <td style={{...S.td,...S.mono,fontWeight:800,fontSize:11,textDecoration:isCancelled?'line-through':'none'}}>{b.invoiceNo||'#'+b.id}</td>
-              <td style={{...S.td,fontSize:11}}>{new Date(b.date).toLocaleDateString('en-IN')}</td>
+              <td style={{...S.td,...S.mono,fontWeight:800,fontSize:11,whiteSpace:'nowrap',textDecoration:isCancelled?'line-through':'none'}}>{b.invoiceNo||'#'+b.id}</td>
+              <td style={{...S.td,fontSize:11,whiteSpace:'nowrap'}}>{new Date(b.date).toLocaleDateString('en-IN')}</td>
               <td style={S.td}><div style={{fontWeight:600,fontSize:12}}>{b.customerName}</div>{b.customerPhone&&<div style={{fontSize:10,color:MUT}}>{b.customerPhone}</div>}</td>
               <td style={{...S.td,textAlign:'right',fontSize:11}}>{(b.items||[]).reduce((s,i)=>s+i.qty,0)}</td>
-              <td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(b.total)}</td>
-              <td style={{...S.td,...S.mono,color:GR}}>{fmt(paid)}</td>
-              <td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td>
+              <td style={{...S.td,...S.mono,color:TXT,fontWeight:800,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(b.total)}</td>
+              <td style={{...S.td,...S.mono,color:paid>0?GR:MUT,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(paid)}</td>
+              <td style={S.td}>{isCancelled?<Bdg c='gray'>Cancelled</Bdg>:<Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg>}</td>
               <td style={S.td}>
                 {transportEdit===b.id?<div style={{display:'flex',flexDirection:'column',gap:4,minWidth:160}}>
                   <input style={{...S.inp,fontSize:11,padding:'3px 8px'}} value={transportForm.transportName} onChange={e=>setTransportForm(f=>({...f,transportName:e.target.value}))} placeholder='Transport name' autoFocus/>
                   <input style={{...S.inp,fontSize:11,padding:'3px 8px',fontFamily:'monospace'}} value={transportForm.lrNumber} onChange={e=>setTransportForm(f=>({...f,lrNumber:e.target.value}))} placeholder='LR / Docket no.' onKeyDown={e=>e.key==='Enter'&&saveTransport(b.id)}/>
                   <div style={{display:'flex',gap:4}}><button style={S.btn('suc',true)} onClick={()=>saveTransport(b.id)}>Save</button><button style={S.btn('def',true)} onClick={()=>setTransportEdit(null)}>X</button></div>
-                </div>:<div style={{display:'flex',flexDirection:'column',gap:3}}>
-                  {b.transportName&&<div style={{fontSize:11,fontWeight:600}}>{b.transportName}</div>}
-                  {b.lrNumber&&<div style={{...S.mono,fontSize:10,color:BL,background:BLL,padding:'2px 6px',borderRadius:4,display:'inline-block'}}>LR: {b.lrNumber}</div>}
-                  {!b.transportName&&!b.lrNumber&&<span style={{fontSize:10,color:MUT}}>-</span>}
-                  <button style={{...S.btn('def',true),fontSize:9,padding:'2px 6px',marginTop:2}} onClick={()=>{setTransportEdit(b.id);setTransportForm({transportName:b.transportName||'',lrNumber:b.lrNumber||b.biltyNo||''});}}>{(b.transportName||b.lrNumber)?'Edit':'+ Add'}</button>
-                </div>}
+                </div>:(()=>{const openT=()=>{setTransportEdit(b.id);setTransportForm({transportName:b.transportName||'',lrNumber:b.lrNumber||b.biltyNo||''});};
+                  return(b.transportName||b.lrNumber)?<div onClick={openT} title='Edit transport' style={{cursor:'pointer',display:'flex',flexDirection:'column',gap:3}}>
+                    {b.transportName&&<div style={{fontSize:11,fontWeight:600}}>{b.transportName}</div>}
+                    {b.lrNumber&&<div style={{...S.mono,fontSize:10,color:BL,background:BLL,padding:'2px 6px',borderRadius:4,alignSelf:'flex-start'}}>LR: {b.lrNumber}</div>}
+                  </div>:<button onClick={openT} style={{background:'none',border:'none',padding:0,color:BL,fontSize:11,fontWeight:600,cursor:'pointer'}}>+ Add</button>;})()}
               </td>
-              <td style={S.td}><div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
-                <button style={S.btn('def',true)} onClick={()=>setVid(b.id===vid?null:b.id)}>View</button>
-                {!isCancelled&&<button style={S.btn('pur',true)} onClick={()=>setPayBill(b)}>Pay</button>}
-                <button style={S.btn('suc',true)} onClick={()=>{setVid(b.id);setTimeout(print,400)}}>Print</button>
-                <button style={S.btn('amb',true)} onClick={()=>emailBill(b)} disabled={pdfBusy||isCancelled}>{pdfBusy?<Spin/>:'Email'}</button>
-                <button style={{...S.btn('suc',true),background:'#25D366',color:'#fff',border:'none'}} onClick={()=>whatsappBill(b)} disabled={isCancelled}>WA Bill</button>
-                <button style={{...S.btn('def',true),fontSize:10}} onClick={()=>whatsappReminder(b)} disabled={isCancelled}>WA Remind</button>
-                {isCancelled?<Bdg c='red'>Cancelled</Bdg>:b.ewbNo?<span style={{...S.mono,fontSize:10,color:GR,background:GRL,padding:'2px 6px',borderRadius:5,fontWeight:700}}>EWB: {b.ewbNo}</span>:<button style={S.btn('def',true)} onClick={()=>generateEWB(b)} disabled={ewbLoading===b.id}>{ewbLoading===b.id?<Spin/>:'E-Way'}</button>}
-                {!isCancelled&&<button style={S.btn('dan',true)} onClick={()=>setCancelBill(b)}>Cancel</button>}
+              <td style={{...S.td,whiteSpace:'nowrap'}}><div style={{display:'flex',gap:5,alignItems:'center',justifyContent:'flex-end'}}>
+                {b.ewbNo&&!isCancelled&&<span title={'E-Way Bill '+b.ewbNo} style={{...S.mono,fontSize:9,color:GR,background:GRL,padding:'2px 6px',borderRadius:5,fontWeight:700}}>EWB</span>}
+                <button style={{...S.btn(vid===b.id?'pri':'def',true)}} onClick={()=>setVid(b.id===vid?null:b.id)}>{vid===b.id?'Hide':'View'}</button>
+                {!isCancelled&&st!=='Paid'&&<button style={S.btn('pur',true)} onClick={()=>setPayBill(b)}>Pay</button>}
+                {!isCancelled&&<button title='Send bill on WhatsApp' style={{...S.btn('def',true),background:'#25D366',color:'#fff',border:'none'}} onClick={()=>whatsappBill(b)}>WhatsApp</button>}
+                <MoreMenu items={[
+                  {label:'Print',onClick:()=>{setVid(b.id);setTimeout(print,400)}},
+                  !isCancelled&&{label:pdfBusy?'Sending email...':'Email invoice',onClick:()=>emailBill(b),disabled:pdfBusy},
+                  !isCancelled&&st!=='Paid'&&{label:'WhatsApp payment reminder',onClick:()=>whatsappReminder(b)},
+                  !isCancelled&&st==='Paid'&&{label:'Record another payment',onClick:()=>setPayBill(b)},
+                  !isCancelled&&!b.ewbNo&&{label:ewbLoading===b.id?'Generating E-Way...':'Generate E-Way Bill',onClick:()=>generateEWB(b),disabled:ewbLoading===b.id},
+                  !isCancelled&&{label:'Cancel invoice',onClick:()=>setCancelBill(b),danger:true},
+                ]}/>
               </div></td>
             </tr>;})}
           <tr style={{background:'#f5f4f0',fontWeight:700}}>
-            <td colSpan={5} style={S.td}>TOTALS ({activeBills.length} active bills){filteredBills.length>activeBills.length&&<span style={{fontSize:10,color:MUT,fontWeight:500}}> + {filteredBills.length-activeBills.length} cancelled</span>}</td>
-            <td style={{...S.td,...S.mono,color:RD,fontWeight:800}}>{fmt(totalInvoiced)}</td>
-            <td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(totalPaid)}</td>
-            <td style={S.td}><Bdg c={netOutstanding>0?'red':'green'}>{netOutstanding>0?'Unpaid':'Settled'}</Bdg></td>
-            <td colSpan={2} style={{...S.td,...S.mono,fontWeight:800,color:netOutstanding>0?RD:GR}}>Outstanding: {fmt(netOutstanding)}</td>
+            <td colSpan={5} style={S.td}>Total · {activeBills.length} bill{activeBills.length===1?'':'s'}{filteredBills.length>activeBills.length&&<span style={{fontSize:10,color:MUT,fontWeight:500}}> (+{filteredBills.length-activeBills.length} cancelled)</span>}</td>
+            <td style={{...S.td,...S.mono,fontWeight:800,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(totalInvoiced)}</td>
+            <td style={{...S.td,...S.mono,color:GR,fontWeight:800,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(totalPaid)}</td>
+            <td colSpan={3} style={{...S.td,textAlign:'right'}}><span style={{fontSize:11,color:MUT,fontWeight:600,marginRight:8}}>{netOutstanding>0?'Outstanding':'Settled'}</span><span style={{...S.mono,fontWeight:800,fontSize:14,color:netOutstanding>0?RD:GR}}>{fmt(netOutstanding)}</span></td>
           </tr>
         </tbody>
       </table>
     </div>
     {bill&&<div>
-      <div style={{display:'flex',gap:7,marginBottom:10,alignItems:'center',flexWrap:'wrap'}}>
-        <div style={{fontWeight:700,fontSize:13}}>Invoice — {bill.invoiceNo||'#'+bill.id}</div>
-        {bill.transportName&&<span style={{fontSize:12,fontWeight:600}}>{bill.transportName}</span>}
-        {bill.lrNumber&&<span style={{...S.mono,fontSize:11,color:BL,background:BLL,padding:'3px 9px',borderRadius:5,fontWeight:700}}>LR: {bill.lrNumber}</span>}
-        {!bill.transportName&&!bill.lrNumber&&bill.biltyNo&&<span style={{...S.mono,fontSize:11,color:BL,background:BLL,padding:'3px 9px',borderRadius:5,fontWeight:700}}>{bill.biltyNo}</span>}
-        <button style={S.btn('suc')} onClick={print}>Print</button>
-        <button style={S.btn('amb')} disabled={pdfBusy} onClick={()=>emailBill(bill)}>{pdfBusy?<><Spin/> Sending...</>:'Email Invoice'}</button>
-        <button style={{...S.btn('suc'),background:'#25D366',color:'#fff',border:'none'}} onClick={()=>whatsappBill(bill)}>WhatsApp Bill</button>
-        <button style={S.btn('gho')} onClick={()=>whatsappReminder(bill)}>WA Reminder</button>
-        <button style={S.btn('pur')} onClick={downloadPDF} disabled={pdfBusy}>{pdfBusy?<><Spin/> Generating...</>:'Download PDF'}</button>
-        <button style={S.btn('pur')} onClick={()=>setPayBill(bill)}>Record Payment</button>
-        {bill.ewbNo?<span style={{...S.mono,color:GR,fontWeight:700,fontSize:12,background:GRL,padding:'4px 10px',borderRadius:6}}>EWB# {bill.ewbNo} | Valid: {bill.ewbValidUpto}</span>:<button style={S.btn('def')} onClick={()=>generateEWB(bill)} disabled={ewbLoading===bill.id}>{ewbLoading===bill.id?<><Spin/> Generating...</>:'Generate E-Way Bill'}</button>}
-        <button style={S.btn('def')} onClick={()=>setVid(null)}>Close</button>
+      <div style={{...S.card,display:'flex',gap:10,marginBottom:10,alignItems:'center',flexWrap:'wrap',padding:'10px 14px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',minWidth:0}}>
+          <span style={{fontWeight:800,fontSize:14,...S.mono}}>{bill.invoiceNo||'#'+bill.id}</span>
+          <span style={{fontSize:12,color:MUT}}>{bill.customerName}</span>
+          {bill.transportName&&<span style={{fontSize:11,fontWeight:600,color:MUT}}>· {bill.transportName}</span>}
+          {(bill.lrNumber||bill.biltyNo)&&<span style={{...S.mono,fontSize:10,color:BL,background:BLL,padding:'2px 7px',borderRadius:5,fontWeight:700}}>LR: {bill.lrNumber||bill.biltyNo}</span>}
+          {bill.ewbNo&&<span style={{...S.mono,fontSize:10,color:GR,background:GRL,padding:'2px 7px',borderRadius:5,fontWeight:700}}>EWB {bill.ewbNo} · till {bill.ewbValidUpto}</span>}
+        </div>
+        <div style={{display:'flex',gap:6,alignItems:'center',marginLeft:'auto'}}>
+          {bill.status!=='cancelled'&&<button style={S.btn('pri',true)} onClick={()=>setPayBill(bill)}>Record Payment</button>}
+          <button style={S.btn('def',true)} onClick={print}>Print</button>
+          <button style={S.btn('def',true)} onClick={downloadPDF} disabled={pdfBusy}>{pdfBusy?<><Spin/> PDF...</>:'Download PDF'}</button>
+          {bill.status!=='cancelled'&&<button style={{...S.btn('def',true),background:'#25D366',color:'#fff',border:'none'}} onClick={()=>whatsappBill(bill)}>WhatsApp</button>}
+          <MoreMenu items={[
+            bill.status!=='cancelled'&&{label:pdfBusy?'Sending email...':'Email invoice',onClick:()=>emailBill(bill),disabled:pdfBusy},
+            bill.status!=='cancelled'&&{label:'WhatsApp payment reminder',onClick:()=>whatsappReminder(bill)},
+            bill.status!=='cancelled'&&!bill.ewbNo&&{label:ewbLoading===bill.id?'Generating E-Way...':'Generate E-Way Bill',onClick:()=>generateEWB(bill),disabled:ewbLoading===bill.id},
+          ]}/>
+          <button title='Close' onClick={()=>setVid(null)} style={{width:28,height:28,border:'none',background:'none',cursor:'pointer',fontSize:18,color:MUT}}>×</button>
+        </div>
       </div>
       <div style={{border:'0.5px solid '+BORD,borderRadius:8,overflow:'hidden',background:'#fff'}}><Invoice bill={bill} firm={firm} payments={Py}/></div>
       {activeFirm?.id&&<div style={{marginTop:20}}>
