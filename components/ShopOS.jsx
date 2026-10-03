@@ -425,7 +425,7 @@ export default function ShopOS(){
     setB(Array.isArray(b)?b:[]);setPy(Array.isArray(py)?py:[]);
     setRet(Array.isArray(ret)?ret:[]);
     setSI(Array.isArray(si)?si:[]);setBS(Array.isArray(bs)?bs:[]);setSS(Array.isArray(ss)?ss:[]);
-    if(s&&!s.error){setFirm({...DEF,...s});setSeq(s.invoiceSeq||1);}
+    if(s&&!s.error){setFirm({...DEF,...s});setSeq(s.invoiceSeq||1);}else if(force){setFirm(DEF);}
     setLd(false);setFirmLoading(false);
   };
 

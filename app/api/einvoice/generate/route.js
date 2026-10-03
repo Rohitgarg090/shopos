@@ -345,12 +345,14 @@ export async function POST(req) {
     }
 
     // Get firm details using service role (for admin access, not restricted by RLS)
-    console.log('[einvoice-generate] Querying firm_settings for user_id:', c.user.id);
+    console.log('[einvoice-generate] Querying firm_settings for firm_id:', c.firmId);
 
     const { data: firmList, error: firmError } = await supabase
       .from('firm_settings')
       .select('*')
-      .eq('user_id', c.user.id);
+      .eq('firm_id', c.firmId)
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(1);
 
     console.log('[einvoice-generate] Query result:', {
       count: firmList?.length,

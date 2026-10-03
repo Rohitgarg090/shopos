@@ -51,33 +51,48 @@ const shape = r => ({
   upiQrImage: r.upi_qr_image || '',
 });
 
+// Settings belong to a firm, not a user. Rows may have been created by the firm
+// owner, so other members read/write them via the service role after a membership check.
+async function firmClient(c) {
+  if (!c.firmId) return { error: 'No firm selected', status: 400 };
+  const { data: member } = await c.sb.from('firm_members')
+    .select('role').eq('firm_id', c.firmId).eq('user_id', c.user.id).eq('status', 'active').maybeSingle();
+  let role = member?.role;
+  if (!role) {
+    const { data: firm } = await c.sb.from('firms').select('owner_id').eq('id', c.firmId).maybeSingle();
+    if (firm?.owner_id === c.user.id) role = 'owner';
+  }
+  if (!role) return { error: 'Forbidden', status: 403 };
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const db = key ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, key) : c.sb;
+  return { db, role };
+}
+
+async function firmRow(db, firmId) {
+  return db.from('firm_settings').select('*').eq('firm_id', firmId)
+    .order('updated_at', { ascending: false, nullsFirst: false }).limit(1);
+}
+
 export async function GET(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const f = await firmClient(c);
+  if (f.error) return NextResponse.json({ error: f.error }, { status: f.status });
 
-  // Get settings for THIS user - use user_id as primary key (user_id should be unique)
-  // Don't filter by firm_id since it may be NULL in database
-  const { data: allRows, error } = await c.sb
-    .from('firm_settings')
-    .select('*')
-    .eq('user_id', c.user.id)
-    .order('updated_at', { ascending: false });
-
+  const { data: rows, error } = await firmRow(f.db, c.firmId);
   if (error) {
     console.error('[settings] GET error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  // Get only the most recent row
-  const row = (allRows || [])[0];
-  console.log('[settings] GET returning row:', row ? `id=${row.id}, name=${row.name}` : 'NO ROW FOUND');
-  return NextResponse.json(shape(row || {}));
+  return NextResponse.json(shape((rows || [])[0] || {}));
 }
 
 export async function POST(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
+  const f = await firmClient(c);
+  if (f.error) return NextResponse.json({ error: f.error }, { status: f.status });
+  if (f.role !== 'owner') return NextResponse.json({ error: 'Only the firm owner can change settings' }, { status: 403 });
   const b = await req.json();
 
   // Map camelCase to snake_case for database fields
@@ -121,50 +136,23 @@ export async function POST(req) {
     }
   });
 
-  // Step 1: Get all matching rows to find the primary one (use user_id only, not firm_id)
-  const { data: allRows, error: queryError } = await c.sb
-    .from('firm_settings')
-    .select('*')
-    .eq('user_id', c.user.id)
-    .order('updated_at', { ascending: false });
+  const { data: rows, error: queryError } = await firmRow(f.db, c.firmId);
   if (queryError) {
     console.error('[settings] query error:', queryError.message);
     return NextResponse.json({ error: queryError.message }, { status: 500 });
   }
 
   let data, error;
-  const primaryRow = (allRows || [])[0]; // Most recent row (NEVER delete duplicates - preserve data)
-
-  // Step 2: Update or insert
-  if (primaryRow?.id) {
-    // UPDATE the primary row - only update the fields being changed
-    const updateFields = { ...fields, updated_at: new Date().toISOString() };
-    console.log('[settings] Updating row', primaryRow.id, 'with fields:', updateFields);
-    const result = await c.sb.from('firm_settings')
-      .update(updateFields)
-      .eq('id', primaryRow.id)
-      .select();
-    error = result.error;
-    data = result.data ? result.data[0] : null; // Get first row from array
-    if (error) {
-      console.error('[settings] Update error:', error.message);
-    }
+  const row = (rows || [])[0];
+  if (row?.id) {
+    const result = await f.db.from('firm_settings')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', row.id).select();
+    error = result.error; data = result.data?.[0];
   } else {
-    // INSERT new row only if no existing row found
-    const insertRow = {
-      user_id: c.user.id,
-      ...(c.firmId ? { firm_id: c.firmId } : {}),
-      ...fields,
-    };
-    console.log('[settings] Inserting new row:', insertRow);
-    const result = await c.sb.from('firm_settings')
-      .insert([insertRow])
-      .select();
-    error = result.error;
-    data = result.data ? result.data[0] : null; // Get first row from array
-    if (error) {
-      console.error('[settings] Insert error:', error.message);
-    }
+    const result = await f.db.from('firm_settings')
+      .insert([{ user_id: c.user.id, firm_id: c.firmId, ...fields }]).select();
+    error = result.error; data = result.data?.[0];
   }
 
   if (error) {

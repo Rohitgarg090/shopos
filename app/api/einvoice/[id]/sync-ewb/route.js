@@ -54,12 +54,13 @@ export async function POST(req, { params }) {
       .eq('id', bill.customer_id)
       .single();
 
-    // Get firm details (keyed by user_id)
     const { data: firm } = await c.sb
       .from('firm_settings')
       .select('*')
-      .eq('user_id', c.user.id)
-      .single();
+      .eq('firm_id', c.firmId)
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
 
     // Prepare e-Way Bill data
     const ewbData = {
