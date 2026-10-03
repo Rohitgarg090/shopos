@@ -4429,7 +4429,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
                 try{
                   const supInvoices=SI.filter(i=>i.supplierName===selSupplier);
                   const billId=supInvoices.length>0?supInvoices[0].id:null;
-                  const p=await api.post('/api/payments',{billId,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:selSupplier});
+                  const p=await api.post('/api/payments',{billId,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:selSupplier,partyName:selSupplier});
                   setPy([...Py,p]);
                   setPayAmount('');setPayRef('');setPayCity('');setPayDate(new Date().toISOString().split('T')[0]);
                   showT('Payment recorded!');
