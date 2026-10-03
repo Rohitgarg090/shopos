@@ -795,6 +795,7 @@ function Catalog({P,setP,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[cat,setCat]=useState('All');const[srch,setSrch]=useState('');const[showF,setShowF]=useState(false);const[eid,setEid]=useState(null);
   const[selected,setSelected]=useState(new Set());
+  const[stockF,setStockF]=useState('all');const[sortBy,setSortBy]=useState('recent');const[limit,setLimit]=useState(100);
   const[industry,setIndustry]=useState('general');const[customFields,setCustomFields]=useState([]);const[userCategories,setUserCategories]=useState([]);
   const BLK={name:'',cat:'',sub:'',size:'M',color:'',price:'',gst:5,qty:0,hsn:'',articleNo:'',hsnCustom:'',customAttrs:{}};
   const[form,setF]=useState(BLK);const[sv,setSv]=useState(false);const[toast,showT]=useToast();
@@ -804,7 +805,7 @@ function Catalog({P,setP,mob}){
   const ff=k=>v=>setF(f=>({...f,[k]:v}));
   const curTemplate=INDUSTRY_TEMPLATES[industry];
   const cts=(userCategories.length>0?userCategories:curTemplate?.categories||[]).reduce((a,c)=>{a[c]=P.filter(p=>p.cat===c).length;return a},{});
-  const rows=P.filter(p=>(cat==='All'||p.cat===cat)&&((p.name||'').toLowerCase().includes(srch.toLowerCase())||(p.sku||'').includes(srch)||(p.articleNo||'').toLowerCase().includes(srch.toLowerCase())));
+  const rows=P.filter(p=>(cat==='All'||(p.cat||'Others')===cat)&&((p.name||'').toLowerCase().includes(srch.toLowerCase())||(p.sku||'').includes(srch)||(p.articleNo||'').toLowerCase().includes(srch.toLowerCase())));
   const openNew=()=>{setF(BLK);setEid(null);setShowF(true)};
   const openEdit=p=>{setF({name:p.name,cat:p.cat,sub:p.sub||'',size:p.size,color:p.color||'',price:p.price,gst:p.gst,qty:p.qty,hsn:p.hsn||'',articleNo:p.articleNo||'',hsnCustom:'',customAttrs:p.customAttrs||{}});setEid(p.id);setShowF(true)};
   const save=async()=>{if(!form.name){alert('Name required');return}setSv(true);try{const finalHsn=form.hsn==='custom'?form.hsnCustom:form.hsn;const pl={...form,hsn:finalHsn,price:+form.price,qty:+form.qty,gst:+form.gst,customAttrs:form.customAttrs||{}};if(eid){const u=await api.put('/api/products',{id:eid,...pl});setP(ps=>ps.map(p=>p.id===eid?u:p));showT('Updated!')}else{const c=await api.post('/api/products',{...pl,sku:rnd9()});setP(ps=>[c,...ps]);showT('Added!')}setShowF(false)}catch(e){showT('Failed: '+e.message,'err')}finally{setSv(false)}};
@@ -814,28 +815,92 @@ function Catalog({P,setP,mob}){
   const bulkDelete=async()=>{if(selected.size===0){showT('Select products to delete','err');return}if(!confirm(`Delete ${selected.size} product${selected.size!==1?'s':''}?`))return;try{for(const id of selected){await api.del('/api/products?id='+id);}setP(ps=>ps.filter(p=>!selected.has(p.id)));setSelected(new Set());showT(`Deleted ${selected.size} product${selected.size!==1?'s':''}!`);}catch(e){showT('Failed: '+e.message,'err')}};
   const[showQR,setShowQR]=useState(false);const[qrQty,setQrQty]=useState({});const[dlQR,setDlQR]=useState(false);
   const downloadQRLabels=async()=>{console.log('[QR] Download clicked, selected:', selected.size, 'dlQR:', dlQR);if(selected.size===0){showT('Select products','err');return}if(dlQR){console.log('[QR] Already downloading');return}setDlQR(true);try{console.log('[QR] Starting PDF generation...');const{jsPDF}=await import('jspdf');console.log('[QR] jsPDF imported');const pdf=new jsPDF('p','mm',[210,297]);const selectedProds=rows.filter(p=>selected.has(p.id));console.log('[QR] Selected products:', selectedProds.length);let y=12;const labelW=186,labelH=65;let totalLabels=0;for(const p of selectedProds){const qty=parseInt(qrQty[p.id])||p.qty||1;totalLabels+=qty;console.log('[QR] Processing', p.name, 'qty:', qty);for(let i=0;i<qty;i++){if(y+labelH>280){pdf.addPage();y=12;}const x=12;pdf.setDrawColor(100);pdf.setLineWidth(0.5);pdf.rect(x,y,labelW,labelH);const qrSize=45;const qrX=x+labelW-qrSize-4;const infoW=labelW-qrSize-10;pdf.setFontSize(12);pdf.setFont(undefined,'bold');pdf.text('Product: '+(p.name||'Product').substring(0,28),x+4,y+8);pdf.setFontSize(10);pdf.setFont(undefined,'normal');pdf.text('Article Number: '+(p.articleNo||'—'),x+4,y+16);pdf.text('Price: ₹'+(p.price||0),x+4,y+23);if(p.size&&p.size!=='Free Size'){pdf.text('Size: '+p.size,x+4,y+30);}if(p.color){pdf.text('Colour: '+p.color,x+4,y+37);}pdf.text('SKU: '+p.sku,x+4,y+51);const qrUrl=qrU(p.sku||'unknown',200);try{console.log('[QR] Fetching QR from:', qrUrl);const res=await fetch(qrUrl);if(!res.ok){console.error('[QR] QR fetch failed:', res.status);throw new Error('QR fetch failed');}const blob=await res.blob();const reader=new FileReader();await new Promise(res2=>{reader.onload=()=>{try{const imgData=reader.result;pdf.addImage(imgData,'PNG',qrX,y+4,qrSize,qrSize);console.log('[QR] QR image added');}catch(ae){console.error('[QR] Add image error:',ae);}res2();};reader.readAsDataURL(blob);});}catch(e){console.error('[QR] QR error:',e);}y+=labelH+3;}}console.log('[QR] Total labels:', totalLabels);pdf.save('product_qr_labels.pdf');console.log('[QR] PDF saved');showT('QR Labels downloaded!');setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){console.error('[QR] Error:',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false);console.log('[QR] Download complete')}};
+  const dupKey=p=>(p.articleNo||'').trim().toUpperCase()+'|'+(p.size||'').toUpperCase()+'|'+(p.name||'').trim().toUpperCase();
+  const dupCount=P.reduce((m,p)=>{if(p.articleNo){const k=dupKey(p);m[k]=(m[k]||0)+1;}return m;},{});
+  const isDup=p=>p.articleNo&&dupCount[dupKey(p)]>1;
+  const LOW=3;
+  const stockVal=P.reduce((s,p)=>s+(p.price||0)*Math.max(0,p.qty||0),0);
+  const pcs=P.reduce((s,p)=>s+Math.max(0,p.qty||0),0);
+  const lowN=P.filter(p=>p.qty>0&&p.qty<=LOW).length,outN=P.filter(p=>p.qty<=0).length,dupN=P.filter(isDup).length;
+  const presentCats=[...new Set(P.map(p=>p.cat||'Others'))].sort();
+  const view=rows.filter(p=>stockF==='all'||(stockF==='low'&&p.qty>0&&p.qty<=LOW)||(stockF==='out'&&p.qty<=0)||(stockF==='dup'&&isDup(p)))
+    .sort((a,b)=>sortBy==='name'?(a.name||'').localeCompare(b.name||'')||(a.articleNo||'').localeCompare(b.articleNo||''):sortBy==='article'?(a.articleNo||'').localeCompare(b.articleNo||'',undefined,{numeric:true}):sortBy==='priceHi'?b.price-a.price:sortBy==='priceLo'?a.price-b.price:sortBy==='stockLo'?a.qty-b.qty:0);
+  const shown=view.slice(0,limit);
+  const allSel=view.length>0&&view.every(p=>selected.has(p.id));
+  const stat=(k,l,v,sub,c)=><button key={k} onClick={()=>setStockF(stockF===k?'all':k)} style={{textAlign:'left',background:'#fff',border:'1px solid '+(stockF===k&&k!=='all'?c:BORD),boxShadow:stockF===k&&k!=='all'?'0 0 0 3px '+c+'22':'none',borderRadius:12,padding:'12px 14px',cursor:'pointer',position:'relative',overflow:'hidden'}}>
+    <span style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:c}}/>
+    <div style={{fontSize:10.5,fontWeight:700,color:MUT,textTransform:'uppercase',letterSpacing:'0.4px'}}>{l}</div>
+    <div style={{fontSize:20,fontWeight:800,color:TXT,margin:'4px 0 2px',...S.mono}}>{v}</div>
+    <div style={{fontSize:10.5,color:MUT}}>{sub}</div>
+  </button>;
   return<div>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}><div style={S.h2}>Product Catalog</div><div style={{display:'flex',gap:6}}>{selected.size>0&&<><button style={S.btn('gho')} onClick={()=>setShowQR(true)}>⬇️ Download QR ({selected.size})</button><button style={S.btn('dan')} onClick={bulkDelete}>🗑️ Delete {selected.size}</button></>}</div></div>{toast}
-    <CatTabs value={cat} onChange={setCat} counts={cts}/>
-    <input style={{...S.inp,marginBottom:12}} placeholder='Search name, barcode, article no...' value={srch} onChange={e=>setSrch(e.target.value)}/>
-    <button style={{...S.btn('pri'),marginBottom:12}} onClick={()=>{setF(BLK);setEid(null);setShowF(true)}}> + Add Product</button>
-    <div style={{...S.card,padding:0,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:600}}>
-      <thead><tr>{['','QR','Product','Article','Category','Price','GST','Stock',''].map((h,i)=><th key={i} style={S.th}>{h==='QR'?(<input type='checkbox' checked={selected.size===rows.length&&rows.length>0} onChange={toggleSelectAll} style={{cursor:'pointer'}}/>):h}</th>)}</tr></thead>
-      <tbody>
-        {rows.length===0&&<tr><td colSpan={9}><MT msg='No products'/></td></tr>}
-        {rows.map(p=><tr key={p.id} style={{background:selected.has(p.id)?BLL:''}}>
-          <td style={S.td}><input type='checkbox' checked={selected.has(p.id)} onChange={()=>toggleSelect(p.id)} style={{cursor:'pointer'}}/></td>
-          <td style={S.td}><img src={qrU(p.sku,50)} width={50} height={50} style={{borderRadius:4,border:'0.5px solid '+BORD}} alt='QR'/></td>
-          <td style={S.td}><div style={{fontWeight:700}}>{p.name}</div><div style={{fontSize:10,color:MUT,...S.mono}}>{p.sku}</div>{p.customAttrs&&Object.entries(p.customAttrs).length>0&&<div style={{fontSize:9,color:BL,marginTop:3}}>{Object.entries(p.customAttrs).map(([k,v])=>v?`${k}:${v}`:null).filter(Boolean).join(' · ')}</div>}</td>
-          <td style={{...S.td,...S.mono,fontSize:11,color:BL,fontWeight:600}}>{p.articleNo||'—'}</td>
-          <td style={S.td}><Bdg c='blue'>{p.cat||'—'}</Bdg></td>
-          <td style={{...S.td,...S.mono,color:AMB,fontWeight:700}}>{fmt(p.price)}</td>
-          <td style={S.td}><Bdg c={p.gst===0?'gray':'blue'}>{p.gst}%</Bdg></td>
-          <td style={S.td}><Bdg c={p.qty===0?'red':p.qty<=10?'amber':'green'}>{p.qty===0?'Out':p.qty}</Bdg></td>
-          <td style={S.td}><div style={{display:'flex',gap:4}}><button style={S.btn('def',true)} onClick={()=>openEdit(p)}>Edit</button><button style={S.btn('dan',true)} onClick={()=>del(p.id)}>Del</button></div></td>
-        </tr>)}
-      </tbody>
-    </table></div>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:14,gap:10,flexWrap:'wrap'}}>
+      <div><div style={{...S.h2,marginBottom:2}}>Product Catalog</div><div style={{fontSize:12,color:MUT}}>{P.length} products · {pcs} pcs in stock</div></div>
+      <button style={S.btn('pri')} onClick={openNew}>+ Add Product</button>
+    </div>{toast}
+    <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(4,1fr)',gap:10,marginBottom:14}}>
+      {stat('all','Stock value',fmt(stockVal),'at selling price',BL)}
+      {stat('low','Low stock',lowN,LOW+' pcs or fewer',AMB)}
+      {stat('out','Out of stock',outN,'tap to view',RD)}
+      {stat('dup','Possible duplicates',dupN,'same article, size & name',PUR)}
+    </div>
+    <div style={{...S.card,padding:0,overflow:'hidden'}}>
+      <div style={{padding:'12px 14px',borderBottom:'1px solid '+BORD,display:'flex',flexDirection:'column',gap:10}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          <div style={{position:'relative',flex:1,minWidth:200}}>
+            <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:MUT,fontSize:13}}>⌕</span>
+            <input style={{...S.inp,paddingLeft:28,margin:0}} placeholder='Search name, article no or barcode…' value={srch} onChange={e=>{setSrch(e.target.value);setLimit(100);}}/>
+          </div>
+          <select style={{...S.inp,width:'auto',margin:0}} value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+            <option value='recent'>Sort: Recently added</option><option value='name'>Name A–Z</option><option value='article'>Article no.</option><option value='priceHi'>Price: high to low</option><option value='priceLo'>Price: low to high</option><option value='stockLo'>Stock: low first</option>
+          </select>
+        </div>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {['All',...presentCats].map(c=>{const n=c==='All'?P.length:P.filter(p=>(p.cat||'Others')===c).length;const on=cat===c;return<button key={c} onClick={()=>setCat(c)} style={{padding:'4px 11px',borderRadius:20,border:'1px solid '+(on?BL:BORD),background:on?BL:'#fff',color:on?'#fff':TXT,cursor:'pointer',fontSize:11.5,fontWeight:600}}>{c} <span style={{opacity:0.65,fontWeight:500}}>{n}</span></button>;})}
+          {stockF!=='all'&&<button onClick={()=>setStockF('all')} style={{padding:'4px 11px',borderRadius:20,border:'1px dashed '+MUT,background:'none',color:MUT,cursor:'pointer',fontSize:11.5}}>✕ {({low:'Low stock',out:'Out of stock',dup:'Duplicates'})[stockF]}</button>}
+        </div>
+      </div>
+      {selected.size>0&&<div style={{display:'flex',gap:8,alignItems:'center',padding:'8px 14px',background:BLL,borderBottom:'1px solid '+BORD}}>
+        <span style={{fontSize:12,fontWeight:700,color:BL}}>{selected.size} selected</span>
+        <button style={S.btn('pri',true)} onClick={()=>setShowQR(true)}>Download QR labels</button>
+        <button style={S.btn('dan',true)} onClick={bulkDelete}>Delete</button>
+        <button style={{...S.btn('def',true),marginLeft:'auto'}} onClick={()=>setSelected(new Set())}>Clear</button>
+      </div>}
+      <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:680}}>
+        <thead><tr>
+          <th style={{...S.th,width:34,textAlign:'center'}}><input type='checkbox' checked={allSel} onChange={()=>{const s=new Set(selected);if(allSel)view.forEach(p=>s.delete(p.id));else view.forEach(p=>s.add(p.id));setSelected(s);}} style={{cursor:'pointer'}}/></th>
+          {[['Product','left'],['Article','left'],['Size','left'],['Category','left'],['Price','right'],['GST','center'],['Stock','center'],['','right']].map(([h,a],i)=><th key={i} style={{...S.th,textAlign:a}}>{h}</th>)}
+        </tr></thead>
+        <tbody>
+          {view.length===0&&<tr><td colSpan={9}><MT msg={P.length===0?'No products yet — add one or scan a supplier bill':'No products match these filters'}/></td></tr>}
+          {shown.map(p=>{const out=p.qty<=0,low=!out&&p.qty<=LOW;return<tr key={p.id} style={{background:selected.has(p.id)?BLL:'transparent'}}>
+            <td style={{...S.td,textAlign:'center'}}><input type='checkbox' checked={selected.has(p.id)} onChange={()=>toggleSelect(p.id)} style={{cursor:'pointer'}}/></td>
+            <td style={S.td}><div style={{display:'flex',alignItems:'center',gap:10}}>
+              <img src={qrU(p.sku,60)} width={34} height={34} loading='lazy' style={{borderRadius:6,border:'1px solid '+BORD,flexShrink:0,background:'#fff'}} alt=''/>
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6}}>{p.name}{isDup(p)&&<span title='Another product has the same article no., size and name' style={{fontSize:9,fontWeight:700,color:PUR,background:PURL,padding:'1px 6px',borderRadius:8}}>DUPLICATE</span>}</div>
+                <div style={{fontSize:10,color:MUT,...S.mono}}>{p.sku}{p.hsn?' · HSN '+p.hsn:''}</div>
+                {p.customAttrs&&Object.entries(p.customAttrs).some(([,v])=>v)&&<div style={{fontSize:9.5,color:BL,marginTop:2}}>{Object.entries(p.customAttrs).map(([k,v])=>v?`${k}: ${v}`:null).filter(Boolean).join(' · ')}</div>}
+              </div>
+            </div></td>
+            <td style={{...S.td,...S.mono,fontWeight:700,color:BL}}>{p.articleNo||'—'}</td>
+            <td style={{...S.td,fontSize:11.5}}>{p.size||'—'}</td>
+            <td style={{...S.td,fontSize:11.5,color:MUT}}>{p.cat||'—'}</td>
+            <td style={{...S.td,...S.mono,fontWeight:700,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(p.price)}</td>
+            <td style={{...S.td,textAlign:'center',fontSize:11.5,color:MUT}}>{p.gst}%</td>
+            <td style={{...S.td,textAlign:'center'}}><span style={{display:'inline-block',minWidth:52,fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:10,background:out?RDL:low?AMBL:GRL,color:out?RD:low?AMB:GR}}>{out?'Out':p.qty+' pcs'}</span></td>
+            <td style={{...S.td,textAlign:'right',whiteSpace:'nowrap'}}><div style={{display:'inline-flex',gap:5,alignItems:'center'}}>
+              <button style={S.btn('def',true)} onClick={()=>openEdit(p)}>Edit</button>
+              <MoreMenu items={[{label:'Download QR label',onClick:()=>{setSelected(new Set([p.id]));setShowQR(true);}},{label:'Delete product',danger:true,onClick:()=>del(p.id)}]}/>
+            </div></td>
+          </tr>;})}
+        </tbody>
+      </table></div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',borderTop:'1px solid '+BORD,fontSize:11.5,color:MUT}}>
+        <span>Showing {shown.length} of {view.length}{view.length!==P.length?' (filtered from '+P.length+')':''}</span>
+        {view.length>shown.length&&<button style={S.btn('def',true)} onClick={()=>setLimit(l=>l+100)}>Show 100 more</button>}
+      </div>
+    </div>
     {showF&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
       <div style={{...S.card,width:mob?'90%':'650px',maxHeight:'90vh',overflowY:'auto'}}>
         <div style={S.h2}>{eid?'Edit':'Add'} Product</div>
