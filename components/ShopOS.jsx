@@ -1609,15 +1609,25 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
         </div>
         <div style={{...S.card,padding:0}}>
           <div style={{padding:'10px 14px 6px',borderBottom:'0.5px solid '+BORD}}><CatTabs value={catF} onChange={setCatF} counts={Object.fromEntries(Array.from(activeCats).map(c=>([c,P.filter(p=>p.cat===c&&p.qty>0).length])))}/><input style={{...S.inp,fontSize:12}} placeholder='Search catalog...' value={cSrch} onChange={e=>setCS(e.target.value)}/></div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,padding:12,maxHeight:mob?250:380,overflowY:'auto'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,padding:12,maxHeight:mob?250:380,overflowY:'auto'}}>
             {fG.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:20,color:MUT,fontSize:12}}>No in-stock items</div>}
-            {fG.map(p=><div key={p.id} onClick={()=>addG(p)} style={{border:'0.5px solid '+BORD,borderRadius:8,padding:'10px',cursor:'pointer',background:'#fff'}}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><Bdg c='blue'>{p.cat}</Bdg><Bdg c='gray'>{p.size}</Bdg></div>
-              <div style={{fontSize:12,fontWeight:700,lineHeight:1.3,marginBottom:2}}>{p.name}</div>
-              {p.articleNo&&<div style={{fontSize:9,color:BL,...S.mono,marginBottom:2}}>Art: {p.articleNo}</div>}
-              <div style={{fontSize:13,fontWeight:800,color:AMB,...S.mono}}>{fmt(p.price)}</div>
-              <div style={{fontSize:9,color:MUT,marginTop:1}}>{p.qty} pcs left</div>
-            </div>)}
+            {fG.map(p=>{const low=p.qty<=2;const chip={fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:10,whiteSpace:'nowrap',lineHeight:1.5};return<div key={p.id} onClick={()=>addG(p)}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=BL;e.currentTarget.style.boxShadow='0 4px 14px rgba(27,94,138,0.12)';e.currentTarget.style.transform='translateY(-1px)';}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=BORD;e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}
+              style={{border:'1px solid '+BORD,borderRadius:10,cursor:'pointer',background:'#fff',display:'flex',flexDirection:'column',overflow:'hidden',transition:'all 0.15s ease'}}>
+              <div style={{padding:'10px 10px 8px',flex:1}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:6}}>
+                  <span style={{...chip,background:BLL,color:BL,overflow:'hidden',textOverflow:'ellipsis',minWidth:0}}>{p.cat}</span>
+                  {p.size&&<span style={{...chip,background:'#F1EFE8',color:'#555',flexShrink:0}}>{p.size}</span>}
+                </div>
+                <div style={{fontSize:13,fontWeight:700,lineHeight:1.25,color:TXT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={p.name}>{p.name}</div>
+                {p.articleNo&&<div style={{fontSize:11,color:BL,...S.mono,marginTop:3}}>Art {p.articleNo}</div>}
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',background:'#FAF9F6',borderTop:'1px solid '+BORD}}>
+                <span style={{fontSize:13,fontWeight:800,color:AMB,...S.mono}}>{fmt(p.price)}</span>
+                <span style={{...chip,background:low?RDL:GRL,color:low?RD:GR}}>{p.qty} left</span>
+              </div>
+            </div>;})}
           </div>
         </div>
       </div><Cart/>
