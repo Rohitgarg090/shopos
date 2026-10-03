@@ -2325,6 +2325,10 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
   const suppProducts=getSupplierProducts();
   const fP=suppProducts.filter(p=>(catF==='All'||p.cat===catF));
 
+  const[histQ,setHistQ]=useState('');const[openRet,setOpenRet]=useState(null);
+  const histRows=Ret.map(r=>({...r,invoiceNo:r.billId?(B.find(b=>b.id===r.billId)?.invoiceNo||''):'',items:(r.items||[]).map(i=>{const p=P.find(x=>x.sku===i.sku);return{...i,articleNo:p?.articleNo||'',hsn:p?.hsn||''};})}))
+    .filter(r=>{const q=histQ.trim().toLowerCase();if(!q)return true;return[r.customerName,r.supplierName,r.reason,r.invoiceNo,...r.items.flatMap(i=>[i.articleNo,i.name,i.hsn,i.sku])].some(v=>(v||'').toLowerCase().includes(q));});
+
   return<div>
     <div style={S.h2}>Returns</div>{toast}
     <div style={{display:'flex',gap:6,marginBottom:14}}>
@@ -2427,21 +2431,44 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
     </div>}
 
     {/* ── RETURN HISTORY ── */}
-    {tab==='list'&&<div style={{...S.card,padding:0}}>
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-        <thead><tr>{['Date','Type','Party','Items','Total Value','Reason'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+    {tab==='list'&&<div>
+      <input style={{...S.inp,marginBottom:10,maxWidth:mob?'100%':360}} value={histQ} onChange={e=>setHistQ(e.target.value)} placeholder='Search party, article no, product, HSN, invoice...'/>
+      <div style={{...S.card,padding:0,overflowX:'auto'}}>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?640:0}}>
+        <thead><tr>{['','Date','Type','Party','Articles','Total Value','Reason'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
         <tbody>
-          {Ret.length===0&&<tr><td colSpan={6}><MT msg='No returns recorded yet'/></td></tr>}
-          {Ret.map(r=><tr key={r.id}>
+          {histRows.length===0&&<tr><td colSpan={7}><MT msg={Ret.length===0?'No returns recorded yet':'No returns match your search'}/></td></tr>}
+          {histRows.map(r=>{const open=openRet===r.id;const pcs=r.items.reduce((s,i)=>s+i.qty,0);return<React.Fragment key={r.id}>
+          <tr onClick={()=>setOpenRet(open?null:r.id)} style={{cursor:'pointer',background:open?BLL:'transparent'}}>
+            <td style={{...S.td,width:20,color:MUT}}>{open?'▾':'▸'}</td>
             <td style={{...S.td,fontSize:11}}>{new Date(r.date).toLocaleDateString('en-IN')}</td>
             <td style={S.td}><Bdg c={r.type==='customer'?'green':'amber'}>{r.type==='customer'?'Customer Return':'Supplier Return'}</Bdg></td>
-            <td style={S.td}><div style={{fontWeight:600}}>{r.customerName||r.supplierName||'—'}</div></td>
-            <td style={S.td}>{(r.items||[]).reduce((s,i)=>s+i.qty,0)} pcs</td>
+            <td style={S.td}><div style={{fontWeight:600}}>{r.customerName||r.supplierName||'—'}</div>{r.invoiceNo&&<div style={{fontSize:10,color:MUT}}>Against {r.invoiceNo}</div>}</td>
+            <td style={S.td}><div>{r.items.length} article{r.items.length===1?'':'s'} · {pcs} pcs</div><div style={{fontSize:10,color:MUT,...S.mono}}>{[...new Set(r.items.map(i=>i.articleNo||i.name))].slice(0,3).join(', ')}{r.items.length>3?' …':''}</div></td>
             <td style={{...S.td,...S.mono,fontWeight:700,color:r.type==='customer'?GR:RD}}>{fmt(r.total)}</td>
             <td style={{...S.td,fontSize:11,color:MUT}}>{r.reason||'—'}</td>
-          </tr>)}
+          </tr>
+          {open&&<tr><td colSpan={7} style={{padding:'4px 14px 14px 34px',background:BLL}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,background:'#fff',borderRadius:6}}>
+              <thead><tr>{['#','Article No','Product','Size','HSN','Qty','Rate','Total'].map(h=><th key={h} style={{...S.th,fontSize:10}}>{h}</th>)}</tr></thead>
+              <tbody>{r.items.map((i,k)=><tr key={i.id||k}>
+                <td style={{...S.td,color:MUT}}>{k+1}</td>
+                <td style={{...S.td,...S.mono,fontWeight:700}}>{i.articleNo||'—'}</td>
+                <td style={S.td}>{i.name}</td>
+                <td style={S.td}>{i.size||'—'}</td>
+                <td style={{...S.td,...S.mono}}>{i.hsn||'—'}</td>
+                <td style={S.td}>{i.qty}</td>
+                <td style={{...S.td,...S.mono}}>{fmt(i.rate)}</td>
+                <td style={{...S.td,...S.mono,fontWeight:700}}>{fmt(i.total)}</td>
+              </tr>)}
+              <tr><td colSpan={5} style={{...S.td,fontWeight:700,textAlign:'right'}}>Total</td><td style={{...S.td,fontWeight:700}}>{pcs}</td><td style={S.td}/><td style={{...S.td,...S.mono,fontWeight:700}}>{fmt(r.total)}</td></tr>
+              </tbody>
+            </table>
+          </td></tr>}
+          </React.Fragment>;})}
         </tbody>
       </table>
+      </div>
     </div>}
   </div>;}
 
