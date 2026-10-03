@@ -10,13 +10,23 @@ create table if not exists cheque_records (
   party_name text, -- supplier name if given, customer name if received
   party_type text, -- 'supplier' or 'customer'
   payment_id uuid, -- link to payments table
-  status text default 'deposited', -- 'deposited', 'cleared', 'bounced', 'pending'
+  status text default 'deposited', -- 'deposited', 'cleared', 'bounced', 'redeposited', 'recleared'
   created_at timestamp default now(),
   updated_at timestamp default now()
 );
+
+-- Columns used by /api/cheque-records (safe to re-run)
+alter table cheque_records add column if not exists bank text;
+alter table cheque_records add column if not exists received_date date;
+alter table cheque_records add column if not exists clearance_date date;
+alter table cheque_records add column if not exists remarks text;
+alter table cheque_records add column if not exists customer_id text;
 
 -- Create indexes for fast lookup
 create index if not exists idx_cheque_records_firm_id on cheque_records(firm_id);
 create index if not exists idx_cheque_records_cheque_no on cheque_records(cheque_no);
 create index if not exists idx_cheque_records_status on cheque_records(status);
 create index if not exists idx_cheque_records_cheque_type on cheque_records(cheque_type);
+
+-- Make PostgREST pick up the new table/columns immediately
+notify pgrst, 'reload schema';

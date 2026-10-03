@@ -73,12 +73,19 @@ export async function PATCH(req) {
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id, chequeStatus } = await req.json();
 
-  // Verify payment belongs to a bill in this firm
-  const { data: payment } = await c.sb.from('payments').select('bill_id').eq('id', id).single();
+  const { data: payment } = await c.sb.from('payments').select('bill_id, payment_type, supplier_id, customer_id').eq('id', id).single();
   if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
 
-  const { data: bill } = await c.sb.from('bills').select('firm_id').eq('id', payment.bill_id).single();
-  if (!bill || bill.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Same ownership rules as GET/DELETE: supplier payments have no bill
+  if (payment.bill_id) {
+    const { data: bill } = await c.sb.from('bills').select('firm_id').eq('id', payment.bill_id).single();
+    if (!bill || bill.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  } else if (payment.customer_id) {
+    const { data: cust } = await c.sb.from('customers').select('firm_id').eq('id', payment.customer_id).single();
+    if (!cust || cust.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  } else if (!(payment.payment_type === 'supplier' && payment.supplier_id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { data, error } = await c.sb.from('payments')
     .update({ cheque_status: chequeStatus }).eq('id', id).select().single();
