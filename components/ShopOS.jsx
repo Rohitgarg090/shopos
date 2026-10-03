@@ -1508,15 +1508,17 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
     let p=P.find(x=>x.sku===searchSku)||(searchArt?P.find(x=>x.articleNo===searchArt&&(!searchSize||x.size===searchSize)):null)||P.find(x=>x.sku===s||x.articleNo===s);
     if(!p){showT('Product not found: '+s,'err');return;}
     if(p.qty===0){showT(p.name+' out of stock!','err');return;}
+    if((cart.find(x=>x.id===p.id)?.qty||0)>=p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');setBc('');return;}
     setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});
     setBc('');showT('Added: '+p.name);
   };
   addBCRef.current=addBC; // keep ref in sync for keydown handler
-  const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});};
-  const uQty=(id,d)=>setCart(c=>c.map(x=>x.id===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));
+  const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}if((cart.find(x=>x.id===p.id)?.qty||0)>=p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});};
+  const uQty=(id,d)=>{const p=P.find(x=>x.id===id);const cur=cart.find(x=>x.id===id)?.qty||0;if(d>0&&p&&cur+d>p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');return;}setCart(c=>c.map(x=>x.id===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));};
   const calc=()=>{let sub=0,gt=0;cart.forEach(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;sub+=base*c.qty;gt+=base*(c.gstRate/100)*c.qty;});const discAmt=+disc||0;if(isRel){const mk=sub*0.1;return{sub,gt:0,mk,disc:0,total:sub+mk};}return{sub,gt,mk:0,disc:discAmt,total:sub+gt-discAmt};};
   const saveCust=async()=>{if(!cForm.name||!cForm.phone){showT('Name & phone required','err');return}const nc=await api.post('/api/customers',{...cForm,name:normalizeSupplierName(cForm.name)});setC(cs=>[nc,...cs]);setSel(nc);setCF({name:'',phone:'',shopname:'',gst:'',addr:'',email:''});setStep('items');setTimeout(()=>bcRef.current?.focus(),200);};
-  const genBill=async()=>{const cName=isRel?rn||'Walk-in':sel?.name;if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}setSub(true);
+  const overStock=()=>{const o=cart.find(c=>{const p=P.find(x=>x.id===c.id);return p&&c.qty>p.qty;});if(o){const p=P.find(x=>x.id===o.id);showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock — reduce qty','err');return true;}return false;};
+  const genBill=async()=>{const cName=isRel?rn||'Walk-in':sel?.name;if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}if(overStock())return;setSub(true);
     const{sub,gt,mk,disc:discAmt,total}=calc();const inv=await(getNextInvoiceNo||nextInv)();
     const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
     try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber});
@@ -1540,7 +1542,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
         <div style={{fontWeight:600,marginBottom:2}}>{p.name}</div>
         <div style={{fontSize:10,color:MUT,marginBottom:3}}>{p.cat}·{p.size}{p.articleNo?' · '+p.articleNo:''}</div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div style={{display:'flex',alignItems:'center',gap:4}}><button onClick={()=>uQty(c.id,-1)} style={{width:22,height:22,border:'0.5px solid '+BORD,borderRadius:4,background:'none',cursor:'pointer'}}>-</button><span style={{minWidth:24,textAlign:'center',fontWeight:700}}>{c.qty}</span><button onClick={()=>uQty(c.id,1)} style={{width:22,height:22,border:'0.5px solid '+BORD,borderRadius:4,background:'none',cursor:'pointer'}}>+</button></div>
+          <div style={{display:'flex',alignItems:'center',gap:4}}><button onClick={()=>uQty(c.id,-1)} style={{width:22,height:22,border:'0.5px solid '+BORD,borderRadius:4,background:'none',cursor:'pointer'}}>-</button><span style={{minWidth:24,textAlign:'center',fontWeight:700,color:c.qty>p.qty?RD:TXT}}>{c.qty}</span><button onClick={()=>uQty(c.id,1)} style={{width:22,height:22,border:'0.5px solid '+BORD,borderRadius:4,background:'none',cursor:c.qty>=p.qty?'not-allowed':'pointer',opacity:c.qty>=p.qty?0.35:1}}>+</button><span style={{fontSize:9,color:c.qty>p.qty?RD:MUT,marginLeft:2}}>/ {p.qty}</span></div>
           <span style={{...S.mono,color:BL,fontWeight:700}}>{fmt(line)}</span>
         </div></div>;})}
     </div>
@@ -1550,7 +1552,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
       {!isRel&&<div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}><span style={{fontSize:11,color:MUT,whiteSpace:'nowrap'}}>Discount Rs.</span><input style={{...S.inp,padding:'3px 7px',fontSize:12,flex:1}} type='number' value={disc} onChange={e=>setDisc(e.target.value)} placeholder='0'/></div>}
       {discAmt>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:GR,marginBottom:2}}><span>- Discount</span><span style={S.mono}>-{fmt(discAmt)}</span></div>}
       <div style={{display:'flex',justifyContent:'space-between',fontSize:15,fontWeight:800,paddingTop:6,borderTop:'0.5px solid '+BORD}}><span>Grand Total</span><span style={{...S.mono,color:GR,fontSize:16}}>{fmt(total)}</span></div>
-      {step==='items'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'9px'}} onClick={()=>cart.length?setStep('checkout'):null}>Proceed to Checkout</button>}
+      {step==='items'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'9px'}} onClick={()=>cart.length&&!overStock()?setStep('checkout'):null}>Proceed to Checkout</button>}
       {step==='checkout'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'10px',fontSize:14}} onClick={genBill} disabled={submitting}>{submitting?'Generating...':'Generate Bill'}</button>}
       {cart.length>0&&<button style={{...S.btn('dan'),width:'100%',justifyContent:'center',marginTop:6}} onClick={()=>setCart([])}>Clear Cart</button>}
     </div></div>;
