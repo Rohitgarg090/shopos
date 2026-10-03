@@ -2296,7 +2296,25 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
     }catch(e){showT('Failed: '+e.message,'err')}finally{setSaving(false)}
   };
 
-  const fP=P.filter(p=>(catF==='All'||p.cat===catF));
+  // Filter products by supplier when one is selected
+  const getSupplierProducts=()=>{
+    if(!supplierName) return P; // Show all if no supplier selected
+    const suppInvoices=(SI||[]).filter(i=>i.supplierName===supplierName);
+    const suppItemSkus=new Set();
+    suppInvoices.forEach(inv=>{
+      if(inv.items&&Array.isArray(inv.items)){
+        inv.items.forEach(item=>{if(item.sku) suppItemSkus.add(item.sku);});
+      }
+    });
+    // Return products from supplier first, then other products
+    return P.sort((a,b)=>{
+      const aInSup=suppItemSkus.has(a.sku)?0:1;
+      const bInSup=suppItemSkus.has(b.sku)?0:1;
+      return aInSup-bInSup;
+    });
+  };
+  const suppProducts=getSupplierProducts();
+  const fP=suppProducts.filter(p=>(catF==='All'||p.cat===catF));
 
   return<div>
     <div style={S.h2}>Returns</div>{toast}
@@ -2358,13 +2376,20 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
           <Fld label='Reason'><input style={S.inp} value={retReason} onChange={e=>setRetReason(e.target.value)} placeholder='Defective, Wrong item, etc.'/></Fld>
         </div>
         <div style={S.card}>
-          <div style={S.h3}>Select Products from Catalog</div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <div style={S.h3}>Select Products from Catalog</div>
+            {supplierName&&<div style={{fontSize:10,color:BL,background:BLL,padding:'4px 8px',borderRadius:4,fontWeight:600}}>Filtered by: {supplierName}</div>}
+          </div>
           <CatTabs value={catF} onChange={setCatF}/>
+          {!supplierName&&<div style={{fontSize:11,color:MUT,marginBottom:10,padding:'8px',background:AMBL,borderRadius:6}}>💡 Select a supplier above to filter products by what they supplied</div>}
           <div style={{maxHeight:300,overflowY:'auto',display:'flex',flexDirection:'column',gap:5}}>
-            {fP.filter(p=>p.qty>0).map(p=><div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',border:'0.5px solid '+BORD,borderRadius:7}}>
-              <div><div style={{fontWeight:600,fontSize:12}}>{p.name}</div><div style={{fontSize:10,color:MUT}}>{p.cat} · {p.size} · {p.qty} in stock</div></div>
-              <button style={S.btn('gho',true)} onClick={()=>addSuppItem(p)}>+ Add</button>
-            </div>)}
+            {fP.filter(p=>p.qty>0).map(p=>{
+              const isFromSupplier=supplierName&&(SI||[]).filter(i=>i.supplierName===supplierName).some(inv=>inv.items&&inv.items.some(item=>item.sku===p.sku));
+              return<div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',border:'0.5px solid '+(isFromSupplier?AMB:BORD),borderRadius:7,background:isFromSupplier?AMBL:'#fff'}}>
+                <div><div style={{fontWeight:600,fontSize:12}}>{p.name}{isFromSupplier&&<span style={{fontSize:9,color:AMB,marginLeft:4}}>★</span>}</div><div style={{fontSize:10,color:MUT}}>{p.cat} · {p.size} · {p.qty} in stock</div></div>
+                <button style={S.btn('gho',true)} onClick={()=>addSuppItem(p)}>+ Add</button>
+              </div>;
+            })}
           </div>
         </div>
       </div>
