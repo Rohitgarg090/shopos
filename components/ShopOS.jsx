@@ -1236,16 +1236,6 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
               <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Subtotal</div><div style={{fontSize:18,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>s+(i.qty*i.price),0))}</div></div>
             </div>
           </div>
-          {/* Item-wise breakdown for tally */}
-          {items.length>0&&<div style={{marginTop:8,fontSize:10}}>
-            <div style={{color:MUT,fontWeight:600,textTransform:'uppercase',marginBottom:6,paddingLeft:2}}>Item-wise Qty × Price (for tally)</div>
-            <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(2,1fr)',gap:6,maxHeight:120,overflowY:'auto',paddingRight:8}}>
-              {items.map((item,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:10,padding:'3px 6px',background:BG,borderRadius:4}}>
-                <span><span style={{fontWeight:600,color:BL}}>{item.articleNo||'—'}</span> {item.name.substring(0,15)}</span>
-                <span style={{...S.mono,fontWeight:600,color:BL,minWidth:80,textAlign:'right'}}>{item.qty} × {item.price} = {fmt(item.qty*item.price)}</span>
-              </div>)}
-            </div>
-          </div>}
           <div style={{marginTop:10,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
             {markupPct&&<span style={{fontSize:11,color:AMB,fontWeight:600}}>✓ {markupPct}% markup applied to all items</span>}
             <button style={S.btn('suc')} onClick={addToCatalog}>Add All to Catalog</button>
