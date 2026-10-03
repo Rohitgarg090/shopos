@@ -20,6 +20,7 @@ import JSZip from 'jszip';
 import html2canvas from 'html2canvas';
 import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, generateInvoicePDF, generateEWayBillPDF, generateSupplierReconPDF, compareEntries } from '@/lib/pdf';
 import { normaliseStatement, reconcileSupplier } from '@/lib/supplierRecon';
+import { buildEwbPayload, normVehicle, TRANS_MODES } from '@/lib/ewaybill';
 
 /* ── constants ── */
 // Empty by default - will be populated dynamically from actual products
@@ -626,7 +627,7 @@ export default function ShopOS(){
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} Ret={Ret} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
-      {page==='bills'&&<Bills B={B} setB={setB} Py={Py} Ret={Ret} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
+      {page==='bills'&&<Bills B={B} setB={setB} Py={Py} Ret={Ret} setPy={setPy} firm={firm} C={C} setC={setC} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} Py={Py} setPy={setPy} Ret={Ret} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} SI={SI} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
@@ -1964,57 +1965,110 @@ async function makePDF(elementId){
 }
 
 /* ── E-WAY BILL MODAL ── */
-function EWayBillModal({bill,firm,onClose}){
+function EWayBillModal({bill,firm,C,setC,onClose,onDone}){
   const td=new Date().toISOString().split('T')[0];
-  const[f,setF]=useState({
-    supplyType:'Outward',subType:'Supply',docType:'Tax Invoice',
-    transporterName:bill?.transportName||'',vehicleNo:'',lrNumber:bill?.lrNumber||'',
-    distance:'',transMode:'Road',docDate:new Date(bill?.date||td).toLocaleDateString('en-IN'),
-  });
-  const up=k=>v=>setF(x=>({...x,[k]:v}));
-  const totalTaxable=(bill?.items||[]).reduce((s,i)=>s+i.rate*i.qty,0);
-  const totalGST=(bill?.items||[]).reduce((s,i)=>s+i.gstAmt,0);
-
-  const genPDF=async()=>{
-    try{const pdf=await generateEWayBillPDF({bill,firm,form:f});pdf.save('EWayBill-'+(bill?.invoiceNo||bill?.id)+'.pdf');}
-    catch(e){console.error('E-Way PDF error:',e);alert('PDF failed: '+e.message);}
+  const customer=C.find(c=>c.id===bill.customerId)||null;
+  const lastVeh=(()=>{try{return localStorage.getItem('shopos_last_vehicle')||'';}catch{return '';}})();
+  const[t,setT]=useState({mode:'1',vehicleNo:lastVeh,distance:'',transporterId:'',transporterName:bill.transportName||'',transDocNo:bill.lrNumber||'',transDocDate:td,defaultHsn:''});
+  const up=k=>v=>setT(x=>({...x,[k]:v}));
+  const[pin,setPin]=useState(customer?.pincode||'');const[savingPin,setSavingPin]=useState(false);
+  const[busy,setBusy]=useState(false);const[err,setErr]=useState('');const[done,setDone]=useState(bill.ewbNo?{ewayBillNo:bill.ewbNo,validUpto:bill.ewbValidUpto}:null);const[pdfBusy,setPdfBusy]=useState(false);
+  const ready=buildEwbPayload({bill,firm,customer:customer?{...customer,pincode:pin}:{pincode:pin},transport:t});
+  const fieldProblems=f=>ready.problems.filter(p=>p.field===f);
+  const blocking=ready.problems.filter(p=>!p.field.startsWith('transport.'));
+  const credsMissing=!firm.ewbUsername||!firm.ewbPassword;
+  const missingHsn=(bill.items||[]).filter(i=>!/^\d{4,8}$/.test(String(i.hsn||'').trim())).length;
+  const savePin=async()=>{if(!customer||!/^\d{6}$/.test(pin))return;setSavingPin(true);try{const u=await api.patch('/api/customers',{id:customer.id,pincode:pin});setC&&setC(cs=>cs.map(c=>c.id===u.id?u:c));}catch(e){setErr('Could not save PIN code: '+e.message);}finally{setSavingPin(false);}};
+  const generate=async()=>{
+    if(needsPaid('eway','E-Way Bill generation'))return;
+    setBusy(true);setErr('');
+    try{
+      if(customer&&pin&&pin!==(customer.pincode||''))await savePin();
+      const res=await fetch('/api/ewaybill',{method:'POST',headers:await authH(),body:JSON.stringify({billId:bill.id,transport:t})});
+      if(await checkPlanReply(res))return;
+      const j=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(j.error||('Server error '+res.status));
+      try{if(t.vehicleNo)localStorage.setItem('shopos_last_vehicle',t.vehicleNo);}catch{}
+      setDone(j);onDone&&onDone(j);
+    }catch(e){setErr(e.message);}finally{setBusy(false);}
   };
+  const pdf=async official=>{setPdfBusy(true);try{const d=await generateEWayBillPDF({bill,firm,form:{supplyType:'Outward',subType:'Supply',docType:'Tax Invoice',docDate:new Date(bill.date).toLocaleDateString('en-IN'),transporterName:t.transporterName,vehicleNo:normVehicle(t.vehicleNo),lrNumber:t.transDocNo,distance:t.distance||'Auto',transMode:(TRANS_MODES.find(m=>m[0]===t.mode)||[])[1]},ewb:official&&done?done:null});d.save((official&&done?'EWB-'+done.ewayBillNo:'EWayBill-draft-'+(bill.invoiceNo||bill.id))+'.pdf');}catch(e){setErr('PDF failed: '+e.message);}finally{setPdfBusy(false);}};
+  const row=(l,v)=><div style={{display:'flex',justifyContent:'space-between',gap:10,fontSize:12,padding:'3px 0'}}><span style={{color:MUT}}>{l}</span><span style={{fontWeight:600,textAlign:'right'}}>{v}</span></div>;
+  const bad=list=>list.length>0&&<div style={{fontSize:11,color:RD,marginTop:3}}>{list[0].msg}</div>;
 
-  return<Modal title='Generate E-Way Bill' onClose={onClose} wide>
-    <div style={{marginBottom:12,padding:'8px 12px',borderRadius:7,background:AMBL,color:AMB,fontSize:12}}>
-      This generates a pre-filled E-Way Bill PDF. After downloading, upload to <strong>ewaybillgst.gov.in</strong> to get the official EWB number.
+  if(done)return<Modal title='E-Way Bill generated' onClose={onClose}>
+    <div style={{textAlign:'center',padding:'6px 0 14px'}}>
+      <div style={{width:52,height:52,borderRadius:'50%',background:GRL,color:GR,fontSize:26,display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:8}}>✓</div>
+      <div style={{fontSize:12,color:MUT}}>E-Way Bill No.</div>
+      <div style={{fontSize:26,fontWeight:800,fontFamily:'DM Mono,monospace',letterSpacing:1}}>{done.ewayBillNo}</div>
+      {done.validUpto&&<div style={{fontSize:12,color:MUT,marginTop:4}}>Valid up to <strong style={{color:TXT}}>{done.validUpto}</strong></div>}
+      {done.alert&&<div style={{fontSize:11,color:AMB,marginTop:6}}>{done.alert}</div>}
+      {done.savedOnBill===false&&<div style={{fontSize:11,color:RD,marginTop:6}}>Generated, but couldn't save the number on the bill — note it down.</div>}
     </div>
-    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
-      <Fld label='Supply Type'><select style={S.inp} value={f.supplyType} onChange={e=>up('supplyType')(e.target.value)}><option>Outward</option><option>Inward</option></select></Fld>
-      <Fld label='Sub Type'><select style={S.inp} value={f.subType} onChange={e=>up('subType')(e.target.value)}><option>Supply</option><option>Export</option><option>Job Work</option><option>Others</option></select></Fld>
-      <Fld label='Transporter Name'><input style={S.inp} value={f.transporterName} onChange={e=>up('transporterName')(e.target.value)} placeholder='Transport company name'/></Fld>
-      <Fld label='Vehicle Number'><input style={S.inp} value={f.vehicleNo} onChange={e=>up('vehicleNo')(e.target.value)} placeholder='MP09AB1234'/></Fld>
-      <Fld label='LR / Docket Number'><input style={S.inp} value={f.lrNumber} onChange={e=>up('lrNumber')(e.target.value)} placeholder='Docket number'/></Fld>
-      <Fld label='Distance (km)'><input style={S.inp} type='number' value={f.distance} onChange={e=>up('distance')(e.target.value)} placeholder='e.g. 250'/></Fld>
-      <Fld label='Mode of Transport'><select style={S.inp} value={f.transMode} onChange={e=>up('transMode')(e.target.value)}><option>Road</option><option>Rail</option><option>Air</option><option>Ship</option></select></Fld>
-    </div>
-    <div style={{padding:'10px 12px',borderRadius:7,background:BG,border:'0.5px solid '+BORD,marginBottom:14}}>
-      <div style={S.h3}>Auto-filled from Invoice #{bill?.invoiceNo||bill?.id}</div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>
-        <div><span style={{color:MUT}}>From: </span>{firm.name}</div>
-        <div><span style={{color:MUT}}>To: </span>{bill?.customerName}</div>
-        <div><span style={{color:MUT}}>From GSTIN: </span>{firm.gstin||'N/A'}</div>
-        <div><span style={{color:MUT}}>To GSTIN: </span>{bill?.customerGST||'N/A'}</div>
-        <div><span style={{color:MUT}}>Taxable Value: </span>{fmt(totalTaxable)}</div>
-        <div><span style={{color:MUT}}>Total GST: </span>{fmt(totalGST)}</div>
-        <div><span style={{color:MUT}}>Items: </span>{(bill?.items||[]).length} line items</div>
-        <div><span style={{color:MUT}}>Grand Total: </span>{fmt(totalTaxable+totalGST)}</div>
+    <div style={{display:'flex',gap:8,justifyContent:'center'}}><button style={S.btn('pri')} onClick={()=>pdf(true)} disabled={pdfBusy}>{pdfBusy?'Preparing…':'⬇ Download E-Way Bill'}</button><button style={S.btn()} onClick={onClose}>Close</button></div>
+  </Modal>;
+
+  return<Modal title={'E-Way Bill · '+(bill.invoiceNo||'')} onClose={onClose} wide>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+      <div style={{padding:'10px 12px',borderRadius:9,background:BG,border:'1px solid '+BORD}}>
+        <div style={{fontSize:10,fontWeight:700,color:MUT,textTransform:'uppercase',marginBottom:4}}>From</div>
+        <div style={{fontWeight:700,fontSize:13}}>{firm.name}</div>
+        {row('GSTIN',firm.gstin||<span style={{color:RD}}>missing</span>)}
+        {row('PIN',firm.pincode||<span style={{color:RD}}>missing</span>)}
+      </div>
+      <div style={{padding:'10px 12px',borderRadius:9,background:BG,border:'1px solid '+BORD}}>
+        <div style={{fontSize:10,fontWeight:700,color:MUT,textTransform:'uppercase',marginBottom:4}}>To</div>
+        <div style={{fontWeight:700,fontSize:13}}>{bill.customerName}</div>
+        {row('GSTIN',ready.payload.toGstin==='URP'?<span>Unregistered (URP){(customer?.gst||bill.customerGST)?<span style={{color:AMB}}> · "{customer?.gst||bill.customerGST}" isn't a valid GSTIN</span>:null}</span>:ready.payload.toGstin)}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,fontSize:12,padding:'3px 0'}}><span style={{color:MUT}}>PIN</span>
+          <input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,6))} onBlur={savePin} placeholder='6-digit PIN' style={{...S.inp,width:110,padding:'3px 8px',fontSize:12,margin:0,borderColor:fieldProblems('customer.pincode').length?RD:BORD}}/>{savingPin&&<Spin/>}</div>
       </div>
     </div>
-    <div style={{display:'flex',gap:8}}><button style={S.btn('pri')} onClick={genPDF}>Download E-Way Bill PDF</button><button style={S.btn()} onClick={onClose}>Cancel</button></div>
+    <div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:12,marginBottom:14,padding:'8px 12px',borderRadius:9,border:'1px solid '+BORD}}>
+      <span>Taxable <strong>{fmt(ready.totals.totalValue)}</strong></span>
+      <span>{ready.interState?'IGST':'CGST+SGST'} <strong>{fmt(ready.totals.tax)}</strong></span>
+      <span>Invoice value <strong>{fmt(ready.totals.totInvValue)}</strong></span>
+      <span>{(bill.items||[]).length} items</span>
+      {ready.totals.totInvValue<50000&&<span style={{color:MUT}}>· E-Way Bill is optional below ₹50,000</span>}
+    </div>
+
+    {(credsMissing||blocking.length>0)&&<div style={{padding:'10px 12px',borderRadius:9,background:RDL,color:RD,fontSize:12,marginBottom:14,lineHeight:1.6}}>
+      <strong>Fix before generating:</strong>
+      <ul style={{margin:'4px 0 0 16px',padding:0}}>
+        {credsMissing&&<li>Add your E-Way Bill API username & password in Settings → E-Way Bill API Credentials</li>}
+        {blocking.filter(p=>p.field!=='items.hsn'&&p.field!=='customer.pincode').map(p=><li key={p.field}>{p.msg}</li>)}
+        {fieldProblems('customer.pincode').length>0&&<li>Enter the customer's PIN code above (it will be saved to the customer)</li>}
+      </ul>
+      {missingHsn>0&&<div style={{marginTop:8,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',color:TXT}}>
+        <span>{missingHsn} item(s) have no HSN. Use HSN</span>
+        <input value={t.defaultHsn} onChange={e=>up('defaultHsn')(e.target.value.replace(/\D/g,'').slice(0,8))} placeholder='e.g. 6203' style={{...S.inp,width:100,padding:'3px 8px',fontSize:12,margin:0}}/>
+        <span style={{fontSize:11,color:MUT}}>for them</span>
+      </div>}
+    </div>}
+
+    <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Transport details</div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,marginBottom:6}}>
+      <Fld label='Mode'><select style={S.inp} value={t.mode} onChange={e=>up('mode')(e.target.value)}>{TRANS_MODES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Fld>
+      {t.mode==='1'&&<Fld label='Vehicle number *'><input style={{...S.inp,textTransform:'uppercase',fontFamily:'DM Mono,monospace',borderColor:fieldProblems('transport.vehicleNo').length?RD:BORD}} value={t.vehicleNo} onChange={e=>up('vehicleNo')(e.target.value)} placeholder='MP07AB1234' autoFocus/>{bad(fieldProblems('transport.vehicleNo'))}</Fld>}
+      <Fld label='Distance (km)'><input style={S.inp} type='number' min='0' max='4000' value={t.distance} onChange={e=>up('distance')(e.target.value)} placeholder='Leave blank = auto'/>{bad(fieldProblems('transport.distance'))}</Fld>
+      <Fld label={t.mode==='1'?'LR / Docket no.':t.mode==='2'?'RR number *':t.mode==='3'?'Airway bill no. *':'Bill of lading no. *'}><input style={S.inp} value={t.transDocNo} onChange={e=>up('transDocNo')(e.target.value)} placeholder='Optional for road'/>{bad(fieldProblems('transport.transDocNo'))}</Fld>
+      <Fld label='Transporter name'><input style={S.inp} value={t.transporterName} onChange={e=>up('transporterName')(e.target.value)} placeholder='Optional'/></Fld>
+      <Fld label='Transporter GSTIN / ID'><input style={{...S.inp,textTransform:'uppercase'}} value={t.transporterId} onChange={e=>up('transporterId')(e.target.value.toUpperCase())} placeholder='Optional'/>{bad(fieldProblems('transport.transporterId'))}</Fld>
+    </div>
+    {err&&<div style={{padding:'10px 12px',borderRadius:8,background:RDL,color:RD,fontSize:12,margin:'8px 0'}}>{err}</div>}
+    <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:10}}>
+      <button style={{...S.btn('pri'),opacity:busy||credsMissing||ready.problems.length?0.6:1}} disabled={busy||credsMissing||ready.problems.length>0} onClick={generate}>{busy?<><Spin/> Filing with GST portal…</>:'Generate E-Way Bill'}</button>
+      <button style={S.btn('def',true)} onClick={()=>pdf(false)} disabled={pdfBusy}>Download draft PDF</button>
+      <span style={{fontSize:11,color:MUT}}>Distance blank → calculated by the portal from the PIN codes.</span>
+    </div>
   </Modal>;}
 
 /* ── BILLS ── */
-function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
+function Bills({B,setB,Py,Ret,setPy,firm,C,setC,initBill,onClearInit,activeFirm,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[vid,setVid]=useState(initBill?.id||null);const[payBill,setPayBill]=useState(null);const[toast,showT]=useToast();
   const[transportEdit,setTransportEdit]=useState(null);const[transportForm,setTransportForm]=useState({transportName:'',lrNumber:''});
-  const[pdfBusy,setPdfBusy]=useState(false);const[ewayBill,setEwayBill]=useState(null);const[ewbLoading,setEwbLoading]=useState(null);
+  const[pdfBusy,setPdfBusy]=useState(false);const[ewayBill,setEwayBill]=useState(null);
   const[dateRange,setDateRange]=useState({from:null,to:null});
   const[selectedBills,setSelectedBills]=useState(new Set());const[cancelBill,setCancelBill]=useState(null);const[cancelReason,setCancelReason]=useState('');const[zipBusy,setZipBusy]=useState(false);
   useEffect(()=>{if(initBill){setVid(initBill.id);onClearInit&&setTimeout(onClearInit,100);}},[initBill?.id]);
@@ -2137,19 +2191,6 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
       }
     }
   };
-  const generateEWB=async b=>{
-    if(needsPaid('eway','E-Way Bill generation'))return;
-    if(!firm.ewbUsername||!firm.ewbPassword){showT('Set E-Way Bill credentials in Settings first.','err');return;}
-    setEwbLoading(b.id);
-    try{
-      const res=await api.post('/api/ewaybill',{ewbUsername:firm.ewbUsername,ewbPassword:firm.ewbPassword,gstin:firm.gstin,bill:b,firm});
-      if(res.error)throw new Error(res.error);
-      await api.patch('/api/bills',{id:b.id,ewbNo:res.ewayBillNo,ewbValidUpto:res.validUpto});
-      setB(bs=>bs.map(x=>x.id===b.id?{...x,ewbNo:res.ewayBillNo,ewbValidUpto:res.validUpto}:x));
-      showT('EWB #'+res.ewayBillNo+' generated! Valid till '+res.validUpto);
-    }catch(e){showT(e.message,'err');}
-    finally{setEwbLoading(null);}
-  };
   const updatePay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const filteredBills=dateRange.from&&dateRange.to?B.filter(b=>{const d=new Date(b.date);return d>=new Date(dateRange.from)&&d<=new Date(dateRange.to+' 23:59:59');}):B;
   const activeBills=filteredBills.filter(b=>b.status!=='cancelled');
@@ -2259,7 +2300,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
                   !isCancelled&&{label:pdfBusy?'Sending email...':'Email invoice',onClick:()=>emailBill(b),disabled:pdfBusy},
                   !isCancelled&&st!=='Paid'&&{label:'WhatsApp payment reminder',onClick:()=>whatsappReminder(b)},
                   !isCancelled&&st==='Paid'&&{label:'Record another payment',onClick:()=>setPayBill(b)},
-                  !isCancelled&&!b.ewbNo&&{label:ewbLoading===b.id?'Generating E-Way...':'Generate E-Way Bill',onClick:()=>generateEWB(b),disabled:ewbLoading===b.id},
+                  !isCancelled&&{label:b.ewbNo?'E-Way Bill '+b.ewbNo:'Generate E-Way Bill',onClick:()=>setEwayBill(b)},
                   !isCancelled&&{label:'Cancel invoice',onClick:()=>setCancelBill(b),danger:true},
                 ]}/>
               </div></td>
@@ -2290,7 +2331,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
           <MoreMenu items={[
             bill.status!=='cancelled'&&{label:pdfBusy?'Sending email...':'Email invoice',onClick:()=>emailBill(bill),disabled:pdfBusy},
             bill.status!=='cancelled'&&{label:'WhatsApp payment reminder',onClick:()=>whatsappReminder(bill)},
-            bill.status!=='cancelled'&&!bill.ewbNo&&{label:ewbLoading===bill.id?'Generating E-Way...':'Generate E-Way Bill',onClick:()=>generateEWB(bill),disabled:ewbLoading===bill.id},
+            bill.status!=='cancelled'&&{label:bill.ewbNo?'E-Way Bill '+bill.ewbNo:'Generate E-Way Bill',onClick:()=>setEwayBill(bill)},
           ]}/>
           <button title='Close' onClick={()=>setVid(null)} style={{width:28,height:28,border:'none',background:'none',cursor:'pointer',fontSize:18,color:MUT}}>×</button>
         </div>
@@ -2301,7 +2342,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
       </div>}
     </div>}
     {payBill&&<PayModal bill={payBill} onSave={savePayment} onClose={()=>setPayBill(null)}/>}
-    {ewayBill&&<EWayBillModal bill={ewayBill} firm={firm} onClose={()=>setEwayBill(null)}/>}
+    {ewayBill&&<EWayBillModal bill={ewayBill} firm={firm} C={C} setC={setC} onClose={()=>setEwayBill(null)} onDone={r=>setB(bs=>bs.map(x=>x.id===ewayBill.id?{...x,ewbNo:r.ewayBillNo,ewbValidUpto:r.validUpto||''}:x))}/>}
     {cancelBill&&<Modal title={'Cancel Invoice '+cancelBill.invoiceNo} onClose={()=>setCancelBill(null)}>
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <div style={{background:RDL,border:'0.5px solid '+RD,borderRadius:8,padding:12}}>
