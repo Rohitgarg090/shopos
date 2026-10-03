@@ -39,6 +39,7 @@ const CHQ=[
 ];
 const getStage=k=>CHQ.find(s=>s.k===k)||CHQ[0];
 const fmt=n=>'Rs.'+Number(n||0).toFixed(2);
+const normalizeSupplierName=name=>name?name.toLowerCase().split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ').trim():'';
 const n2w=n=>{
   const a=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
   const b=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
@@ -1027,7 +1028,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
         return dateStr;
       };
       const siPayload={
-        supplierName:supplierBanner.supplier,
+        supplierName:normalizeSupplierName(supplierBanner.supplier),
         supplierGSTIN:supplierBanner.gstin||'',
         invoiceNo:supplierBanner.invoiceNo||'',
         invoiceDate:convertDate(supplierBanner.invoiceDate),
@@ -1083,7 +1084,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   const saveInvoiceOnly=async()=>{
     if(!supplierBanner?.supplier){showT('Supplier name required','err');return;}
     const siPayload={
-      supplierName:supplierBanner.supplier,
+      supplierName:normalizeSupplierName(supplierBanner.supplier),
       supplierGSTIN:supplierBanner.gstin||'',
       invoiceNo:supplierBanner.invoiceNo||'',
       invoiceDate:supplierBanner.invoiceDate||'',
@@ -2286,7 +2287,8 @@ function Returns({P,setP,B,C,Ret,setRet,mob}){
     setSaving(true);
     try{
       const items=toReturn.map(i=>({sku:i.sku,name:i.name,size:i.size||'',qty:i.retQty,rate:i.price,total:i.retQty*i.price}));
-      const ret=await api.post('/api/returns',{type:'supplier',supplierName,date:retDate,reason:retReason,items});
+      const normalizedSupplier=normalizeSupplierName(supplierName);
+      const ret=await api.post('/api/returns',{type:'supplier',supplierName:normalizedSupplier,supplierId:normalizedSupplier,date:retDate,reason:retReason,items});
       setRet(rs=>[ret,...rs]);
       const fp=await api.get('/api/products');setP(Array.isArray(fp)?fp:[]);
       setSuppRetItems([]);setSupplierName('');setRetReason('');
@@ -4212,7 +4214,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
 
   const save=async()=>{
     if(!form.supplierName){showT('Supplier name required','err');return;}
-    const payload={...form,total:+calcTotal(form)};
+    const payload={...form,supplierName:normalizeSupplierName(form.supplierName),total:+calcTotal(form)};
     if(editInv){
       const updated=await api.patch('/api/supplier-invoices',{id:editInv,...payload});
       setSI(si=>si.map(i=>i.id===editInv?{...i,...updated}:i));
@@ -4427,9 +4429,10 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
                 if(!payAmount||!parseFloat(payAmount)){showT('Enter amount','err');return;}
                 if(!selSupplier){showT('Select a supplier','err');return;}
                 try{
-                  const supInvoices=SI.filter(i=>i.supplierName===selSupplier);
+                  const normalizedSupplier=normalizeSupplierName(selSupplier);
+                  const supInvoices=SI.filter(i=>i.supplierName===normalizedSupplier);
                   const billId=supInvoices.length>0?supInvoices[0].id:null;
-                  const p=await api.post('/api/payments',{billId,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:selSupplier,partyName:selSupplier});
+                  const p=await api.post('/api/payments',{billId,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:normalizedSupplier,partyName:normalizedSupplier});
                   setPy([...Py,p]);
                   setPayAmount('');setPayRef('');setPayCity('');setPayDate(new Date().toISOString().split('T')[0]);
                   showT('Payment recorded!');

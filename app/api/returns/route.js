@@ -12,7 +12,7 @@ async function ctx(req) {
 }
 
 const shape = r => ({
-  id: r.id, type: r.type, billId: r.bill_id, customerId: r.customer_id,
+  id: r.id, type: r.type, billId: r.bill_id, customerId: r.customer_id, supplierId: r.supplier_id||'',
   customerName: r.customer_name||'', supplierName: r.supplier_name||'',
   date: r.date, reason: r.reason||'', total: +r.total, createdAt: r.created_at,
   items: (r.return_items||[]).map(i => ({
@@ -36,7 +36,7 @@ export async function POST(req) {
   const b = await req.json();
   const total = b.items.reduce((s,i)=>s+(i.qty*i.rate),0);
   const { data: ret, error: rErr } = await c.sb.from('returns').insert([{
-    type: b.type, bill_id: b.billId||null, customer_id: b.customerId||null,
+    type: b.type, bill_id: b.billId||null, customer_id: b.customerId||null, supplier_id: b.supplierId||null,
     customer_name: b.customerName||'', supplier_name: b.supplierName||'',
     date: b.date, reason: b.reason||'', total, firm_id: c.firmId||null,
   }]).select().single();
