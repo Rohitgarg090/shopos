@@ -2345,14 +2345,20 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
         {!selBill?<MT msg='Select a bill on the left first'/>:
           <div>
             <div style={{padding:'8px 12px',background:BLL,borderRadius:7,marginBottom:10,fontSize:12,color:BL,fontWeight:600}}>{selBill.customerName} — Invoice {selBill.invoiceNo||'#'+selBill.id}</div>
-            {retItems.map((item,idx)=><div key={idx} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'0.5px solid #f0ede8'}}>
-              <div style={{flex:1}}><div style={{fontWeight:600,fontSize:12}}>{item.name}</div><div style={{fontSize:10,color:MUT}}>{item.cat} · {item.size} · Billed: {item.qty} pcs · {fmt(item.rate)} each</div></div>
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
-                <span style={{fontSize:11,color:MUT}}>Return qty:</span>
-                <input style={{...S.inp,width:60,textAlign:'center'}} type='number' min='0' max={item.qty} value={item.retQty} onChange={e=>updRetQty(idx,e.target.value)}/>
-                <span style={{fontSize:11,color:item.retQty>0?GR:MUT}}>/ {item.qty}</span>
-              </div>
-            </div>)}
+            {retItems.map((item,idx)=>{
+              const prod=P.find(p=>p.sku===item.sku||p.name===item.name);
+              return<div key={idx} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'0.5px solid #f0ede8'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:12}}>{item.name}{prod?.articleNo&&<span style={{fontSize:10,color:MUT,marginLeft:6}}>({prod.articleNo})</span>}</div>
+                  <div style={{fontSize:10,color:MUT}}>{item.cat} · Size: {item.size} · Qty: {item.qty} pcs · Sold: {fmt(item.rate)} each{prod?.price&&prod.price!==item.rate?` · Cost: ${fmt(prod.price)}`:''}</div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:11,color:MUT}}>Return qty:</span>
+                  <input style={{...S.inp,width:60,textAlign:'center'}} type='number' min='0' max={item.qty} value={item.retQty} onChange={e=>updRetQty(idx,e.target.value)}/>
+                  <span style={{fontSize:11,color:item.retQty>0?GR:MUT}}>/ {item.qty}</span>
+                </div>
+              </div>;
+            })}
             {retItems.some(i=>i.retQty>0)&&<div style={{marginTop:12,padding:'8px 12px',background:GRL,borderRadius:7,fontSize:12,color:GR,fontWeight:600}}>
               Returning: {retItems.filter(i=>i.retQty>0).reduce((s,i)=>s+i.retQty,0)} pcs · Credit: {fmt(retItems.reduce((s,i)=>s+i.retQty*i.rate,0))}
             </div>}
