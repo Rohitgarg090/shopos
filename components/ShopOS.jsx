@@ -575,7 +575,7 @@ export default function ShopOS(){
       {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} Py={Py} setPy={setPy} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
-      }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} mob={mob}/>}
+      }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} SI={SI} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
       {page==='ledger'&&<Ledger B={Bactive} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob} SI={SI}/>}
       {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
@@ -2247,7 +2247,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   </div>;}
 
 /* ── RETURNS ── */
-function Returns({P,setP,B,C,Ret,setRet,mob}){
+function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[tab,setTab]=useState('customer');// 'customer'|'supplier'|'list'
   const[selBill,setSelBill]=useState(null);
@@ -2348,7 +2348,12 @@ function Returns({P,setP,B,C,Ret,setRet,mob}){
       <div>
         <div style={{...S.card,marginBottom:12}}>
           <div style={S.h3}>Supplier & Return Details</div>
-          <Fld label='Supplier Name *'><input style={S.inp} value={supplierName} onChange={e=>setSupplierName(e.target.value)} placeholder='e.g. Swati Garments'/></Fld>
+          <Fld label='Supplier Name *'>
+            <select style={S.inp} value={supplierName} onChange={e=>setSupplierName(e.target.value)}>
+              <option value=''>— Select Supplier —</option>
+              {[...new Set((SI||[]).map(i=>i.supplierName))].sort().map(sup=><option key={sup} value={sup}>{sup}</option>)}
+            </select>
+          </Fld>
           <Fld label='Return Date'><input style={S.inp} type='date' value={retDate} onChange={e=>setRetDate(e.target.value)}/></Fld>
           <Fld label='Reason'><input style={S.inp} value={retReason} onChange={e=>setRetReason(e.target.value)} placeholder='Defective, Wrong item, etc.'/></Fld>
         </div>
