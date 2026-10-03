@@ -39,7 +39,7 @@ const CHQ=[
 ];
 const getStage=k=>CHQ.find(s=>s.k===k)||CHQ[0];
 const fmt=n=>'Rs.'+Number(n||0).toFixed(2);
-const normalizeSupplierName=name=>name?name.toLowerCase().split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ').trim():'';
+const normalizeSupplierName=name=>name?name.toUpperCase().trim():'';
 const n2w=n=>{
   const a=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
   const b=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
@@ -1508,7 +1508,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});};
   const uQty=(id,d)=>setCart(c=>c.map(x=>x.id===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));
   const calc=()=>{let sub=0,gt=0;cart.forEach(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;sub+=base*c.qty;gt+=base*(c.gstRate/100)*c.qty;});const discAmt=+disc||0;if(isRel){const mk=sub*0.1;return{sub,gt:0,mk,disc:0,total:sub+mk};}return{sub,gt,mk:0,disc:discAmt,total:sub+gt-discAmt};};
-  const saveCust=async()=>{if(!cForm.name||!cForm.phone){showT('Name & phone required','err');return}const nc=await api.post('/api/customers',cForm);setC(cs=>[nc,...cs]);setSel(nc);setCF({name:'',phone:'',shopname:'',gst:'',addr:'',email:''});setStep('items');setTimeout(()=>bcRef.current?.focus(),200);};
+  const saveCust=async()=>{if(!cForm.name||!cForm.phone){showT('Name & phone required','err');return}const nc=await api.post('/api/customers',{...cForm,name:normalizeSupplierName(cForm.name)});setC(cs=>[nc,...cs]);setSel(nc);setCF({name:'',phone:'',shopname:'',gst:'',addr:'',email:''});setStep('items');setTimeout(()=>bcRef.current?.focus(),200);};
   const genBill=async()=>{const cName=isRel?rn||'Walk-in':sel?.name;if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}setSub(true);
     const{sub,gt,mk,disc:discAmt,total}=calc();const inv=await(getNextInvoiceNo||nextInv)();
     const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
@@ -2299,7 +2299,7 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
   // Filter products by supplier when one is selected
   const getSupplierProducts=()=>{
     if(!supplierName) return P; // Show all if no supplier selected
-    const suppInvoices=(SI||[]).filter(i=>normalizeSupplierName(i.supplierName)===normalizeSupplierName(supplierName));
+    const suppInvoices=(SI||[]).filter(i=>i.supplierName===supplierName);
     const suppItemSkus=new Set();
     suppInvoices.forEach(inv=>{
       if(inv.items&&Array.isArray(inv.items)){
@@ -2907,7 +2907,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh}){
       setC(cs=>cs.map(c=>c.id===editId?{...c,...updated}:c));
       showT('Customer updated!');
     }else{
-      const nc=await api.post('/api/customers',{...f,openingBalance:+f.openingBalance||0,openingBalanceDate:f.openingBalanceDate||null});
+      const nc=await api.post('/api/customers',{...f,name:normalizeSupplierName(f.name),openingBalance:+f.openingBalance||0,openingBalanceDate:f.openingBalanceDate||null});
       setC(cs=>[nc,...cs]);
       showT('Customer added!');
     }
@@ -4431,9 +4431,9 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
           {suppliers.length===0?<MT msg='No suppliers yet'/>:
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             {suppliers.map(sup=>{
-              const invs=SI.filter(i=>normalizeSupplierName(i.supplierName)===sup);
+              const invs=SI.filter(i=>i.supplierName===sup);
               const totInv=invs.reduce((s,i)=>s+i.total,0);
-              const totPaid=Py.filter(p=>(p.supplierId||'').toLowerCase()===sup.toLowerCase()&&p.paymentType==='supplier').reduce((s,p)=>s+p.amount,0);
+              const totPaid=Py.filter(p=>p.supplierId===sup&&p.paymentType==='supplier').reduce((s,p)=>s+p.amount,0);
               const balance=totInv-totPaid;
               return<div key={sup} onClick={()=>setSelSupplier(sel=>sel===sup?null:sup)} style={{padding:'10px 14px',border:'0.5px solid '+(selSupplier===sup?AMB:BORD),borderRadius:8,cursor:'pointer',background:selSupplier===sup?AMBL:'#fff'}}>
                 <div style={{fontWeight:700,color:selSupplier===sup?AMB:TXT,fontSize:13}}>{sup}</div>
