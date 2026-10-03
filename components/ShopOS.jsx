@@ -1531,7 +1531,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   const calc=()=>{let sub=0,gt=0;cart.forEach(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;sub+=base*c.qty;gt+=base*(c.gstRate/100)*c.qty;});const discAmt=+disc||0;if(isRel){const mk=sub*0.1;return{sub,gt:0,mk,disc:0,total:sub+mk};}return{sub,gt,mk:0,disc:discAmt,total:sub+gt-discAmt};};
   const saveCust=async()=>{if(!cForm.name||!cForm.phone){showT('Name & phone required','err');return}const nc=await api.post('/api/customers',{...cForm,name:normalizeSupplierName(cForm.name)});setC(cs=>[nc,...cs]);setSel(nc);setCF({name:'',phone:'',shopname:'',gst:'',addr:'',email:''});setStep('items');setTimeout(()=>bcRef.current?.focus(),200);};
   const overStock=()=>{const o=cart.find(c=>{const p=P.find(x=>x.id===c.id);return p&&c.qty>p.qty;});if(o){const p=P.find(x=>x.id===o.id);showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock — reduce qty','err');return true;}return false;};
-  const genBill=async()=>{const cName=isRel?rn||'Walk-in':sel?.name;if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}if(overStock())return;setSub(true);
+  const genBill=async()=>{const cName=normalizeSupplierName(isRel?rn||'Walk-in':sel?.name);if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}if(overStock())return;setSub(true);
     const{sub,gt,mk,disc:discAmt,total}=calc();const inv=await(getNextInvoiceNo||nextInv)();
     const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
     try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber});
@@ -3116,7 +3116,8 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
     ...((Ret||[]).filter(r=>(ledgerType==='All'||(ledgerType==='Sales'&&r.type==='customer')||(ledgerType==='Purchase'&&r.type==='supplier')))).map(r=>({tp:r.type==='customer'?'Cust Ret':'Supp Ret',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',partyId:r.customerId||r.supplierId,partyType:r.type==='customer'?'customer':'supplier',debit:0,credit:r.total,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
     // Opening Balances - SALES ONLY (customers only)
     ...((ledgerType==='All'||ledgerType==='Sales')?C.filter(c=>c.openingBalance>0).map(c=>({tp:'OB',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,partyId:c.id,partyType:'customer',debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})):[]),
-  ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  ].map(e=>{const c=e.partyType==='customer'&&e.partyId?C.find(x=>x.id===e.partyId):null;return{...e,party:normalizeSupplierName(c?c.name:e.party)};})
+   .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||(ft==='Sales Inv'&&(e.tp==='Sales Inv'||e.tp==='OB'))||(ft==='Purch Inv'&&e.tp==='Purch Inv');const dok=!dateRange.from||!dateRange.to||(new Date(e.date)>=new Date(dateRange.from)&&new Date(e.date)<=new Date(dateRange.to+' 23:59:59'));return pok&&tok&&dok;});
   let run=0;const withBal=[...rows].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   const tD=rows.reduce((s,e)=>s+e.debit,0),tC=rows.reduce((s,e)=>s+e.credit,0);
@@ -3150,7 +3151,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
     </div>
     {!fp&&parties.length>0&&<div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>
       <span style={{fontSize:11,color:MUT,alignSelf:'center'}}>Quick filter:</span>
-      {parties.slice(0,12).map(p=>{const cust=C&&C.find(c=>c.name===p);return<button key={p} onClick={()=>setFp(p)} style={{padding:'3px 10px',borderRadius:20,border:'0.5px solid '+BORD,background:'#fff',color:TXT,cursor:'pointer',fontSize:11}}>{p}{cust?<span style={{color:BL,marginLeft:3,fontSize:9}}>view</span>:null}</button>;})}
+      {parties.slice(0,12).map(p=>{const cust=C&&C.find(c=>normalizeSupplierName(c.name)===p);return<button key={p} onClick={()=>setFp(p)} style={{padding:'3px 10px',borderRadius:20,border:'0.5px solid '+BORD,background:'#fff',color:TXT,cursor:'pointer',fontSize:11}}>{p}{cust?<span style={{color:BL,marginLeft:3,fontSize:9}}>view</span>:null}</button>;})}
       {parties.length>12&&<span style={{fontSize:11,color:MUT,alignSelf:'center'}}>+{parties.length-12} more</span>}
     </div>}
     {fp&&(()=>{
@@ -3159,7 +3160,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
       const cust=C&&C.find(c=>c.name.toLowerCase()===fp.toLowerCase());
       return<div style={{...S.card,marginBottom:12,background:BLL,border:'0.5px solid '+BL+'40'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:8}}>
-          <div><div style={{fontWeight:700,fontSize:14,color:BL,marginBottom:3}}>{fp}</div>{cust&&<div style={{fontSize:11,color:MUT}}>{cust.phone}{cust.shopname?' — '+cust.shopname:''}{cust.gst?' | GSTIN: '+cust.gst:''}</div>}</div>
+          <div><div style={{fontWeight:700,fontSize:14,color:BL,marginBottom:3}}>{normalizeSupplierName(fp)}</div>{cust&&<div style={{fontSize:11,color:MUT}}>{cust.phone}{cust.shopname?' — '+cust.shopname:''}{cust.gst?' | GSTIN: '+cust.gst:''}</div>}</div>
           <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
             {[['Invoiced',fmt(pD),RD],['Received',fmt(pC),GR],['Balance',fmt(pD-pC),pD-pC>0?RD:GR]].map(([l,v,c])=><div key={l} style={{textAlign:'right'}}><div style={{fontSize:10,color:MUT,textTransform:'uppercase',fontWeight:700}}>{l}</div><div style={{fontSize:16,fontWeight:800,...S.mono,color:c}}>{v}</div></div>)}
             {cust&&<button style={S.btn('gho',true)} onClick={()=>setSelCust(cust)}>Full Account</button>}
