@@ -1230,10 +1230,24 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
             </div>
           </div>)}
         </div>}
-        {items.length>0&&<div style={{marginTop:12,padding:'10px 14px',background:BLL,borderRadius:8,fontSize:12,color:BL,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
-          <span><strong>{items.length}</strong> articles · <strong>{items.reduce((s,i)=>s+i.qty,0)}</strong> pcs{markupPct?<span style={{color:AMB,marginLeft:8}}>· {markupPct}% markup applied</span>:null}</span>
-          <button style={S.btn('suc')} onClick={addToCatalog}>Add All to Catalog</button>
-        </div>}
+        {items.length>0&&<>
+          <div style={{marginTop:12,padding:'12px 14px',background:'#f0f7ff',borderRadius:8,border:'1px solid '+BL,fontSize:11}}>
+            <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:12,marginBottom:10}}>
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Articles</div><div style={{fontSize:16,fontWeight:800,color:BL}}>{items.length}</div></div>
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Total PCS</div><div style={{fontSize:16,fontWeight:800,color:BL}}>{items.reduce((s,i)=>s+i.qty,0)}</div></div>
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Subtotal</div><div style={{fontSize:16,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>s+(i.qty*i.price),0))}</div></div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:12}}>
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>GST Charges</div><div style={{fontSize:16,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>{const gst=((i.qty*i.price)*i.gst)/100;return s+gst;},0))}</div></div>
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Total Invoice</div><div style={{fontSize:16,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>s+(i.qty*i.price+(i.qty*i.price*i.gst/100)),0))}</div></div>
+              {markupPct&&<div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>After {markupPct}% Markup</div><div style={{fontSize:16,fontWeight:800,color:AMB,...S.mono}}>{fmt(items.reduce((s,i)=>{const base=i.qty*i.price;const gst=base*i.gst/100;const total=base+gst;const withMarkup=total*(1+markupPct/100);return s+withMarkup;},0))}</div></div>}
+            </div>
+          </div>
+          <div style={{marginTop:10,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+            {markupPct&&<span style={{fontSize:11,color:AMB,fontWeight:600}}>✓ {markupPct}% markup applied to all items</span>}
+            <button style={S.btn('suc')} onClick={addToCatalog}>Add All to Catalog</button>
+          </div>
+        </>}
       </div>
     </div>
   </div>;}
