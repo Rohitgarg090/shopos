@@ -994,7 +994,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
     };reader.readAsDataURL(file);
   },[]);
 
-  const upd=(i,k,v)=>setItems(it=>it.map((x,ix)=>ix===i?{...x,[k]:v}:x));
+  const upd=(i,k,v)=>setItems(it=>it.map((x,ix)=>ix===i?{...x,[k]:v,...(k==='price'&&!markupPct?{_costPrice:v}:{})}:x));
   const rem=i=>setItems(it=>it.filter((_,ix)=>ix!==i));
   const addMan=()=>{if(!man.name)return;setItems(it=>[...it,{...man,qty:+man.qty,price:+man.price,_costPrice:+man.price,gst:+man.gst,qrCount:+man.qty}]);setMan({articleNo:'',name:'',cat:'',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});};
   const addToCatalog=async()=>{
