@@ -58,6 +58,8 @@ const calcInterest=(amount, fromDate, rate=12)=>{
   const interestDays=days-60;
   return +(amount*(rate/100)*(interestDays/365)).toFixed(2);
 };
+const calcReturnedAmount=(billId,Ret)=>(Ret||[]).filter(r=>r.type==='customer'&&r.billId===billId).reduce((s,r)=>s+r.total,0);
+const billStatus=(b,paid,rt)=>b.total-paid-rt<=0.009?'Paid':(paid+rt)>0?'Partial':'Unpaid';
 const calcPaidAmount=(billId,Py)=>Py.filter(p=>p.billId===billId && !(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
 const qrU=(d,s=80)=>'/api/qr?data='+encodeURIComponent(d)+'&size='+s;
 const isBR=typeof window!=='undefined';
@@ -579,14 +581,14 @@ export default function ShopOS(){
         // Filter out cancelled invoices for all totals - applies globally
         const Bactive = B.filter(b => b.status !== 'cancelled');
         return <>
-      {page==='dash'&&<Dashboard P={P} B={Bactive} C={C} Py={Py} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
+      {page==='dash'&&<Dashboard P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
       }{page==='analytics'&&<Analytics P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob}/>}
       {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}
       {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={()=>setShowUpgradeBlock(true)} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} Ret={Ret} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
-      {page==='bills'&&<Bills B={B} setB={setB} Py={Py} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
+      {page==='bills'&&<Bills B={B} setB={setB} Py={Py} Ret={Ret} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
       {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} Py={Py} setPy={setPy} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} SI={SI} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
@@ -707,13 +709,13 @@ export default function ShopOS(){
   </div>;}
 
 /* ── DASHBOARD ── */
-function Dashboard({P,B,C,Py,mob,firm,setPage,setShowSupport}){
+function Dashboard({P,B,C,Py,Ret,mob,firm,setPage,setShowSupport}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[searchQ,setSearchQ]=useState('');const[searchRes,setSearchRes]=useState([]);const[searching,setSrching]=useState(false);
   const gk=()=>firm?.geminiKey||'';
   const td=new Date();
   const todayB=B.filter(b=>new Date(b.date).toDateString()===td.toDateString());
-  const totalBilled=B.reduce((s,b)=>s+b.total,0),totalPaid=Py.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
+  const totalBilled=B.reduce((s,b)=>s+b.total,0),totalPaid=B.reduce((s,b)=>s+calcPaidAmount(b.id,Py)+calcReturnedAmount(b.id,Ret),0);
   const months=[];for(let i=5;i>=0;i--){const d=new Date(td);d.setMonth(d.getMonth()-i);months.push({lbl:d.toLocaleString('default',{month:'short'}),yr:d.getFullYear(),mo:d.getMonth()});}
   const mSales=months.map(m=>({...m,tot:B.filter(b=>{const d=new Date(b.date);return d.getMonth()===m.mo&&d.getFullYear()===m.yr}).reduce((s,b)=>s+b.total,0)}));
   const maxS=Math.max(...mSales.map(m=>m.tot),1);
@@ -774,7 +776,7 @@ function Dashboard({P,B,C,Py,mob,firm,setPage,setShowSupport}){
         <div style={S.h3}>Recent Bills</div>
         {B.length===0?<MT msg='No bills yet'/>:<table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
           <thead><tr>{['Invoice','Customer','Total','Status'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-          <tbody>{[...B].slice(0,6).map(b=>{const paid=calcPaidAmount(b.id,Py);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={S.td}>{b.customerName}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(b.total)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
+          <tbody>{[...B].slice(0,6).map(b=>{const paid=calcPaidAmount(b.id,Py);const st=billStatus(b,paid,calcReturnedAmount(b.id,Ret));return<tr key={b.id}><td style={{...S.td,...S.mono,fontWeight:800,fontSize:11}}>{b.invoiceNo||'#'+b.id}</td><td style={S.td}>{b.customerName}</td><td style={{...S.td,...S.mono,color:GR,fontWeight:800}}>{fmt(b.total)}</td><td style={S.td}><Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg></td></tr>;})}
           </tbody></table>}
       </div>
       <div style={S.card}>
@@ -1921,7 +1923,7 @@ function EWayBillModal({bill,firm,onClose}){
   </Modal>;}
 
 /* ── BILLS ── */
-function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
+function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[vid,setVid]=useState(initBill?.id||null);const[payBill,setPayBill]=useState(null);const[toast,showT]=useToast();
   const[transportEdit,setTransportEdit]=useState(null);const[transportForm,setTransportForm]=useState({transportName:'',lrNumber:''});
@@ -2058,7 +2060,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
   const updatePay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const filteredBills=dateRange.from&&dateRange.to?B.filter(b=>{const d=new Date(b.date);return d>=new Date(dateRange.from)&&d<=new Date(dateRange.to+' 23:59:59');}):B;
   const activeBills=filteredBills.filter(b=>b.status!=='cancelled');
-  const totalInvoiced=activeBills.reduce((s,b)=>s+b.total,0);const totalPaid=activeBills.reduce((s,b)=>s+calcPaidAmount(b.id,Py),0);const netOutstanding=totalInvoiced-totalPaid;
+  const totalInvoiced=activeBills.reduce((s,b)=>s+b.total,0);const totalPaid=activeBills.reduce((s,b)=>s+calcPaidAmount(b.id,Py),0);const totalReturned=activeBills.reduce((s,b)=>s+calcReturnedAmount(b.id,Ret),0);const netOutstanding=totalInvoiced-totalPaid-totalReturned;
 
   const toggleBillSelection=(billId)=>{
     const newSel=new Set(selectedBills);
@@ -2187,7 +2189,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
         </tr></thead>
         <tbody>
           {filteredBills.length===0&&<tr key='empty'><td colSpan={10}><MT msg={dateRange.from?'No bills in this date range':'No bills yet.'}/></td></tr>}
-          {filteredBills.map(b=>{const paid=calcPaidAmount(b.id,Py);const st=paid>=b.total?'Paid':paid>0?'Partial':'Unpaid';const isCancelled=b.status==='cancelled';
+          {filteredBills.map(b=>{const paid=calcPaidAmount(b.id,Py);const rt=calcReturnedAmount(b.id,Ret);const st=billStatus(b,paid,rt);const isCancelled=b.status==='cancelled';
             return<tr key={b.id} style={isCancelled?{opacity:0.6,background:'#faf8f5'}:{}}>
               <td style={{...S.td,textAlign:'center'}}><input type='checkbox' checked={selectedBills.has(b.id)} onChange={()=>toggleBillSelection(b.id)} disabled={isCancelled} style={{cursor:isCancelled?'default':'pointer'}}/></td>
               <td style={{...S.td,...S.mono,fontWeight:800,fontSize:11,whiteSpace:'nowrap',textDecoration:isCancelled?'line-through':'none'}}>{b.invoiceNo||'#'+b.id}</td>
@@ -2195,7 +2197,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
               <td style={S.td}><div style={{fontWeight:600,fontSize:12}}>{b.customerName}</div>{b.customerPhone&&<div style={{fontSize:10,color:MUT}}>{b.customerPhone}</div>}</td>
               <td style={{...S.td,textAlign:'right',fontSize:11}}>{(b.items||[]).reduce((s,i)=>s+i.qty,0)}</td>
               <td style={{...S.td,...S.mono,color:TXT,fontWeight:800,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(b.total)}</td>
-              <td style={{...S.td,...S.mono,color:paid>0?GR:MUT,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(paid)}</td>
+              <td style={{...S.td,...S.mono,color:paid>0?GR:MUT,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(paid)}{rt>0&&<div style={{fontSize:9,color:PUR,fontWeight:600}}>+ {fmt(rt)} returned</div>}</td>
               <td style={S.td}>{isCancelled?<Bdg c='gray'>Cancelled</Bdg>:<Bdg c={{Paid:'green',Partial:'amber',Unpaid:'red'}[st]}>{st}</Bdg>}</td>
               <td style={S.td}>
                 {transportEdit===b.id?<div style={{display:'flex',flexDirection:'column',gap:4,minWidth:160}}>
@@ -2226,7 +2228,7 @@ function Bills({B,setB,Py,setPy,firm,C,initBill,onClearInit,activeFirm,mob}){
           <tr style={{background:'#f5f4f0',fontWeight:700}}>
             <td colSpan={5} style={S.td}>Total · {activeBills.length} bill{activeBills.length===1?'':'s'}{filteredBills.length>activeBills.length&&<span style={{fontSize:10,color:MUT,fontWeight:500}}> (+{filteredBills.length-activeBills.length} cancelled)</span>}</td>
             <td style={{...S.td,...S.mono,fontWeight:800,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(totalInvoiced)}</td>
-            <td style={{...S.td,...S.mono,color:GR,fontWeight:800,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(totalPaid)}</td>
+            <td style={{...S.td,...S.mono,color:GR,fontWeight:800,textAlign:'right',whiteSpace:'nowrap'}}>{fmt(totalPaid)}{totalReturned>0&&<div style={{fontSize:9,color:PUR,fontWeight:600}}>+ {fmt(totalReturned)} returned</div>}</td>
             <td colSpan={3} style={{...S.td,textAlign:'right'}}><span style={{fontSize:11,color:MUT,fontWeight:600,marginRight:8}}>{netOutstanding>0?'Outstanding':'Settled'}</span><span style={{...S.mono,fontWeight:800,fontSize:14,color:netOutstanding>0?RD:GR}}>{fmt(netOutstanding)}</span></td>
           </tr>
         </tbody>
@@ -2838,17 +2840,17 @@ function CustomerAccount({cust,B,Py,setPy,firm,C,Ret=[],onClose}){
       </table>
     </div>
   </div>}
-    {caTab==='payment'&&<PaymentReceivedTab customer={cust} payments={custPay} setPy={setPy} Py={Py} B={B} firm={firm}/>}
+    {caTab==='payment'&&<PaymentReceivedTab customer={cust} payments={custPay} setPy={setPy} Py={Py} B={B} firm={firm} balance={bal}/>}
     {caTab==='notifications'&&<NotificationHistory customerId={cust.id} customerName={cust.name}/>}
     {caTab==='files'&&<CustomerBankStatements customerId={cust.id}/>}
   </Modal>;}
 
-function PaymentReceivedTab({customer,payments,setPy,Py,B,firm}){
+function PaymentReceivedTab({customer,payments,setPy,Py,B,firm,balance}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[date,setDate]=useState(new Date().toISOString().split('T')[0]);const[mode,setMode]=useState('Cash');const[amount,setAmount]=useState('');const[ref,setRef]=useState('');const[city,setCity]=useState('');const[remarks,setRemarks]=useState('');const[printId,setPrintId]=useState(null);const[bill,setBill]=useState('');
   const custBills=B.filter(b=>b.customerId===customer.id);
   const add=async()=>{if(!amount||!parseFloat(amount)){alert('Enter amount');return;}if(!bill){alert('Select a bill or create invoice first');return;}try{const p=await api.post('/api/payments',{billId:bill,date,mode,amount:parseFloat(amount),chequeNo:mode==='Cheque'?ref:'',upiRef:mode==='UPI'?ref:'',city,remarks,paymentType:'customer',customerId:customer.id,partyName:customer.name});setPy([...Py,p]);setAmount('');setRef('');setCity('');setRemarks('');setBill('');setDate(new Date().toISOString().split('T')[0]);alert('Payment added & synced to all views!');}catch(e){alert('Error: '+e.message);}};
-  if(printId){const p=payments.find(x=>x.id===printId);const cb=B.filter(b=>b.customerId===customer.id);const paid=calcPaidAmount(null,Py.filter(py=>cb.some(b=>b.id===py.billId)));const totalBilled=cb.reduce((s,b)=>s+b.total,0);const remaining=totalBilled-paid;const prevBalance=remaining+parseFloat(p.amount);const receiptId='RCP-'+new Date().getTime();const handlePrint=()=>{const w=window.open('','_blank');w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Receipt</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;background:#fff;padding:0;}#receipt{width:210mm;height:148mm;margin:0 auto;padding:12mm;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden;}.title{text-align:center;font-size:11pt;font-weight:bold;letter-spacing:1px;margin-bottom:5mm;}.header{text-align:center;margin-bottom:4mm;border-bottom:1px solid #000;padding-bottom:4mm;font-size:8pt;}.header-firm{font-weight:bold;font-size:9pt;margin-bottom:1mm;}.header-addr{font-size:7pt;line-height:1.2;margin-bottom:1mm;}.header-gst{font-size:7pt;color:#666;}.info{display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-bottom:4mm;font-size:8pt;}.info-left{}.info-right{text-align:right;}.info-row{margin-bottom:1mm;}.info-label{color:#666;font-size:7pt;}.info-val{font-weight:bold;font-size:8pt;}.customer{margin-bottom:4mm;font-size:8pt;border-bottom:1px solid #ddd;padding-bottom:3mm;}.customer-name{font-weight:bold;}.customer-shop{font-size:7pt;color:#666;}.customer-mode{font-size:7pt;margin-top:1mm;}.amount-box{background:#f5f5f5;padding:8mm;text-align:center;margin-bottom:4mm;border-radius:3px;}.amount-label{font-size:7pt;color:#666;margin-bottom:2mm;}.amount-value{font-size:20pt;font-weight:bold;color:#1e40af;margin-bottom:2mm;}.amount-words{font-size:7pt;font-style:italic;color:#333;}.summary{font-size:8pt;margin-bottom:3mm;}.summary-row{display:flex;justify-content:space-between;margin-bottom:2mm;border-bottom:1px solid #eee;padding-bottom:1mm;}.summary-current{font-weight:bold;color:#dc2626;}.thank-you{text-align:center;font-size:7pt;color:#666;margin-top:auto;padding-top:2mm;padding-bottom:3mm;}.receipt-id{text-align:center;font-size:7pt;color:#333;font-weight:bold;border-top:1px solid #ddd;padding-top:2mm;}@media print{body{margin:0;padding:0;background:#fff;}#receipt{width:210mm;height:148mm;padding:12mm;margin:0;}}</style></head><body><div id="receipt"><div class="title">PAYMENT RECEIPT</div><div class="header"><div class="header-firm">${firm.name}</div><div class="header-addr">${firm.address||''}</div><div class="header-gst">GSTIN: ${firm.gstin||'—'}</div></div><div class="info"><div class="info-left"><div class="info-row"><span class="info-label">Date:</span></div><div class="info-row"><strong class="info-val">${new Date(p.date||p.createdAt).toLocaleDateString('en-IN')}</strong></div></div><div class="info-right"><div class="info-row"><span class="info-label">Time:</span></div><div class="info-row"><strong class="info-val">${new Date(p.date||p.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</strong></div></div></div><div class="customer"><div class="customer-name">From: ${customer.name}</div>${customer.shopname?'<div class="customer-shop">'+customer.shopname+'</div>':''}<div class="customer-mode"><strong>Mode:</strong> ${p.mode}${p.chequeNo?' (Chq #'+p.chequeNo:''}${p.upiRef?' (UTR)':''}</div></div><div class="amount-box"><div class="amount-label">AMOUNT RECEIVED</div><div class="amount-value">₹ ${parseFloat(p.amount).toLocaleString('en-IN')}</div><div class="amount-words">${n2w(parseFloat(p.amount))}</div></div><div class="summary"><div class="summary-row"><span>Previous Bal:</span><strong>₹ ${prevBalance.toLocaleString('en-IN')}</strong></div><div class="summary-row"><span>Paid Now:</span><strong>₹ ${parseFloat(p.amount).toLocaleString('en-IN')}</strong></div><div class="summary-row summary-current"><span>Current Bal:</span><strong>₹ ${remaining.toLocaleString('en-IN')}</strong></div></div><div class="thank-you">Thank You for your payment!</div><div class="receipt-id">${receiptId}</div></div></body></html>`);w.document.close();w.print();setTimeout(()=>setPrintId(null),100);};handlePrint();}
+  if(printId){const p=payments.find(x=>x.id===printId);const remaining=balance;const prevBalance=remaining+parseFloat(p.amount);const receiptId='RCP-'+new Date().getTime();const handlePrint=()=>{const w=window.open('','_blank');w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Receipt</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;background:#fff;padding:0;}#receipt{width:210mm;height:148mm;margin:0 auto;padding:12mm;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden;}.title{text-align:center;font-size:11pt;font-weight:bold;letter-spacing:1px;margin-bottom:5mm;}.header{text-align:center;margin-bottom:4mm;border-bottom:1px solid #000;padding-bottom:4mm;font-size:8pt;}.header-firm{font-weight:bold;font-size:9pt;margin-bottom:1mm;}.header-addr{font-size:7pt;line-height:1.2;margin-bottom:1mm;}.header-gst{font-size:7pt;color:#666;}.info{display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-bottom:4mm;font-size:8pt;}.info-left{}.info-right{text-align:right;}.info-row{margin-bottom:1mm;}.info-label{color:#666;font-size:7pt;}.info-val{font-weight:bold;font-size:8pt;}.customer{margin-bottom:4mm;font-size:8pt;border-bottom:1px solid #ddd;padding-bottom:3mm;}.customer-name{font-weight:bold;}.customer-shop{font-size:7pt;color:#666;}.customer-mode{font-size:7pt;margin-top:1mm;}.amount-box{background:#f5f5f5;padding:8mm;text-align:center;margin-bottom:4mm;border-radius:3px;}.amount-label{font-size:7pt;color:#666;margin-bottom:2mm;}.amount-value{font-size:20pt;font-weight:bold;color:#1e40af;margin-bottom:2mm;}.amount-words{font-size:7pt;font-style:italic;color:#333;}.summary{font-size:8pt;margin-bottom:3mm;}.summary-row{display:flex;justify-content:space-between;margin-bottom:2mm;border-bottom:1px solid #eee;padding-bottom:1mm;}.summary-current{font-weight:bold;color:#dc2626;}.thank-you{text-align:center;font-size:7pt;color:#666;margin-top:auto;padding-top:2mm;padding-bottom:3mm;}.receipt-id{text-align:center;font-size:7pt;color:#333;font-weight:bold;border-top:1px solid #ddd;padding-top:2mm;}@media print{body{margin:0;padding:0;background:#fff;}#receipt{width:210mm;height:148mm;padding:12mm;margin:0;}}</style></head><body><div id="receipt"><div class="title">PAYMENT RECEIPT</div><div class="header"><div class="header-firm">${firm.name}</div><div class="header-addr">${firm.address||''}</div><div class="header-gst">GSTIN: ${firm.gstin||'—'}</div></div><div class="info"><div class="info-left"><div class="info-row"><span class="info-label">Date:</span></div><div class="info-row"><strong class="info-val">${new Date(p.date||p.createdAt).toLocaleDateString('en-IN')}</strong></div></div><div class="info-right"><div class="info-row"><span class="info-label">Time:</span></div><div class="info-row"><strong class="info-val">${new Date(p.date||p.createdAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</strong></div></div></div><div class="customer"><div class="customer-name">From: ${customer.name}</div>${customer.shopname?'<div class="customer-shop">'+customer.shopname+'</div>':''}<div class="customer-mode"><strong>Mode:</strong> ${p.mode}${p.chequeNo?' (Chq #'+p.chequeNo:''}${p.upiRef?' (UTR)':''}</div></div><div class="amount-box"><div class="amount-label">AMOUNT RECEIVED</div><div class="amount-value">₹ ${parseFloat(p.amount).toLocaleString('en-IN')}</div><div class="amount-words">${n2w(parseFloat(p.amount))}</div></div><div class="summary"><div class="summary-row"><span>Previous Bal:</span><strong>₹ ${prevBalance.toLocaleString('en-IN')}</strong></div><div class="summary-row"><span>Paid Now:</span><strong>₹ ${parseFloat(p.amount).toLocaleString('en-IN')}</strong></div><div class="summary-row summary-current"><span>Current Bal:</span><strong>₹ ${remaining.toLocaleString('en-IN')}</strong></div></div><div class="thank-you">Thank You for your payment!</div><div class="receipt-id">${receiptId}</div></div></body></html>`);w.document.close();w.print();setTimeout(()=>setPrintId(null),100);};handlePrint();}
   return<div>
     <div style={S.h3}>Add Payment Received</div>
     {custBills.length===0?<div style={{...S.card,padding:20,textAlign:'center',color:MUT}}>No invoices for this customer. Create an invoice first to record payments.</div>:<div style={{...S.card,marginBottom:14}}>
