@@ -20,6 +20,7 @@ const shape = b => ({
   gst: +b.gst_total, markup: +b.markup||0, total: +b.total,
   biltyNo: b.bilty_no||'', transportName: b.transport_name||'',
   lrNumber: b.lr_number||'', ewbNo: b.ewb_no||'', ewbValidUpto: b.ewb_valid_upto||'',
+  ewbDate: b.ewb_date||null, ewbCancelledNo: b.ewb_cancelled_no||'', ewbCancelledAt: b.ewb_cancelled_at||null, ewbCancelReason: b.ewb_cancel_reason||'',
   status: b.status||'active', cancelledAt: b.cancelled_at||null, cancelReason: b.cancel_reason||'',
 });
 

@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { blockIfFree } from '@/lib/plan';
+import { sandboxConfigured, firmGst, gstCall } from '@/lib/sandbox';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -26,7 +27,7 @@ export async function POST(req, { params }) {
     if (!c.firmId) return NextResponse.json({ error: 'No firm context' }, { status: 400 });
 
     const { id } = params;
-    const { reason } = await req.json();
+    const { reason, reasonCode } = await req.json();
 
     // Get e-Invoice and verify it belongs to user's firm
     const { data: eInvoice } = await c.sb
@@ -40,40 +41,20 @@ export async function POST(req, { params }) {
       return NextResponse.json({ error: 'e-Invoice not found' }, { status: 404 });
     }
 
-    // Call Sandbox API to cancel e-Invoice
-    const sandboxApiKey = process.env.SANDBOX_API_KEY;
-    const sandboxApiSecret = process.env.SANDBOX_API_SECRET;
-    const sandboxEnv = process.env.SANDBOX_ENV || 'production';
+    if (eInvoice.status === 'cancelled') return NextResponse.json({ error: 'This e-Invoice is already cancelled' }, { status: 400 });
+    if (!sandboxConfigured()) return NextResponse.json({ error: 'E-Invoice service is not configured on the server' }, { status: 500 });
+    const g = await firmGst(c.firmId, 'einvoice');
+    if (g.error) return NextResponse.json({ error: g.error }, { status: 400 });
 
-    if (!sandboxApiKey || !sandboxApiSecret) {
-      console.error('[einvoice-cancel] Sandbox credentials missing');
-      return NextResponse.json({ error: 'Sandbox integration not configured' }, { status: 500 });
-    }
-
-    const sandboxUrl = sandboxEnv === 'sandbox'
-      ? 'https://api-sandbox.sandbox.co.in'
-      : 'https://api.sandbox.co.in';
-
-    // Call Sandbox cancel API
-    const sandboxResponse = await fetch(`${sandboxUrl}/einvoicing/api/v1/invoices/${eInvoice.irn}/cancel`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${sandboxApiKey}`,
-        'Content-Type': 'application/json',
-        'x-api-secret': sandboxApiSecret,
-      },
-      body: JSON.stringify({
-        reason: reason || 'Cancelled per user request',
-      }),
-    });
-
-    if (!sandboxResponse.ok) {
-      const errorData = await sandboxResponse.json();
-      console.error('[einvoice-cancel] Sandbox API error:', errorData);
-      return NextResponse.json({
-        error: errorData.message || 'Failed to cancel e-Invoice',
-        details: errorData,
-      }, { status: sandboxResponse.status });
+    // 1 Duplicate · 2 Data entry mistake · 3 Order cancelled · 4 Others
+    const code = ['1', '2', '3', '4'].includes(String(reasonCode)) ? String(reasonCode) : '4';
+    const { res, j } = await gstCall('einvoice', g.creds, `/gst/compliance/e-invoice/tax-payer/invoice/${encodeURIComponent(eInvoice.irn)}/cancel`,
+      { Irn: eInvoice.irn, CnlRsn: code, CnlRem: (reason || 'Cancelled').toString().slice(0, 100) });
+    const D = j?.data;
+    if (!(res.ok && D && +D.Status === 1)) {
+      const errs = (D?.ErrorDetails || []).map(e => e.ErrorCode + ': ' + e.ErrorMessage).join(' · ');
+      const hint = /2230/.test(errs) ? ' — cancel the E-Way Bill on this invoice first' : /2270/.test(errs) ? ' — e-Invoices can only be cancelled within 24 hours' : '';
+      return NextResponse.json({ error: 'Government portal refused the cancellation' + (errs ? ' — ' + errs : '') + hint }, { status: 400 });
     }
 
     // Update e-Invoice status in database

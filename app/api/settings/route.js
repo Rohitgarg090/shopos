@@ -39,8 +39,13 @@ const shape = r => ({
   emailBody: r.email_body || '',
   terms: r.terms || '',
   geminiKey: r.gemini_key || '',
+  // GST portal passwords are write-only: never sent back to the browser
   ewbUsername: r.ewb_username || '',
-  ewbPassword: r.ewb_password || '',
+  ewbPassword: '',
+  ewbPasswordSet: !!r.ewb_password,
+  einvUsername: r.einv_username || '',
+  einvPassword: '',
+  einvPasswordSet: !!r.einv_password,
   interestEnabled: !!r.interest_enabled,
   interestOnOpeningBalance: !!r.interest_on_opening_balance,
   msg91Key: r.msg91_key || '',
@@ -120,6 +125,8 @@ export async function POST(req) {
     geminiKey: 'gemini_key',
     ewbUsername: 'ewb_username',
     ewbPassword: 'ewb_password',
+    einvUsername: 'einv_username',
+    einvPassword: 'einv_password',
     upiId: 'upi_id',
     upiQrImage: 'upi_qr_image',
     // Note: Exclude these fields if they don't exist in schema:
@@ -132,6 +139,7 @@ export async function POST(req) {
     // Include field if it has a value (for strings, numbers, booleans)
     // Skip only truly undefined/null values
     if (b[key] !== undefined && b[key] !== null) {
+      if ((key === 'ewbPassword' || key === 'einvPassword') && b[key] === '') return; // blank = keep saved password
       fields[dbCol] = b[key];
     }
   });

@@ -1972,11 +1972,14 @@ function EWayBillModal({bill,firm,C,setC,onClose,onDone}){
   const[t,setT]=useState({mode:'1',vehicleNo:lastVeh,distance:'',transporterId:'',transporterName:bill.transportName||'',transDocNo:bill.lrNumber||'',transDocDate:td,defaultHsn:''});
   const up=k=>v=>setT(x=>({...x,[k]:v}));
   const[pin,setPin]=useState(customer?.pincode||'');const[savingPin,setSavingPin]=useState(false);
-  const[busy,setBusy]=useState(false);const[err,setErr]=useState('');const[done,setDone]=useState(bill.ewbNo?{ewayBillNo:bill.ewbNo,validUpto:bill.ewbValidUpto}:null);const[pdfBusy,setPdfBusy]=useState(false);
+  const[busy,setBusy]=useState(false);const[err,setErr]=useState('');const[done,setDone]=useState(bill.ewbNo?{ewayBillNo:bill.ewbNo,validUpto:bill.ewbValidUpto,generatedAt:bill.ewbDate}:null);const[pdfBusy,setPdfBusy]=useState(false);
+  const[cancelOpen,setCancelOpen]=useState(false);const[cRsn,setCRsn]=useState('3');const[cRem,setCRem]=useState('');const[cancelled,setCancelled]=useState(null);
+  const genAt=done?.generatedAt?new Date(done.generatedAt):null;const hoursLeft=genAt?24-(Date.now()-genAt.getTime())/3600e3:null;const canCancel=hoursLeft===null||hoursLeft>0;
+  const cancelEwb=async()=>{if(needsPaid('eway','E-Way Bill cancellation'))return;if(!confirm('Cancel E-Way Bill '+done.ewayBillNo+' on the GST portal? This cannot be undone.'))return;setBusy(true);setErr('');try{const res=await fetch('/api/ewaybill/cancel',{method:'POST',headers:await authH(),body:JSON.stringify({billId:bill.id,reasonCode:+cRsn,remark:cRem})});if(await checkPlanReply(res))return;const j=await res.json().catch(()=>({}));if(!res.ok)throw new Error(j.error||('Server error '+res.status));setCancelled(j);onDone&&onDone({ewayBillNo:'',validUpto:'',cancelledNo:j.ewayBillNo});}catch(e){setErr(e.message);}finally{setBusy(false);}};
   const ready=buildEwbPayload({bill,firm,customer:customer?{...customer,pincode:pin}:{pincode:pin},transport:t});
   const fieldProblems=f=>ready.problems.filter(p=>p.field===f);
   const blocking=ready.problems.filter(p=>!p.field.startsWith('transport.'));
-  const credsMissing=!firm.ewbUsername||!firm.ewbPassword;
+  const credsMissing=!firm.ewbUsername||!(firm.ewbPasswordSet||firm.ewbPassword);
   const missingHsn=(bill.items||[]).filter(i=>!/^\d{4,8}$/.test(String(i.hsn||'').trim())).length;
   const savePin=async()=>{if(!customer||!/^\d{6}$/.test(pin))return;setSavingPin(true);try{const u=await api.patch('/api/customers',{id:customer.id,pincode:pin});setC&&setC(cs=>cs.map(c=>c.id===u.id?u:c));}catch(e){setErr('Could not save PIN code: '+e.message);}finally{setSavingPin(false);}};
   const generate=async()=>{
@@ -1989,14 +1992,23 @@ function EWayBillModal({bill,firm,C,setC,onClose,onDone}){
       const j=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(j.error||('Server error '+res.status));
       try{if(t.vehicleNo)localStorage.setItem('shopos_last_vehicle',t.vehicleNo);}catch{}
-      setDone(j);onDone&&onDone(j);
+      setDone({...j,generatedAt:new Date().toISOString()});onDone&&onDone(j);
     }catch(e){setErr(e.message);}finally{setBusy(false);}
   };
   const pdf=async official=>{setPdfBusy(true);try{const d=await generateEWayBillPDF({bill,firm,form:{supplyType:'Outward',subType:'Supply',docType:'Tax Invoice',docDate:new Date(bill.date).toLocaleDateString('en-IN'),transporterName:t.transporterName,vehicleNo:normVehicle(t.vehicleNo),lrNumber:t.transDocNo,distance:t.distance||'Auto',transMode:(TRANS_MODES.find(m=>m[0]===t.mode)||[])[1]},ewb:official&&done?done:null});d.save((official&&done?'EWB-'+done.ewayBillNo:'EWayBill-draft-'+(bill.invoiceNo||bill.id))+'.pdf');}catch(e){setErr('PDF failed: '+e.message);}finally{setPdfBusy(false);}};
   const row=(l,v)=><div style={{display:'flex',justifyContent:'space-between',gap:10,fontSize:12,padding:'3px 0'}}><span style={{color:MUT}}>{l}</span><span style={{fontWeight:600,textAlign:'right'}}>{v}</span></div>;
   const bad=list=>list.length>0&&<div style={{fontSize:11,color:RD,marginTop:3}}>{list[0].msg}</div>;
 
-  if(done)return<Modal title='E-Way Bill generated' onClose={onClose}>
+  if(cancelled)return<Modal title='E-Way Bill cancelled' onClose={onClose}>
+    <div style={{textAlign:'center',padding:'6px 0 14px'}}>
+      <div style={{width:52,height:52,borderRadius:'50%',background:RDL,color:RD,fontSize:24,display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:8}}>✕</div>
+      <div style={{fontSize:14,fontWeight:700}}>E-Way Bill {cancelled.ewayBillNo} is cancelled</div>
+      <div style={{fontSize:12,color:MUT,marginTop:4}}>Cancelled on {cancelled.cancelDate}. You can generate a new one for this invoice if needed.</div>
+    </div>
+    <div style={{display:'flex',justifyContent:'center'}}><button style={S.btn()} onClick={onClose}>Close</button></div>
+  </Modal>;
+
+  if(done)return<Modal title='E-Way Bill' onClose={onClose}>
     <div style={{textAlign:'center',padding:'6px 0 14px'}}>
       <div style={{width:52,height:52,borderRadius:'50%',background:GRL,color:GR,fontSize:26,display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:8}}>✓</div>
       <div style={{fontSize:12,color:MUT}}>E-Way Bill No.</div>
@@ -2005,7 +2017,18 @@ function EWayBillModal({bill,firm,C,setC,onClose,onDone}){
       {done.alert&&<div style={{fontSize:11,color:AMB,marginTop:6}}>{done.alert}</div>}
       {done.savedOnBill===false&&<div style={{fontSize:11,color:RD,marginTop:6}}>Generated, but couldn't save the number on the bill — note it down.</div>}
     </div>
-    <div style={{display:'flex',gap:8,justifyContent:'center'}}><button style={S.btn('pri')} onClick={()=>pdf(true)} disabled={pdfBusy}>{pdfBusy?'Preparing…':'⬇ Download E-Way Bill'}</button><button style={S.btn()} onClick={onClose}>Close</button></div>
+    <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}><button style={S.btn('pri')} onClick={()=>pdf(true)} disabled={pdfBusy}>{pdfBusy?'Preparing…':'⬇ Download E-Way Bill'}</button>{canCancel&&!cancelOpen&&<button style={S.btn('dan')} onClick={()=>setCancelOpen(true)}>Cancel E-Way Bill</button>}<button style={S.btn()} onClick={onClose}>Close</button></div>
+    {!canCancel&&<div style={{fontSize:11,color:MUT,textAlign:'center',marginTop:10}}>The 24-hour cancellation window has passed.</div>}
+    {canCancel&&hoursLeft!==null&&!cancelOpen&&<div style={{fontSize:11,color:MUT,textAlign:'center',marginTop:10}}>Can be cancelled for another {Math.max(1,Math.floor(hoursLeft))} hour{Math.floor(hoursLeft)===1?'':'s'}.</div>}
+    {cancelOpen&&<div style={{marginTop:14,padding:12,borderRadius:9,border:'1px solid '+RD+'40',background:RDL+'80'}}>
+      <div style={{fontSize:13,fontWeight:700,color:RD,marginBottom:8}}>Cancel this E-Way Bill on the GST portal</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:10}}>
+        <Fld label='Reason *'><select style={S.inp} value={cRsn} onChange={e=>setCRsn(e.target.value)}><option value='1'>Duplicate</option><option value='2'>Order cancelled</option><option value='3'>Data entry mistake</option><option value='4'>Others</option></select></Fld>
+        <Fld label='Remark'><input style={S.inp} value={cRem} onChange={e=>setCRem(e.target.value.slice(0,50))} placeholder='Optional, max 50 characters'/></Fld>
+      </div>
+      {err&&<div style={{fontSize:12,color:RD,margin:'4px 0 8px'}}>{err}</div>}
+      <div style={{display:'flex',gap:8}}><button style={S.btn('dan')} onClick={cancelEwb} disabled={busy}>{busy?<><Spin/> Cancelling…</>:'Confirm cancellation'}</button><button style={S.btn('def')} onClick={()=>{setCancelOpen(false);setErr('');}}>Keep it</button></div>
+    </div>}
   </Modal>;
 
   return<Modal title={'E-Way Bill · '+(bill.invoiceNo||'')} onClose={onClose} wide>
@@ -2342,7 +2365,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,setC,initBill,onClearInit,activeFirm,
       </div>}
     </div>}
     {payBill&&<PayModal bill={payBill} onSave={savePayment} onClose={()=>setPayBill(null)}/>}
-    {ewayBill&&<EWayBillModal bill={ewayBill} firm={firm} C={C} setC={setC} onClose={()=>setEwayBill(null)} onDone={r=>setB(bs=>bs.map(x=>x.id===ewayBill.id?{...x,ewbNo:r.ewayBillNo,ewbValidUpto:r.validUpto||''}:x))}/>}
+    {ewayBill&&<EWayBillModal bill={ewayBill} firm={firm} C={C} setC={setC} onClose={()=>setEwayBill(null)} onDone={r=>setB(bs=>bs.map(x=>x.id===ewayBill.id?{...x,ewbNo:r.ewayBillNo||'',ewbValidUpto:r.validUpto||'',ewbDate:r.ewayBillNo?new Date().toISOString():null,...(r.cancelledNo?{ewbCancelledNo:r.cancelledNo,ewbCancelledAt:new Date().toISOString()}:{})}:x))}/>}
     {cancelBill&&<Modal title={'Cancel Invoice '+cancelBill.invoiceNo} onClose={()=>setCancelBill(null)}>
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <div style={{background:RDL,border:'0.5px solid '+RD,borderRadius:8,padding:12}}>
@@ -3785,14 +3808,24 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,planInfo,onUpgrade,activ
           <div style={{fontSize:11,color:MUT,marginTop:4}}>Free at aistudio.google.com — 1M tokens/day on free tier</div>
         </div>
         <div style={{...S.card,marginTop:14}}>
-          <div style={S.h3}>E-Way Bill API Credentials</div>
-          <div style={{fontSize:11,color:BL,background:BLL,padding:'7px 10px',borderRadius:6,marginBottom:10,lineHeight:1.7}}>
-            Setup: ewaybillgst.gov.in → Registration → For GSP → Select "Quicko Infosoft Pvt. Ltd." → Create username & password → Enter below
+          <div style={S.h3}>GST Portal Credentials (this firm)</div>
+          <div style={{fontSize:11,color:BL,background:BLL,padding:'8px 10px',borderRadius:6,marginBottom:12,lineHeight:1.7}}>
+            Each firm files with its own login. On <strong>ewaybillgst.gov.in</strong> and <strong>einvoice1.gst.gov.in</strong>: Registration → For GSP → select <strong>Quicko Infosoft Pvt. Ltd.</strong> → create an API username & password, then enter them here.
           </div>
-          <Fld label='EWB API Username'><input style={S.inp} value={f.ewbUsername||''} onChange={e=>up('ewbUsername')(e.target.value)} placeholder='Your EWB portal API username'/></Fld>
-          <Fld label='EWB API Password'><input style={S.inp} type='password' value={f.ewbPassword||''} onChange={e=>up('ewbPassword')(e.target.value)} placeholder='Your EWB portal API password'/></Fld>
-          <Fld label='Shop PIN Code'><input style={S.inp} value={f.pincode||''} onChange={e=>up('pincode')(e.target.value)} placeholder='452001'/></Fld>
-          <Fld label='State Code (MP=23, MH=27, DL=07)'><input style={S.inp} value={f.stateCode||''} onChange={e=>up('stateCode')(e.target.value)} placeholder='23'/></Fld>
+          <div style={{fontSize:12,fontWeight:700,margin:'2px 0 6px'}}>E-Way Bill</div>
+          <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:'0 10px'}}>
+            <Fld label='EWB API Username'><input style={S.inp} value={f.ewbUsername||''} onChange={e=>up('ewbUsername')(e.target.value)} placeholder='E-Way Bill API username' autoComplete='off'/></Fld>
+            <Fld label='EWB API Password'><input style={S.inp} type='password' value={f.ewbPassword||''} onChange={e=>up('ewbPassword')(e.target.value)} placeholder={f.ewbPasswordSet?'Saved — type to change':'E-Way Bill API password'} autoComplete='new-password'/></Fld>
+          </div>
+          <div style={{fontSize:12,fontWeight:700,margin:'6px 0 6px'}}>E-Invoice <span style={{fontWeight:400,color:MUT}}>(only if your turnover requires e-invoicing)</span></div>
+          <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:'0 10px'}}>
+            <Fld label='E-Invoice API Username'><input style={S.inp} value={f.einvUsername||''} onChange={e=>up('einvUsername')(e.target.value)} placeholder='E-Invoice API username' autoComplete='off'/></Fld>
+            <Fld label='E-Invoice API Password'><input style={S.inp} type='password' value={f.einvPassword||''} onChange={e=>up('einvPassword')(e.target.value)} placeholder={f.einvPasswordSet?'Saved — type to change':'E-Invoice API password'} autoComplete='new-password'/></Fld>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:'0 10px'}}>
+            <Fld label='Shop PIN Code'><input style={S.inp} value={f.pincode||''} onChange={e=>up('pincode')(e.target.value)} placeholder='474001'/></Fld>
+            <Fld label='State Code (MP=23, MH=27, DL=07)'><input style={S.inp} value={f.stateCode||''} onChange={e=>up('stateCode')(e.target.value)} placeholder='23'/></Fld>
+          </div>
         </div>
       </div>
       <div>

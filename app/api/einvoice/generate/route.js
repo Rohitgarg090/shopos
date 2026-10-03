@@ -2,146 +2,13 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { blockIfFree } from '@/lib/plan';
+import { sandboxConfigured, firmGst, gstCall } from '@/lib/sandbox';
+import { stateCodeFromGstin, stateCodeFromName } from '@/lib/gstStates';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-async function getSandboxJWTToken() {
-  const now = Date.now();
-
-  // Check if we have a cached JWT token (24 hour validity)
-  const { data: cachedJWT } = await supabase
-    .from('sandbox_auth_tokens')
-    .select('access_token')
-    .eq('user_id', 'sandbox-jwt')
-    .eq('gstin', 'sandbox-jwt')
-    .gt('expires_at', now)
-    .single();
-
-  if (cachedJWT?.access_token) {
-    console.log('[einvoice-generate] Using cached Sandbox JWT token');
-    return cachedJWT.access_token;
-  }
-
-  // Step 1: Get Sandbox JWT token
-  console.log('[einvoice-generate] Step 1: Getting Sandbox JWT token');
-
-  const jwtResponse = await fetch('https://api.sandbox.co.in/authenticate', {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'x-api-key': process.env.SANDBOX_API_KEY,
-      'x-api-secret': process.env.SANDBOX_API_SECRET,
-      'x-api-version': '1.0.0',
-    },
-  });
-
-  if (!jwtResponse.ok) {
-    const errorData = await jwtResponse.json();
-    console.error('[einvoice-generate] Sandbox JWT auth failed:', errorData);
-    throw new Error(`Sandbox JWT authentication failed: ${errorData?.message || 'Unknown error'}`);
-  }
-
-  const jwtData = await jwtResponse.json();
-  const sandboxJWT = jwtData?.data?.access_token;
-
-  if (!sandboxJWT) {
-    throw new Error('No Sandbox JWT token received');
-  }
-
-  console.log('[einvoice-generate] Got Sandbox JWT token (valid 24h)');
-
-  // Cache JWT for 23.5 hours (86400000ms = 24h)
-  await supabase
-    .from('sandbox_auth_tokens')
-    .upsert({
-      user_id: 'sandbox-jwt',
-      gstin: 'sandbox-jwt',
-      access_token: sandboxJWT,
-      expires_at: now + 84600000, // 23.5 hours
-    }, { onConflict: 'user_id,gstin' });
-
-  return sandboxJWT;
-}
-
-async function getEInvoiceAccessToken(userId, sandboxJWT, gstin) {
-  const now = Date.now();
-
-  // Check if we have a cached E-Invoice token
-  const { data: cachedToken } = await supabase
-    .from('sandbox_auth_tokens')
-    .select('access_token')
-    .eq('user_id', userId)
-    .eq('gstin', gstin)
-    .gt('expires_at', now)
-    .single();
-
-  if (cachedToken?.access_token) {
-    console.log('[einvoice-generate] Using cached E-Invoice token');
-    return cachedToken.access_token;
-  }
-
-  // Step 2: Authenticate with E-Invoice API using Sandbox JWT
-  console.log('[einvoice-generate] Step 2: Authenticating with E-Invoice API');
-
-  const eInvoiceAuthResponse = await fetch(
-    'https://api.sandbox.co.in/gst/compliance/e-invoice/tax-payer/authenticate?force=true',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'authorization': sandboxJWT, // No "Bearer" prefix!
-        'x-api-key': process.env.SANDBOX_API_KEY,
-        'x-source': 'primary',
-      },
-      body: JSON.stringify({
-        username: process.env.SANDBOX_USERNAME,
-        password: process.env.SANDBOX_PASSWORD,
-        gstin: gstin,
-      }),
-    }
-  );
-
-  if (!eInvoiceAuthResponse.ok) {
-    const errorData = await eInvoiceAuthResponse.json();
-    console.error('[einvoice-generate] E-Invoice auth failed:', errorData);
-    throw new Error(`E-Invoice authentication failed: ${errorData?.message || 'Unknown error'}`);
-  }
-
-  const eInvoiceAuthData = await eInvoiceAuthResponse.json();
-  const eInvoiceToken = eInvoiceAuthData?.data?.access_token;
-  const expiry = eInvoiceAuthData?.data?.expiry;
-
-  if (!eInvoiceToken) {
-    throw new Error('No E-Invoice access token received');
-  }
-
-  console.log('[einvoice-generate] Got E-Invoice token, expires at:', new Date(expiry).toISOString());
-
-  // Cache E-Invoice token
-  await supabase
-    .from('sandbox_auth_tokens')
-    .upsert({
-      user_id: userId,
-      gstin: gstin,
-      access_token: eInvoiceToken,
-      expires_at: expiry,
-    }, { onConflict: 'user_id,gstin' });
-
-  return eInvoiceToken;
-}
-
-const STATE_CODES = {
-  'Andhra Pradesh': '28', 'Arunachal Pradesh': '12', 'Assam': '18', 'Bihar': '10',
-  'Chhattisgarh': '22', 'Goa': '30', 'Gujarat': '24', 'Haryana': '06',
-  'Himachal Pradesh': '02', 'Jharkhand': '20', 'Karnataka': '29', 'Kerala': '32',
-  'Madhya Pradesh': '23', 'Maharashtra': '27', 'Manipur': '14', 'Meghalaya': '17',
-  'Mizoram': '15', 'Nagaland': '13', 'Odisha': '21', 'Punjab': '03',
-  'Rajasthan': '08', 'Sikkim': '11', 'Tamil Nadu': '33', 'Tripura': '16',
-  'Telangana': '36', 'Uttar Pradesh': '09', 'Uttarakhand': '05', 'West Bengal': '19',
-};
 
 async function ctx(req) {
   const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
@@ -199,8 +66,8 @@ function formatDate(dateString) {
 }
 
 function buildSandboxEInvoiceJSON({ firm, bill, items, customer }) {
-  const firmStateCode = STATE_CODES[firm.state] || '23';
-  const customerStateCode = STATE_CODES[customer.state] || '29';
+  const firmStateCode = String(stateCodeFromGstin(firm.gstin) || stateCodeFromName(firm.state) || +firm.state_code || 23).padStart(2, '0');
+  const customerStateCode = String(stateCodeFromGstin(customer?.gst) || stateCodeFromName(customer?.state) || +firmStateCode).padStart(2, '0');
 
   const itemList = (items || []).map((item, idx) => {
     const qty = parseFloat(item.qty) || 1;
@@ -428,57 +295,22 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Firm GSTIN is required for e-Invoice generation' }, { status: 400 });
     }
 
-    let sandboxJWT, eInvoiceToken;
-    try {
-      // Step 1: Get Sandbox JWT token
-      sandboxJWT = await getSandboxJWTToken();
+    if (!sandboxConfigured()) return NextResponse.json({ error: 'E-Invoice service is not configured on the server' }, { status: 500 });
+    const g = await firmGst(c.firmId, 'einvoice');
+    if (g.error) return NextResponse.json({ error: g.error }, { status: 400 });
 
-      // Step 2: Get E-Invoice access token using Sandbox JWT
-      eInvoiceToken = await getEInvoiceAccessToken(c.user.id, sandboxJWT, firm.gstin);
-    } catch (err) {
-      console.error('[einvoice-generate] Authentication failed:', err);
-      return NextResponse.json({ error: err.message }, { status: 500 });
+    // Generate e-Invoice with this firm's own E-Invoice credentials
+    const { res: sandboxResponse, j: sandboxResult } = await gstCall('einvoice', g.creds, '/gst/compliance/e-invoice/tax-payer/invoice', eInvoiceJSON);
+    const D = sandboxResult?.data;
+    const irn = D?.Data?.Irn;
+    if (!sandboxResponse.ok || !irn) {
+      const errs = (D?.ErrorDetails || []).map(e => (e.ErrorCode ? e.ErrorCode + ': ' : '') + e.ErrorMessage).join(' · ');
+      console.error('[einvoice-generate] rejected:', JSON.stringify(sandboxResult).slice(0, 800));
+      return NextResponse.json({ error: 'Government portal rejected the e-Invoice' + (errs ? ' — ' + errs : (sandboxResult?.message ? ': ' + sandboxResult.message : '')), portalErrors: D?.ErrorDetails || null }, { status: 400 });
     }
-
-    console.log('[einvoice-generate] Step 3: Calling Sandbox e-Invoice generation API');
-    console.log('[einvoice-generate] Request body:', JSON.stringify(eInvoiceJSON, null, 2));
-
-    // Step 3: Generate e-Invoice using E-Invoice token
-    const sandboxResponse = await fetch(
-      'https://api.sandbox.co.in/gst/compliance/e-invoice/tax-payer/invoice',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'authorization': eInvoiceToken, // No "Bearer" prefix!
-          'x-api-key': process.env.SANDBOX_API_KEY,
-          'x-source': 'primary',
-        },
-        body: JSON.stringify(eInvoiceJSON),
-      }
-    );
-
-    if (!sandboxResponse.ok) {
-      const errorData = await sandboxResponse.json();
-      console.error('[einvoice-generate] Sandbox error:', errorData);
-      return NextResponse.json({
-        error: errorData?.data?.ErrorDetails?.[0]?.ErrorMessage || 'Failed to generate e-Invoice',
-        details: errorData,
-      }, { status: sandboxResponse.status });
-    }
-
-    const sandboxResult = await sandboxResponse.json();
-    console.log('[einvoice-generate] Sandbox response:', sandboxResult);
-
-    // Extract IRN and other details from response
-    const irn = sandboxResult?.data?.Data?.Irn;
-    const ackNo = sandboxResult?.data?.Data?.AckNo;
-    const signedInvoice = sandboxResult?.data?.Data?.SignedInvoice;
-    const qrCode = sandboxResult?.data?.Data?.QRCode;
-
-    if (!irn) {
-      throw new Error('No IRN received from Sandbox API');
-    }
+    const ackNo = D?.Data?.AckNo;
+    const signedInvoice = D?.Data?.SignedInvoice;
+    const qrCode = D?.Data?.SignedQRCode || D?.Data?.QRCode;
 
     // Store in database
     const { data: eInvoice, error: dbError } = await supabase
