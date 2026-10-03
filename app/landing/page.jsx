@@ -2306,7 +2306,7 @@ to{ opacity: 1; transform: translateY(0); }
             <div className="plan-desc" style={{marginTop: '8px'}}>Everything a single shop needs to bill, track stock and keep accounts — free, forever.</div>
             <div className="plan-divider"></div>
             <ul className="plan-features">
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> 1 Firm / Company</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> 1 Firm / Company · 1 user</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Unlimited invoices & customers</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Inventory & QR labels</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Ledger, accounts & GST reports</li>
@@ -2330,7 +2330,7 @@ to{ opacity: 1; transform: translateY(0); }
             <div className="plan-desc" style={{marginTop: '8px'}}>For growing traders running more than one shop or firm, with every automation unlocked.</div>
             <div className="plan-divider"></div>
             <ul className="plan-features">
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Up to 4 Firms</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Up to 4 Firms · 4 users</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Everything in Free</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> AI invoice scanner</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> AI bank & supplier reconciliation</li>
@@ -2352,7 +2352,7 @@ to{ opacity: 1; transform: translateY(0); }
             <div className="plan-desc" style={{marginTop: '8px'}}>For wholesale groups and distributors managing many firms from one login.</div>
             <div className="plan-divider"></div>
             <ul className="plan-features">
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Up to 10 Firms</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Up to 10 Firms · 25 users</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Everything in Business 4</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Best for distributors & multi-shop groups</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Priority support</li>

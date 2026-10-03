@@ -41,6 +41,11 @@ where o.owner_id = t.user_id and o.status = 'active'
 update trial_limits set paid_plan = 'business10', paid_until = '2099-12-31'
 where user_id in (select id from auth.users where lower(email) = 'rohitgarg090@gmail.com');
 
+-- 8. Repair owner memberships damaged by the old invite bug (it overwrote the inviter's own row)
+update firm_members fm set status = 'active', role = 'owner', invited_email = null
+from firms f
+where fm.firm_id = f.id and fm.user_id = f.owner_id and (fm.status <> 'active' or fm.role <> 'owner');
+
 -- Check: one row per user with their effective plan
 select u.email, t.paid_plan, t.paid_until, t.trial_ends_at
 from trial_limits t join auth.users u on u.id = t.user_id

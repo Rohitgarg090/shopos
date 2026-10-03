@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
-import { getPlan, countOwnedFirms, ensurePlanRow, PLANS } from '@/lib/plan';
+import { getPlan, countOwnedFirms, ensurePlanRow, accountUsers, PLANS } from '@/lib/plan';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -17,13 +17,16 @@ export async function GET(req) {
     catch (e) {
       // Plan columns missing (migration not run): report full access so nothing is blocked.
       console.error('[trial-status] plan lookup failed:', e.message);
-      plan = { plan: 'trial', name: 'Free Trial', firmLimit: 99, external: true, trialDaysLeft: 0, setupPending: true };
+      plan = { plan: 'trial', name: 'Free Trial', firmLimit: 99, userLimit: 99, external: true, trialDaysLeft: 0, setupPending: true };
     }
     const currentFirmCount = await countOwnedFirms(user.id);
+    let usersUsed = 1;
+    try { usersUsed = (await accountUsers(user.id)).count; } catch { /* ignore */ }
     return Response.json({
       ...plan,
       currentFirmCount,
       canCreateFirm: currentFirmCount < plan.firmLimit,
+      usersUsed,
       firmCountLimit: plan.firmLimit,
       isExpired: false,
       plans: Object.values(PLANS).filter(p => p.priceAnnual > 0),

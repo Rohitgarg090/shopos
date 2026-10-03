@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { blockIfNoSeat } from '@/lib/plan';
 
 const adminClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -58,6 +59,11 @@ export async function PATCH(req, { params }) {
 
     if (!membership || !['owner', 'manager'].includes(membership.role)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    if (status === 'approved') {
+      const blocked = await blockIfNoSeat(joinReq.firm_id, joinReq.user_id);
+      if (blocked) return blocked;
     }
 
     // Update join request status

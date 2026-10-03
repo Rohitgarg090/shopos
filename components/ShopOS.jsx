@@ -3655,7 +3655,7 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,planInfo,onUpgrade,activ
         <div style={{fontSize:11,fontWeight:700,color:MUT,textTransform:'uppercase',letterSpacing:'0.4px'}}>Your plan</div>
         <div style={{fontSize:17,fontWeight:800,marginTop:3,color:planInfo.plan==='free'?TXT:BL}}>{planInfo.name}</div>
         <div style={{fontSize:12,color:MUT,marginTop:2}}>
-          {planInfo.currentFirmCount??0} of {planInfo.firmLimit} firm{planInfo.firmLimit===1?'':'s'} used
+          {planInfo.currentFirmCount??0} of {planInfo.firmLimit} firm{planInfo.firmLimit===1?'':'s'} · {planInfo.usersUsed??1} of {planInfo.userLimit??1} user{(planInfo.userLimit??1)===1?'':'s'}
           {planInfo.plan==='trial'&&<> · trial ends in {planInfo.trialDaysLeft} day{planInfo.trialDaysLeft===1?'':'s'}, then Free</>}
           {planInfo.paidUntil&&['business4','business10'].includes(planInfo.plan)&&<> · renews {new Date(planInfo.paidUntil).getFullYear()>2090?'never (lifetime)':'on '+new Date(planInfo.paidUntil).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</>}
         </div>
@@ -3922,9 +3922,10 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
 
   const invite=async()=>{
     if(!inviteEmail){showT('Enter email','err');return;}
-    const res=await api.post('/api/members',{firmId:activeFirm.id,email:inviteEmail,role:inviteRole});
-    if(res.error){showT(res.error,'err');return;}
-    showT('Invite sent to '+inviteEmail);setInviteEmail('');loadMembers();
+    try{
+      const res=await api.post('/api/members',{firmId:activeFirm.id,email:inviteEmail,role:inviteRole});
+      showT(res.message||('Invite sent to '+inviteEmail));setInviteEmail('');loadMembers();
+    }catch(e){showT(e.message,'err');}
   };
 
   const changeRole=async(memberId,role)=>{

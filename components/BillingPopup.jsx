@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const PLANS = [
-  { id: 'business4', name: 'Business 4', price: 1499, firms: 4, tag: '' },
-  { id: 'business10', name: 'Business 10', price: 2499, firms: 10, tag: 'Best value' },
+  { id: 'business4', name: 'Business 4', price: 1499, firms: 4, users: 4, tag: '' },
+  { id: 'business10', name: 'Business 10', price: 2499, firms: 10, users: 25, tag: 'Best value' },
 ];
 const FEATURES = [
   'Unlimited invoices, customers & products',
@@ -12,7 +12,7 @@ const FEATURES = [
   'AI bank & supplier statement reconciliation',
   'E-Way Bill & E-Invoice',
   'Email, WhatsApp & SMS sending',
-  'Team members with roles (owner, manager, staff)',
+  'Team members with roles (manager, accountant, staff)',
 ];
 
 export default function BillingPopup({ isOpen, onClose, reason, planInfo, onPaid }) {
@@ -110,7 +110,7 @@ export default function BillingPopup({ isOpen, onClose, reason, planInfo, onPaid
                 style={{ textAlign: 'left', padding: 16, borderRadius: 12, cursor: isCurrent ? 'default' : 'pointer', background: on ? '#F0F6FB' : '#fff', border: '2px solid ' + (on ? '#1B5E8A' : '#E3E1D9'), position: 'relative', opacity: isCurrent ? 0.6 : 1 }}>
                 {p.tag && <span style={{ position: 'absolute', top: -10, right: 12, background: '#1B5E8A', color: '#fff', fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 10 }}>{p.tag}</span>}
                 <div style={{ fontSize: 14, fontWeight: 800 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>Up to {p.firms} firms</div>
+                <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>Up to {p.firms} firms · {p.users} users</div>
                 <div style={{ marginTop: 10 }}><span style={{ fontSize: 26, fontWeight: 800 }}>₹{p.price.toLocaleString('en-IN')}</span><span style={{ fontSize: 12, color: '#666' }}> /year</span></div>
                 <div style={{ fontSize: 11, color: '#2E6B1F', fontWeight: 600, marginTop: 2 }}>≈ ₹{Math.round(p.price / 12)}/month</div>
                 {isCurrent && <div style={{ fontSize: 11, fontWeight: 700, color: '#1B5E8A', marginTop: 6 }}>Current plan</div>}
@@ -124,7 +124,7 @@ export default function BillingPopup({ isOpen, onClose, reason, planInfo, onPaid
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: '6px 14px' }}>
             {FEATURES.map(f => <div key={f} style={{ fontSize: 12.5, display: 'flex', gap: 7 }}><span style={{ color: '#2E6B1F', fontWeight: 800 }}>✓</span>{f}</div>)}
           </div>
-          <div style={{ fontSize: 11.5, color: '#888', marginTop: 10 }}>Free plan: 1 firm with billing, inventory, ledger & accounts — without AI, E-Way, E-Invoice and messaging.</div>
+          <div style={{ fontSize: 11.5, color: '#888', marginTop: 10 }}>Free plan: 1 firm, 1 user — billing, inventory, ledger & accounts, without AI, E-Way, E-Invoice and messaging.</div>
         </div>
 
         <div style={{ padding: '16px 22px 20px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #EEE', marginTop: 16 }}>
