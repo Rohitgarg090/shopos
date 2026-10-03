@@ -140,6 +140,50 @@ function Bdg({c,children}){const m={green:[GRL,GR],amber:[AMBL,AMB],red:[RDL,RD]
 function Fld({label,children,span2}){return<div style={{marginBottom:8,gridColumn:span2?'span 2':'auto'}}><label style={S.lbl}>{label}</label>{children}</div>}
 function MT({msg='Nothing here yet'}){return<div style={{textAlign:'center',padding:'28px',color:MUT,fontSize:13}}>{msg}</div>}
 function Spin(){return<span style={{width:14,height:14,border:'2px solid rgba(27,94,138,.3)',borderTopColor:BL,borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/>}
+
+const SCAN_STAGES={
+  invoice:{title:'Scanning invoice',expected:25,steps:['Uploading document','Reading the invoice','Extracting items & prices','Checking totals']},
+  statement:{title:'Reading statement',expected:30,steps:['Uploading statement','Reading pages','Extracting transactions','Matching with your records']},
+  upload:{title:'Uploading file',expected:5,steps:['Uploading file','Saving']},
+};
+// AI calls give no real progress events, so progress eases toward 95% over the expected time
+// and jumps to 100% when the work actually finishes.
+function ScanProgress({active,kind='invoice',fileName,status}){
+  const cfg=SCAN_STAGES[kind]||SCAN_STAGES.invoice;
+  const[t0,setT0]=useState(null);const[now,setNow]=useState(0);const[done,setDone]=useState(false);
+  useEffect(()=>{
+    if(active){setT0(Date.now());setNow(0);setDone(false);const iv=setInterval(()=>setNow(n=>n+0.25),250);return()=>clearInterval(iv);}
+    if(t0!==null){setDone(true);const to=setTimeout(()=>{setDone(false);setT0(null);},900);return()=>clearTimeout(to);}
+  },[active]);// eslint-disable-line react-hooks/exhaustive-deps
+  if(!active&&!done)return null;
+  const pct=done?100:Math.min(95,95*(1-Math.exp(-now/(cfg.expected*0.6))));
+  const step=done?cfg.steps.length:Math.min(cfg.steps.length-1,Math.floor(pct/95*cfg.steps.length));
+  const slow=!done&&now>cfg.expected*1.6;
+  return<div role='status' aria-live='polite' style={{marginTop:12,padding:'14px 16px',background:'#fff',border:'1px solid '+(done?GR+'60':BL+'40'),borderRadius:12,boxShadow:'0 4px 16px rgba(27,94,138,0.08)'}}>
+    <style>{'@keyframes scanShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}'}</style>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:8}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+        {done?<span style={{width:18,height:18,borderRadius:'50%',background:GR,color:'#fff',fontSize:11,display:'inline-flex',alignItems:'center',justifyContent:'center',fontWeight:800}}>✓</span>:<Spin/>}
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:700,color:done?GR:TXT}}>{done?'Done':cfg.title}</div>
+          {fileName&&<div style={{fontSize:10.5,color:MUT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:260}}>{fileName}</div>}
+        </div>
+      </div>
+      <div style={{textAlign:'right',flexShrink:0}}>
+        <div style={{fontSize:15,fontWeight:800,color:done?GR:BL,fontFamily:'DM Mono,monospace'}}>{Math.round(pct)}%</div>
+        {!done&&<div style={{fontSize:10,color:MUT}}>{Math.floor(now)}s</div>}
+      </div>
+    </div>
+    <div style={{height:8,background:'#EEF2F7',borderRadius:6,overflow:'hidden',position:'relative'}}>
+      <div style={{width:pct+'%',height:'100%',background:done?GR:'linear-gradient(90deg,'+BL+',#3b82f6)',borderRadius:6,transition:'width .25s linear',position:'relative',overflow:'hidden'}}>
+        {!done&&<div style={{position:'absolute',top:0,bottom:0,width:'40%',background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)',animation:'scanShimmer 1.4s ease-in-out infinite'}}/>}
+      </div>
+    </div>
+    <div style={{display:'flex',gap:4,marginTop:10,flexWrap:'wrap'}}>
+      {cfg.steps.map((s,i)=><span key={s} style={{fontSize:10.5,fontWeight:600,padding:'3px 8px',borderRadius:10,background:i<step?GRL:i===step?BLL:'#F4F2EE',color:i<step?GR:i===step?BL:'#aaa'}}>{i<step?'✓ ':''}{s}</span>)}
+    </div>
+    {(status||slow)&&!done&&<div style={{fontSize:11,color:MUT,marginTop:8}}>{status||'Large or multi-page documents can take up to a minute…'}</div>}
+  </div>;}
 function useToast(){const[t,setT]=useState(null);const show=(msg,tp='ok')=>{setT({msg,tp});setTimeout(()=>setT(null),3500)};const el=t&&<div style={{padding:'9px 14px',borderRadius:8,fontSize:13,fontWeight:500,marginBottom:10,background:t.tp==='ok'?GRL:RDL,color:t.tp==='ok'?GR:RD}}>{t.msg}</div>;return[el,show];}
 function Modal({title,onClose,children,wide}){
   const ww=isBR?window.innerWidth:1200;
@@ -938,7 +982,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   const[scanning,setScanning]=useState(false);
   const[scanStatus,setScanStatus]=useState('');
   const[preview,setPreview]=useState(null);
-  const[fileType,setFileType]=useState('');
+  const[fileType,setFileType]=useState('');const[scanFileName,setScanFileName]=useState('');
   const[err,setErr]=useState(null);
   const[toast,showT]=useToast();
   const[supplierBanner,setSupplierBanner]=useState(null);
@@ -984,7 +1028,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
     const k=gk();if(!k){setErr('Add your Gemini API key in Settings first.');return;}
     const isPDF=file.type==='application/pdf';
     if(file.size>(isPDF?20:10)*1024*1024){setErr('File too large — max '+(isPDF?'20MB for PDFs':'10MB for images')+'.');return;}
-    setFileType(file.type);setMarkupPct('');
+    setFileType(file.type);setScanFileName(file.name);setMarkupPct('');
     const reader=new FileReader();
     reader.onload=async ev=>{
       const b64=ev.target.result.split(',')[1];
@@ -1221,10 +1265,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
           </label>
           {preview&&<img src={preview} alt='Invoice preview' style={{width:'100%',maxHeight:220,objectFit:'contain',borderRadius:8,marginTop:12,border:'0.5px solid '+BORD}}/>}
           {!preview&&fileType==='application/pdf'&&!scanning&&<div style={{marginTop:10,padding:'9px 12px',background:RDL,borderRadius:8,fontSize:12,color:RD}}>PDF uploaded</div>}
-          {scanning&&<div style={{display:'flex',flexDirection:'column',gap:4,marginTop:12,padding:'10px 14px',background:BLL,borderRadius:8,color:BL,fontSize:13}}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}><Spin/>Reading invoice...</div>
-            {scanStatus&&<div style={{fontSize:11,opacity:.7,paddingLeft:22}}>{scanStatus}</div>}
-          </div>}
+          <ScanProgress active={scanning} kind='invoice' fileName={scanFileName} status={scanStatus}/>
           {err&&!scanning&&<div style={{padding:'10px 14px',borderRadius:8,background:RDL,color:RD,fontSize:12,marginTop:10,lineHeight:1.5}}><strong>Error:</strong> {err}</div>}
         </div>
         {/* ── MARKUP PANEL ── */}
@@ -2492,7 +2533,7 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
 /* ── BANK RECONCILIATION ── */
 function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
   const[tab,setTab]=useState('upload'); // upload | results
-  const[scanning,setScanning]=useState(false);
+  const[scanning,setScanning]=useState(false);const[stmtFileName,setStmtFileName]=useState('');
   const[scanStatus,setScanStatus]=useState('');
   const[transactions,setTransactions]=useState([]);
   const[stats,setStats]=useState(null);
@@ -2507,7 +2548,7 @@ function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
   const processFile=async(file)=>{
     const k=gk();
     if(!k){setErr('Add Gemini API key in Settings first.');return;}
-    setScanning(true);setErr(null);setScanStatus('Reading file...');
+    setScanning(true);setErr(null);setScanStatus('');setStmtFileName(file.name);
     const reader=new FileReader();
     reader.onload=async ev=>{
       try{
@@ -2579,10 +2620,7 @@ function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
           </div>
           <div style={{fontSize:11,color:MUT}}>SBI, HDFC, ICICI, Axis, Kotak — any Indian bank format</div>
         </label>
-        {scanning&&<div style={{display:'flex',flexDirection:'column',gap:4,padding:'10px 14px',background:BLL,borderRadius:8,color:BL,fontSize:13}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}><Spin/>Processing statement...</div>
-          {scanStatus&&<div style={{fontSize:11,opacity:.7,paddingLeft:22}}>{scanStatus}</div>}
-        </div>}
+        <ScanProgress active={scanning} kind='statement' fileName={stmtFileName} status={scanStatus}/>
         {err&&<div style={{padding:'10px 14px',borderRadius:8,background:RDL,color:RD,fontSize:12,marginTop:8}}>{err}</div>}
       </div>
       <div style={S.card}>
@@ -2710,6 +2748,7 @@ function CustomerBankStatements({customerId}){
         <input type='file' accept='.pdf,.csv,.xlsx,.xls,image/*' style={{display:'none'}} onChange={upload} disabled={uploading}/>
         {uploading?<><Spin/>Uploading...</>:'+ Upload File'}
       </label>
+      <ScanProgress active={uploading} kind='upload'/>
     </div>
     {/* Files list */}
     {loading?<MT msg='Loading...'/>:files.length===0?<MT msg='No files uploaded yet. Upload bank statements, ledger exports or any document for this customer.'/>:
@@ -3189,11 +3228,12 @@ function BankStatements({BS,setBS,mob}){
     <div style={{...S.card,marginBottom:14}}>
       <div style={S.h3}>Upload Bank Statement</div>
       <label style={{border:'1.5px dashed '+BORD,borderRadius:10,padding:'22px 16px',textAlign:'center',cursor:'pointer',background:BG,display:'block'}}>
-        <input type='file' accept='.pdf,.csv,.txt,image/*' style={{display:'none'}} onChange={handleUpload}/>
+        <input type='file' accept='.pdf,.csv,.txt,image/*' style={{display:'none'}} onChange={handleUpload} disabled={uploading}/>
         <div style={{fontSize:36,marginBottom:6}}>📄</div>
         <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{uploading?'Uploading...':'Tap to upload bank statement'}</div>
         <div style={{fontSize:11,color:MUT}}>PDF, CSV, TXT, or image (JPG/PNG) • Max 10MB</div>
       </label>
+      <ScanProgress active={uploading} kind='upload'/>
     </div>
     {BS.length===0?<div style={{...S.card,textAlign:'center',padding:40,color:MUT}}>No bank statements uploaded yet</div>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?400:600}}>
@@ -3297,7 +3337,8 @@ function FirmReconciliation({BS,B,Py,firm,C,gk,mob}){
 
   return<div>
     {toast}
-    {scanStatus&&<div style={{padding:12,background:AMBL,borderRadius:8,marginBottom:12,fontSize:12,color:AMB}}>{scanStatus}{uploading&&<Spin/>}</div>}
+    <div style={{marginBottom:uploading?12:0}}><ScanProgress active={uploading} kind='statement' fileName={selectedFile?.name} status={scanStatus}/></div>
+    {!uploading&&scanStatus&&<div style={{padding:12,background:AMBL,borderRadius:8,marginBottom:12,fontSize:12,color:AMB}}>{scanStatus}</div>}
     <div style={{...S.card,marginBottom:14}}>
       <div style={S.h2}>Bank Statement Reconciliation</div>
       <div style={S.h3}>Select & Upload</div>
@@ -3395,7 +3436,8 @@ function SupplierRecon({SI,firm,gk,mob}){
 
   return<div>
     {toast}
-    {scanStatus&&<div style={{padding:12,background:AMBL,borderRadius:8,marginBottom:12,fontSize:12,color:AMB}}>{scanStatus}{uploading&&<Spin/>}</div>}
+    <div style={{marginBottom:uploading?12:0}}><ScanProgress active={uploading} kind='statement' fileName={selectedFile?.name} status={scanStatus}/></div>
+    {!uploading&&scanStatus&&<div style={{padding:12,background:AMBL,borderRadius:8,marginBottom:12,fontSize:12,color:AMB}}>{scanStatus}</div>}
     <div style={{...S.card,marginBottom:14}}>
       <div style={S.h2}>Supplier Statement Reconciliation</div>
       <div style={S.h3}>Select Supplier & Upload</div>
@@ -4468,11 +4510,12 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
       <div style={{...S.card,marginBottom:14}}>
         <div style={S.h3}>Upload Supplier Statement</div>
         {!selSupplier?<div style={{padding:'16px',background:BG,borderRadius:8,color:MUT,fontSize:12}}>Select a supplier on the left to upload their statement</div>:<label style={{border:'1.5px dashed '+BORD,borderRadius:10,padding:'22px 16px',textAlign:'center',cursor:'pointer',background:BG,display:'block'}}>
-          <input type='file' accept='.pdf,.csv,.txt,image/*' style={{display:'none'}} onChange={handleStatementUpload}/>
+          <input type='file' accept='.pdf,.csv,.txt,image/*' style={{display:'none'}} onChange={handleStatementUpload} disabled={uploading}/>
           <div style={{fontSize:36,marginBottom:6}}>📋</div>
           <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{uploading?'Uploading...':'Tap to upload statement'}</div>
           <div style={{fontSize:11,color:MUT}}>PDF, CSV, TXT, or image (JPG/PNG) • Max 10MB</div>
         </label>}
+        <ScanProgress active={uploading} kind='upload'/>
       </div>
       {relatedStatements.length===0?<div style={{...S.card,textAlign:'center',padding:40,color:MUT}}>No statements uploaded for {selSupplier||'this supplier'}</div>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?400:600}}>
