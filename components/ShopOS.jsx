@@ -20,7 +20,7 @@ import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
 import JSZip from 'jszip';
 import html2canvas from 'html2canvas';
-import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, compareEntries } from '@/lib/pdf';
+import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, generateInvoicePDF, compareEntries } from '@/lib/pdf';
 
 /* ── constants ── */
 // Empty by default - will be populated dynamically from actual products
@@ -1934,7 +1934,9 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
   useEffect(()=>{if(initBill){setVid(initBill.id);onClearInit&&setTimeout(onClearInit,100);}},[initBill?.id]);
   const bill=B.find(b=>b.id===vid)||initBill;
   const print=()=>{if(!bill)return;const w=window.open('','_blank');const invHtml=document.getElementById('invoice-print')?.outerHTML||'';w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice '+(bill.invoiceNo||bill.id)+'</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;background:#fff}@media print{body{margin:0;padding:0}@page{margin:8mm;size:A4}}</style></head><body>'+invHtml+'</body></html>');w.document.close();setTimeout(()=>w.print(),500);};
-  const downloadPDF=async()=>{if(!bill)return;setPdfBusy(true);try{const pdf=await makePDF('invoice-print');pdf?.save('Invoice-'+(bill.invoiceNo||bill.id)+'.pdf');}catch(e){showT('PDF failed: '+e.message,'err');}finally{setPdfBusy(false)}};
+  const invoiceFileName=b=>`${b.invoiceNo||'INV-'+String(b.id).slice(0,8)}_${(b.customerName||'').replace(/[^\w]+/g,'_')}.pdf`;
+  const buildInvoicePDF=b=>generateInvoicePDF({bill:b,firm,paid:calcPaidAmount(b.id,Py),amountInWords:n2w(b.total)});
+  const downloadPDF=async()=>{if(!bill)return;setPdfBusy(true);try{const pdf=await buildInvoicePDF(bill);pdf.save(invoiceFileName(bill));}catch(e){console.error('Invoice PDF error:',e);showT('PDF failed: '+e.message,'err');}finally{setPdfBusy(false)}};
   const emailBill=async b=>{
     const cust=C.find(c=>c.id===b.customerId);
     const toEmail=cust?.email||b.customerEmail||'';
@@ -2093,71 +2095,17 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
 
   const doDownloadZip=async()=>{
     if(selectedBills.size===0){showT('Select at least one invoice','err');return;}
-    if(selectedBills.size>20){showT('Max 20 invoices per ZIP to avoid memory issues. Please select fewer.','err');return;}
+    if(selectedBills.size>100){showT('Max 100 invoices per ZIP. Please select fewer.','err');return;}
     setZipBusy(true);
     try{
-      const {default: jsPDF}=await import('jspdf');
-      const html2canvas_=await import('html2canvas').then(m=>m.default);
       const selected=activeBills.filter(b=>selectedBills.has(b.id));
       const zip=new JSZip();
-
       for(let i=0;i<selected.length;i++){
         const b=selected[i];
         showT(`Generating ${i+1}/${selected.length}...`);
-
-        // Show invoice in Bills view to render it
-        setVid(b.id);
-        await new Promise(r=>setTimeout(r,1000));
-
-        // Get the rendered invoice element
-        const invoiceEl=document.getElementById('invoice-print');
-        if(!invoiceEl){
-          console.error('Invoice element not found for',b.invoiceNo);
-          continue;
-        }
-
-        // Clone to hidden container
-        const container=document.createElement('div');
-        container.style.position='fixed';
-        container.style.left='-9999px';
-        container.style.top='-9999px';
-        container.style.width='794px';
-        container.style.background='white';
-        container.innerHTML=invoiceEl.innerHTML;
-        document.body.appendChild(container);
-
-        try{
-          // Capture with html2canvas
-          const canvas=await html2canvas_(container,{scale:2,allowTaint:true,useCORS:true,backgroundColor:'#ffffff'});
-          const imgData=canvas.toDataURL('image/jpeg',0.95);
-
-          // Create PDF
-          const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-          const imgWidth=210;
-          const imgHeight=(canvas.height*imgWidth)/canvas.width;
-          const pageHeight=pdf.internal.pageSize.getHeight();
-
-          let yPos=0;
-          let heightLeft=imgHeight;
-          while(heightLeft>0){
-            pdf.addImage(imgData,'JPEG',0,yPos,imgWidth,imgHeight);
-            heightLeft-=pageHeight;
-            if(heightLeft>0)pdf.addPage();
-            yPos=-pageHeight;
-          }
-
-          const fileName=`INV-${b.invoiceNo||b.id.slice(0,8)}_${b.customerName.replace(/[^\w]/g,'_')}.pdf`;
-          zip.file(fileName,pdf.output('blob'));
-        }catch(e){
-          console.error('ZIP PDF error:',e);
-        }finally{
-          document.body.removeChild(container);
-        }
-
-        if(i%2===1)await new Promise(r=>setTimeout(r,400));
+        try{const pdf=await buildInvoicePDF(b);zip.file(invoiceFileName(b),pdf.output('blob'));}
+        catch(e){console.error('ZIP PDF error for',b.invoiceNo,e);}
       }
-
-      setVid(null);
 
       const blob=await zip.generateAsync({type:'blob'});
       const url=URL.createObjectURL(blob);
