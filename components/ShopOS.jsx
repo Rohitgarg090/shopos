@@ -3938,61 +3938,59 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
 function Analytics({P,B,C,Py,Ret,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[tab,setTab]=useState('overview');
-  const[period,setPeriod]=useState('month'); // month | quarter | year
+  const[period,setPeriod]=useState('month'); // month | quarter | year (Indian FY)
 
-  /* ── shared date helpers ── */
+  /* ── periods ── */
   const now=new Date();
-  const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
-  const lastMonthStart=new Date(now.getFullYear(),now.getMonth()-1,1);
-  const lastMonthEnd=new Date(now.getFullYear(),now.getMonth(),0);
-  const quarterStart=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1);
-  const yearStart=new Date(now.getFullYear(),0,1);
-  const inRange=(d,s,e)=>{const dt=new Date(d);return dt>=s&&dt<=e;};
-
-  const getPeriodDates=()=>{
-    if(period==='month')return{start:monthStart,end:now};
-    if(period==='quarter')return{start:quarterStart,end:now};
-    return{start:yearStart,end:now};
+  const fyStartYear=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1;
+  const ranges={
+    month:{start:new Date(now.getFullYear(),now.getMonth(),1),prevStart:new Date(now.getFullYear(),now.getMonth()-1,1),label:'This month',prevLabel:'last month'},
+    quarter:{start:new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1),prevStart:new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3-3,1),label:'This quarter',prevLabel:'last quarter'},
+    year:{start:new Date(fyStartYear,3,1),prevStart:new Date(fyStartYear-1,3,1),label:'FY '+fyStartYear+'-'+String((fyStartYear+1)%100).padStart(2,'0'),prevLabel:'last FY'},
   };
-  const{start:periodStart,end:periodEnd}=getPeriodDates();
+  const R=ranges[period];
+  const asDate=d=>{if(typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)){const[y,m,dd]=d.split('-').map(Number);return new Date(y,m-1,dd);}return new Date(d);};
+  const inPeriod=d=>{const t=asDate(d);return t>=R.start&&t<=now;};
+  const inPrev=d=>{const t=asDate(d);return t>=R.prevStart&&t<R.start;};
 
-  /* ── Overview KPIs ── */
-  const thisMonthBills=B.filter(b=>inRange(b.date,monthStart,now));
-  const lastMonthBills=B.filter(b=>inRange(b.date,lastMonthStart,lastMonthEnd));
-  const thisRev=thisMonthBills.reduce((s,b)=>s+b.total,0);
-  const lastRev=lastMonthBills.reduce((s,b)=>s+b.total,0);
-  const revGrowth=lastRev>0?((thisRev-lastRev)/lastRev*100):0;
-  const totalRev=B.reduce((s,b)=>s+b.total,0);
-  const totalPaid=Py.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
-  const outstanding=totalRev-totalPaid;
-  const avgBillValue=B.length>0?totalRev/B.length:0;
-  const totalReturnVal=(Ret||[]).reduce((s,r)=>s+r.total,0);
-  const returnRate=totalRev>0?(totalReturnVal/totalRev*100):0;
+  /* ── customer-side money only (supplier payments/returns excluded) ── */
+  const isBounced=p=>p.mode==='Cheque'&&p.chequeStatus==='bounced';
+  const custPayAll=Py.filter(p=>p.paymentType!=='supplier');
+  const custPays=custPayAll.filter(p=>!isBounced(p));
+  const custRets=(Ret||[]).filter(r=>r.type==='customer');
+  const sum=(a,f)=>a.reduce((s,x)=>s+(f(x)||0),0);
 
-  /* ── 12-month trend ── */
-  const months=[];
-  for(let i=11;i>=0;i--){const d=new Date(now);d.setMonth(d.getMonth()-i);months.push({label:d.toLocaleString('default',{month:'short'}),yr:d.getFullYear(),mo:d.getMonth()});}
-  const monthlyData=months.map(m=>{
-    const bills=B.filter(b=>{const d=new Date(b.date);return d.getMonth()===m.mo&&d.getFullYear()===m.yr;});
-    const rev=bills.reduce((s,b)=>s+b.total,0);
-    const paid=Py.filter(p=>bills.some(b=>b.id===p.billId)).reduce((s,p)=>s+p.amount,0);
-    return{...m,rev,paid,bills:bills.length,outstanding:rev-paid};
+  const pBills=B.filter(b=>inPeriod(b.date)),prevBills=B.filter(b=>inPrev(b.date));
+  const sales=sum(pBills,b=>b.total),prevSales=sum(prevBills,b=>b.total);
+  const growth=prevSales>0?(sales-prevSales)/prevSales*100:null;
+  const avgBill=pBills.length?sales/pBills.length:0;
+  const pPays=custPays.filter(p=>inPeriod(p.date||p.createdAt));
+  const collected=sum(pPays,p=>p.amount);
+  const pRets=custRets.filter(r=>inPeriod(r.date));
+  const returnsVal=sum(pRets,r=>r.total);
+  const returnRate=sales>0?returnsVal/sales*100:0;
+
+  /* ── 12-month trend (cash basis: collections by payment date) ── */
+  const monthlyData=Array.from({length:12},(_,k)=>{
+    const d=new Date(now.getFullYear(),now.getMonth()-11+k,1);
+    const same=x=>{const t=asDate(x);return t.getMonth()===d.getMonth()&&t.getFullYear()===d.getFullYear();};
+    const bills=B.filter(b=>same(b.date));
+    return{label:d.toLocaleString('en-IN',{month:'short'}),yr:d.getFullYear(),rev:sum(bills,b=>b.total),paid:sum(custPays.filter(p=>same(p.date||p.createdAt)),p=>p.amount),bills:bills.length,current:k===11};
   });
-  const maxRev=Math.max(...monthlyData.map(m=>m.rev),1);
+  const maxRev=Math.max(...monthlyData.map(m=>Math.max(m.rev,m.paid)),1);
+  const compact=n=>n>=1e7?(n/1e7).toFixed(1)+'Cr':n>=1e5?(n/1e5).toFixed(1)+'L':n>=1e3?(n/1e3).toFixed(1)+'k':Math.round(n)+'';
 
   /* ── PRODUCT ANALYTICS ── */
   const productStats=P.map(p=>{
     const soldItems=B.flatMap(b=>b.items||[]).filter(i=>i.sku===p.sku);
     const qtySold=soldItems.reduce((s,i)=>s+i.qty,0);
     const revenue=soldItems.reduce((s,i)=>s+i.total,0);
-    const returnedItems=(Ret||[]).flatMap(r=>r.items||[]).filter(i=>i.sku===p.sku);
-    const qtyReturned=returnedItems.reduce((s,i)=>s+i.qty,0);
+    const qtyReturned=custRets.flatMap(r=>r.items||[]).filter(i=>i.sku===p.sku).reduce((s,i)=>s+i.qty,0);
     const returnRate=qtySold>0?(qtyReturned/qtySold*100):0;
     const lastSold=soldItems.length>0?Math.max(...B.filter(b=>(b.items||[]).some(i=>i.sku===p.sku)).map(b=>new Date(b.date).getTime())):0;
     const daysSinceLastSold=lastSold>0?Math.floor((now-lastSold)/(1000*60*60*24)):999;
     return{...p,qtySold,revenue,qtyReturned,returnRate,daysSinceLastSold,inStock:p.qty};
   }).sort((a,b)=>b.qtySold-a.qtySold);
-
   const topSellers=productStats.filter(p=>p.qtySold>0).slice(0,10);
   const slowMovers=productStats.filter(p=>p.qtySold<3&&p.inStock>0).sort((a,b)=>b.daysSinceLastSold-a.daysSinceLastSold).slice(0,10);
   const deadStock=productStats.filter(p=>p.qtySold===0&&p.inStock>0);
@@ -4001,145 +3999,153 @@ function Analytics({P,B,C,Py,Ret,mob}){
   /* ── CUSTOMER SCORING ── */
   const customerScores=C.map(c=>{
     const cBills=B.filter(b=>b.customerId===c.id);
-    const cPay=Py.filter(p=>cBills.some(b=>b.id===p.billId));
-    const cRet=(Ret||[]).filter(r=>r.customerId===c.id);
-    const totalBilled=cBills.reduce((s,b)=>s+b.total,0)+(c.openingBalance||0);
-    const totalPaid=cPay.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
-    const outstanding=totalBilled-totalPaid;
+    const linked=p=>cBills.some(b=>b.id===p.billId)||isOBPay(p,c.id);
+    const cPayAll=custPayAll.filter(linked);
+    const cPay=cPayAll.filter(p=>!isBounced(p));
+    const cRet=custRets.filter(r=>r.customerId===c.id||cBills.some(b=>b.id===r.billId));
+    const ob=c.openingBalance||0;
+    const totalBilled=sum(cBills,b=>b.total)+ob;
+    const totalPaid=sum(cPay,p=>p.amount);
+    const returnVal=sum(cRet,r=>r.total);
+    const outstanding=totalBilled-totalPaid-returnVal;
+    const active=cBills.length>0||ob>0;
     const outstandingPct=totalBilled>0?(outstanding/totalBilled*100):0;
-    const returnVal=cRet.reduce((s,r)=>s+r.total,0);
     const returnRate=totalBilled>0?(returnVal/totalBilled*100):0;
-    const chequePay=cPay.filter(p=>p.mode==='Cheque');
-    const bounced=chequePay.filter(p=>['bounced','redeposited'].includes(p.chequeStatus)).length;
+    const chequePay=cPayAll.filter(p=>p.mode==='Cheque');
+    const bounced=chequePay.filter(p=>['bounced','redeposited','recleared'].includes(p.chequeStatus)).length;
     const bouncedRate=chequePay.length>0?(bounced/chequePay.length*100):0;
-    const avgPaymentDays=cBills.length>0?(()=>{
-      let totalDays=0,count=0;
-      cBills.forEach(b=>{const billDate=new Date(b.date);const firstPay=cPay.filter(p=>p.billId===b.id).sort((a,b)=>new Date(a.date)-new Date(b.date))[0];if(firstPay){totalDays+=Math.floor((new Date(firstPay.date)-billDate)/(1000*60*60*24));count++;}});
-      return count>0?totalDays/count:999;
-    })():999;
+    let payDays=0,payCount=0;
+    cBills.forEach(b=>{const first=cPay.filter(p=>p.billId===b.id).sort((a,b2)=>asDate(a.date)-asDate(b2.date))[0];if(first){payDays+=Math.max(0,Math.floor((asDate(first.date)-new Date(b.date))/864e5));payCount++;}});
+    const avgPaymentDays=payCount?payDays/payCount:null;
     const lastOrderDate=cBills.length>0?Math.max(...cBills.map(b=>new Date(b.date).getTime())):0;
-    const daysSinceLastOrder=lastOrderDate>0?Math.floor((now-lastOrderDate)/(1000*60*60*24)):999;
-    const orderFrequency=cBills.length>0&&lastOrderDate>0?(()=>{
-      const firstOrder=Math.min(...cBills.map(b=>new Date(b.date).getTime()));
-      const daySpan=Math.floor((lastOrderDate-firstOrder)/(1000*60*60*24))||1;
-      return cBills.length/daySpan*30; // orders per month
-    })():0;
-
-    /* ── Score calculation (100 = perfect customer) ── */
+    const daysSinceLastOrder=lastOrderDate>0?Math.floor((now-lastOrderDate)/864e5):null;
     let score=100;
-    // Outstanding debt penalty (max -30)
-    score-=Math.min(30,outstandingPct*0.4);
-    // Return rate penalty (max -20)
+    score-=Math.min(30,Math.max(0,outstandingPct)*0.4);
     score-=Math.min(20,returnRate*0.5);
-    // Cheque bounce penalty (max -25)
     score-=Math.min(25,bouncedRate*0.5);
-    // Slow payment penalty (max -15)
-    if(avgPaymentDays>60)score-=15;
-    else if(avgPaymentDays>30)score-=8;
-    else if(avgPaymentDays>15)score-=3;
-    // Inactivity penalty (max -10)
-    if(daysSinceLastOrder>180)score-=10;
-    else if(daysSinceLastOrder>90)score-=5;
+    if(avgPaymentDays!==null){if(avgPaymentDays>60)score-=15;else if(avgPaymentDays>30)score-=8;else if(avgPaymentDays>15)score-=3;}
+    if(daysSinceLastOrder!==null){if(daysSinceLastOrder>180)score-=10;else if(daysSinceLastOrder>90)score-=5;}
     score=Math.max(0,Math.round(score));
+    const tier=!active?'New':score>=80?'Premium':score>=60?'Good':score>=40?'Moderate':'Risky';
+    const tierColor={Premium:GR,Good:BL,Moderate:AMB,Risky:RD,New:MUT}[tier];
+    const tierBg={Premium:GRL,Good:BLL,Moderate:AMBL,Risky:RDL,New:'#F1EFE8'}[tier];
+    return{...c,score:active?score:null,tier,tierColor,tierBg,totalBilled,totalPaid,outstanding,outstandingPct,returnRate,bouncedRate,avgPaymentDays:avgPaymentDays===null?null:Math.round(avgPaymentDays),daysSinceLastOrder,billCount:cBills.length,active};
+  }).sort((a,b)=>(b.score??-1)-(a.score??-1));
 
-    const tier=score>=80?'Premium':score>=60?'Good':score>=40?'Moderate':'Risky';
-    const tierColor={Premium:GR,Good:BL,Moderate:AMB,Risky:RD}[tier];
-    const tierBg={Premium:GRL,Good:BLL,Moderate:AMBL,Risky:RDL}[tier];
+  const activeCust=customerScores.filter(c=>c.active);
+  const receivable=sum(activeCust,c=>c.outstanding);
+  const owingCount=activeCust.filter(c=>c.outstanding>0.5).length;
+  const topOwing=[...activeCust].filter(c=>c.outstanding>0.5).sort((a,b)=>b.outstanding-a.outstanding).slice(0,5);
+  const TIERS=[['Premium',GR,'Pays well, few returns'],['Good',BL,'Reliable, minor issues'],['Moderate',AMB,'Watch closely'],['Risky',RD,'High dues or bounced cheques']];
+  const tierCount=t=>activeCust.filter(c=>c.tier===t).length;
+  const riskExposure=sum(activeCust.filter(c=>c.tier==='Risky'),c=>Math.max(0,c.outstanding));
 
-    return{...c,score,tier,tierColor,tierBg,totalBilled,totalPaid,outstanding,outstandingPct,returnRate,bouncedRate,avgPaymentDays:avgPaymentDays===999?null:Math.round(avgPaymentDays),daysSinceLastOrder:daysSinceLastOrder===999?null:daysSinceLastOrder,orderFrequency:+orderFrequency.toFixed(1),billCount:cBills.length};
-  }).sort((a,b)=>b.score-a.score);
-
-  const premiumCount=customerScores.filter(c=>c.tier==='Premium').length;
-  const riskyCount=customerScores.filter(c=>c.tier==='Risky').length;
-  const riskExposure=customerScores.filter(c=>c.tier==='Risky').reduce((s,c)=>s+c.outstanding,0);
+  const modeKey=m=>/upi|online/i.test(m||'')?'UPI':/cheque/i.test(m||'')?'Cheque':/bank|neft|rtgs|imps|transfer/i.test(m||'')?'Bank Transfer':/cash/i.test(m||'')?'Cash':'Other';
+  const modeColors={Cash:GR,UPI:BL,Cheque:AMB,'Bank Transfer':PUR,Other:MUT};
+  const modes=Object.entries(pPays.reduce((a,p)=>{const k=modeKey(p.mode);a[k]=a[k]||{amt:0,n:0};a[k].amt+=p.amount;a[k].n++;return a;},{})).sort((a,b)=>b[1].amt-a[1].amt);
 
   const TierBar=({score,tier,tierColor,tierBg})=><div style={{display:'flex',alignItems:'center',gap:8}}>
     <div style={{flex:1,height:6,background:'#eee',borderRadius:3,overflow:'hidden'}}>
-      <div style={{width:score+'%',height:'100%',background:tierColor,borderRadius:3,transition:'width .5s'}}/>
+      <div style={{width:(score||0)+'%',height:'100%',background:tierColor,borderRadius:3,transition:'width .5s'}}/>
     </div>
-    <span style={{fontSize:11,fontWeight:700,color:tierColor,minWidth:32}}>{score}</span>
-    <span style={{fontSize:10,background:tierBg,color:tierColor,padding:'1px 7px',borderRadius:10,fontWeight:700}}>{tier}</span>
+    <span style={{fontSize:11,fontWeight:700,color:tierColor,minWidth:32}}>{score??'—'}</span>
   </div>;
 
+  const card={background:'#fff',border:'1px solid '+BORD,borderRadius:12,padding:16};
+  const label={fontSize:11,fontWeight:700,color:MUT,textTransform:'uppercase',letterSpacing:'0.4px'};
+  const Kpi=({title,value,sub,accent,chip})=><div style={{...card,position:'relative',overflow:'hidden'}}>
+    <div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:accent}}/>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}><span style={label}>{title}</span>{chip}</div>
+    <div style={{fontSize:mob?19:23,fontWeight:800,...S.mono,color:TXT,margin:'8px 0 4px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{value}</div>
+    <div style={{fontSize:11,color:MUT}}>{sub}</div>
+  </div>;
+  const growthChip=growth===null?<span style={{fontSize:10,color:MUT,background:'#F1EFE8',padding:'2px 7px',borderRadius:10,fontWeight:600}}>no prior data</span>
+    :<span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,background:growth>=0?GRL:RDL,color:growth>=0?GR:RD}}>{growth>=0?'▲':'▼'} {Math.abs(growth).toFixed(0)}%</span>;
+  const rangeText=R.start.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' – '+now.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+
   return<div>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:12}}>
-      <div style={S.h2}>Analytics & Insights</div>
-      <div style={{display:'flex',gap:6}}>
-        {[['month','Monthly'],['quarter','Quarterly'],['year','Yearly']].map(([p,l])=><button key={p} onClick={()=>setPeriod(p)} style={{padding:'6px 12px',borderRadius:6,border:'0.5px solid '+(period===p?BL:BORD),background:period===p?BL:'#fff',color:period===p?'#fff':MUT,cursor:'pointer',fontSize:11,fontWeight:600,transition:'all 0.2s'}}>{l}</button>)}
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:16,flexWrap:'wrap',gap:12}}>
+      <div><div style={{...S.h2,marginBottom:2}}>Analytics</div><div style={{fontSize:12,color:MUT}}>{R.label} · {rangeText}</div></div>
+      <div style={{display:'inline-flex',background:'#F1EFE8',borderRadius:9,padding:3}}>
+        {[['month','Month'],['quarter','Quarter'],['year','Financial Year']].map(([p,l])=><button key={p} onClick={()=>setPeriod(p)} style={{padding:'6px 14px',borderRadius:7,border:'none',background:period===p?'#fff':'transparent',color:period===p?TXT:MUT,boxShadow:period===p?'0 1px 3px rgba(0,0,0,0.1)':'none',cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
       </div>
     </div>
-    <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-      {[['overview','📊 Overview'],['products','📦 Products'],['customers','👥 Customers']].map(([t,l])=><button key={t} onClick={()=>setTab(t)} style={{padding:'8px 16px',borderRadius:8,border:'0.5px solid '+(tab===t?BL:BORD),background:tab===t?`linear-gradient(135deg, ${BL} 0%, #2563eb 100%)`:_theme==='modern'?'rgba(255,255,255,0.05)':'#fff',color:tab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600,transition:'all 0.2s',boxShadow:tab===t?`0 4px 12px ${BL}40`:' none'}}>{l}</button>)}
+    <div style={{display:'flex',gap:22,borderBottom:'1px solid '+BORD,marginBottom:16}}>
+      {[['overview','Overview'],['products','Products'],['customers','Customers']].map(([t,l])=><button key={t} onClick={()=>setTab(t)} style={{padding:'8px 2px',border:'none',background:'none',borderBottom:'2px solid '+(tab===t?BL:'transparent'),marginBottom:-1,color:tab===t?BL:MUT,cursor:'pointer',fontSize:13,fontWeight:700}}>{l}</button>)}
     </div>
 
     {/* ── OVERVIEW ── */}
     {tab==='overview'&&<div>
-      <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(4,1fr)',gap:14,marginBottom:16}}>
-        {[
-          {l:'Revenue',v:fmt(thisRev),trend:(revGrowth>=0?'+':'')+revGrowth.toFixed(1)+'%',icon:'📈',c:BL,bg:'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.05) 100%)'},
-          {l:'Outstanding',v:fmt(outstanding),trend:((outstanding/Math.max(totalRev,1))*100).toFixed(1)+'% pending',icon:'⚠️',c:RD,bg:'linear-gradient(135deg, rgba(239,68,68,0.1) 0%, rgba(239,68,68,0.05) 100%)'},
-          {l:'Avg Bill',v:fmt(avgBillValue),trend:B.length+' invoices',icon:'💰',c:GR,bg:'linear-gradient(135deg, rgba(34,197,94,0.1) 0%, rgba(34,197,94,0.05) 100%)'},
-          {l:'Return Rate',v:returnRate.toFixed(1)+'%',trend:fmt(totalReturnVal)+' value',icon:'↩️',c:AMB,bg:'linear-gradient(135deg, rgba(251,146,60,0.1) 0%, rgba(251,146,60,0.05) 100%)'},
-        ].map(({l,v,trend,icon,c,bg})=><div key={l} style={{background:bg,border:'0.5px solid '+c+'30',borderRadius:12,padding:'16px',backdropFilter:'blur(10px)',transition:'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',cursor:'pointer',position:'relative',overflow:'hidden'}} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-4px)';e.currentTarget.style.boxShadow=`0 12px 24px ${c}20`;}} onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='none';}}>
-          <div style={{position:'absolute',top:-10,right:-10,fontSize:40,opacity:0.1}}>{icon}</div>
-          <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',color:c,opacity:0.8,marginBottom:8,letterSpacing:'0.5px'}}>{l}</div>
-          <div style={{fontSize:mob?20:24,fontWeight:800,fontFamily:'monospace',color:c,marginBottom:6}}>{v}</div>
-          <div style={{fontSize:10,color:c,opacity:0.7}}>{trend}</div>
-        </div>)}
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(4,1fr)',gap:12,marginBottom:14}}>
+        <Kpi title='Sales' value={fmt(sales)} accent={BL} chip={growthChip} sub={pBills.length+' invoice'+(pBills.length===1?'':'s')+' · avg '+fmt(avgBill)}/>
+        <Kpi title='Collected' value={fmt(collected)} accent={GR} sub={pPays.length+' payment'+(pPays.length===1?'':'s')+(sales>0?' · '+Math.round(collected/sales*100)+'% of sales':'')}/>
+        <Kpi title='To Receive' value={fmt(Math.max(0,receivable))} accent={RD} sub={owingCount+' customer'+(owingCount===1?'':'s')+' owe you · all time'}/>
+        <Kpi title='Sales Returns' value={fmt(returnsVal)} accent={AMB} sub={sales>0?returnRate.toFixed(1)+'% of sales':pRets.length+' return'+(pRets.length===1?'':'s')}/>
       </div>
 
-      {/* 12-month chart */}
-      <div style={{...S.card,marginBottom:14,background:_theme==='modern'?'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)':'#fff',backdropFilter:_theme==='modern'?'blur(10px)':'none',border:'0.5px solid '+(_theme==='modern'?'rgba(255,255,255,0.1)':BORD)}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-          <div style={S.h3}>12-Month Trend</div>
-          <div style={{fontSize:10,color:MUT}}>Revenue (Blue) vs Collections (Green)</div>
+      <div style={{...card,marginBottom:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
+          <span style={label}>Last 12 months</span>
+          <div style={{display:'flex',gap:14,fontSize:11,color:MUT}}>
+            <span style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:BL}}/>Sales</span>
+            <span style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:GR}}/>Collected</span>
+          </div>
         </div>
-        <div style={{display:'flex',alignItems:'flex-end',gap:5,height:160,paddingTop:12,paddingBottom:8,overflowX:'auto',background:_theme==='modern'?'linear-gradient(to right, rgba(59,130,246,0.05) 0%, rgba(34,197,94,0.05) 100%)':'transparent',borderRadius:8,padding:'12px',margin:'-12px'}}>
-          {monthlyData.map((m,i)=><div key={m.label+m.yr} style={{flex:'0 0 auto',minWidth:44,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-            <div style={{fontSize:8,...S.mono,color:BL,fontWeight:600,minHeight:14}}>{m.rev>0?'₹'+Math.round(m.rev/1000)+'k':'-'}</div>
-            <div style={{width:32,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:120,gap:0.5,position:'relative'}}>
-              <div style={{width:'100%',height:Math.max((m.rev/maxRev)*100,m.rev>0?4:0)+'%',background:`linear-gradient(to top, ${BL}, ${BL}99)`,borderRadius:'4px 4px 0 0',opacity:0.85,transition:`all 0.5s cubic-bezier(0.4, 0, 0.2, 1)`,boxShadow:`0 4px 12px ${BL}30`}}/>
-              <div style={{width:'80%',height:Math.max((m.paid/maxRev)*100,m.paid>0?4:0)+'%',background:`linear-gradient(to top, ${GR}, ${GR}99)`,borderRadius:'4px 4px 0 0',opacity:0.75,transition:`all 0.5s cubic-bezier(0.4, 0, 0.2, 1) ${i*20}ms`,boxShadow:`0 4px 12px ${GR}20`}}/>
+        <div style={{position:'relative',height:180,marginLeft:40}}>
+          {[1,0.5,0].map(f=><div key={f} style={{position:'absolute',left:0,right:0,top:(1-f)*150,borderTop:'1px '+(f===0?'solid':'dashed')+' '+BORD}}>
+            <span style={{position:'absolute',left:-40,top:-7,width:34,textAlign:'right',fontSize:9,color:MUT,...S.mono}}>{compact(maxRev*f)}</span>
+          </div>)}
+          <div style={{position:'absolute',inset:0,display:'flex',gap:mob?2:6}}>
+            {monthlyData.map(m=><div key={m.label+m.yr} title={`${m.label} ${m.yr}\nSales: ${fmt(m.rev)} (${m.bills} invoices)\nCollected: ${fmt(m.paid)}`} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center'}}>
+              <div style={{height:150,width:'100%',display:'flex',alignItems:'flex-end',justifyContent:'center',gap:2}}>
+                {[[m.rev,BL],[m.paid,GR]].map(([v,c],k)=><div key={k} style={{width:'38%',maxWidth:16,height:v>0?Math.max(v/maxRev*150,3):0,background:c,borderRadius:'3px 3px 0 0',opacity:m.current?1:0.75}}/>)}
+              </div>
+              <div style={{fontSize:10,marginTop:6,color:m.current?TXT:MUT,fontWeight:m.current?800:500}}>{m.label}</div>
+              {!mob&&<div style={{fontSize:9,color:MUT,...S.mono}}>{m.rev>0?compact(m.rev):''}</div>}
+            </div>)}
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:14}}>
+        <div style={card}>
+          <div style={{...label,marginBottom:12}}>Customer health</div>
+          {activeCust.length===0?<div style={{fontSize:12,color:MUT,padding:'20px 0',textAlign:'center'}}>No customer activity yet</div>:<>
+            <div style={{display:'flex',height:10,borderRadius:5,overflow:'hidden',background:'#eee',marginBottom:12}}>
+              {TIERS.map(([t,c])=>tierCount(t)>0&&<div key={t} title={t+': '+tierCount(t)} style={{width:(tierCount(t)/activeCust.length*100)+'%',background:c}}/>)}
             </div>
-            <div style={{fontSize:9,color:MUT,fontWeight:600,marginTop:2}}>{m.label}</div>
-            <div style={{fontSize:8,color:MUT+'88'}}>{m.bills} inv</div>
-          </div>)}
+            {TIERS.map(([t,c,d])=><div key={t} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0'}}>
+              <span style={{width:8,height:8,borderRadius:'50%',background:c,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700}}>{t}</div><div style={{fontSize:10,color:MUT}}>{d}</div></div>
+              <span style={{fontSize:14,fontWeight:800,color:c}}>{tierCount(t)}</span>
+            </div>)}
+            {riskExposure>0&&<div style={{marginTop:8,padding:'7px 10px',background:RDL,borderRadius:7,fontSize:11,color:RD,fontWeight:600}}>{fmt(riskExposure)} due from risky customers</div>}
+          </>}
+          <div style={{fontSize:10,color:MUT,marginTop:10}}>{activeCust.length} active · {C.length-activeCust.length} with no bills yet</div>
         </div>
-        <div style={{display:'flex',gap:16,marginTop:12,fontSize:11,paddingTop:8,borderTop:'0.5px solid '+BORD}}>
-          <span style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:14,height:10,background:`linear-gradient(to right, ${BL}, ${BL}99)`,borderRadius:3,display:'inline-block',boxShadow:`0 2px 6px ${BL}40`}}/> <span style={{fontWeight:600}}>Revenue</span></span>
-          <span style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:14,height:10,background:`linear-gradient(to right, ${GR}, ${GR}99)`,borderRadius:3,display:'inline-block',boxShadow:`0 2px 6px ${GR}20`}}/> <span style={{fontWeight:600}}>Collections</span></span>
-        </div>
-      </div>
 
-      {/* Customer tier summary */}
-      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:14}}>
-        <div style={S.card}>
-          <div style={S.h3}>Customer Health Summary</div>
-          {[['Premium',premiumCount,GR,GRL,'Paying well, low returns'],['Good',customerScores.filter(c=>c.tier==='Good').length,BL,BLL,'Reliable, minor issues'],['Moderate',customerScores.filter(c=>c.tier==='Moderate').length,AMB,AMBL,'Watch closely'],['Risky',riskyCount,RD,RDL,'High outstanding or bounces']].map(([t,n,c,bg,d])=><div key={t} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'0.5px solid #f0ede8'}}>
-            <div style={{width:36,height:36,borderRadius:8,background:bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:800,color:c,flexShrink:0}}>{n}</div>
-            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:12,color:c}}>{t}</div><div style={{fontSize:11,color:MUT}}>{d}</div></div>
-            <div style={{...S.mono,fontSize:11,color:c,fontWeight:600}}>{C.length>0?(n/C.length*100).toFixed(0):'0'}%</div>
+        <div style={card}>
+          <div style={{...label,marginBottom:12}}>Top dues</div>
+          {topOwing.length===0?<div style={{fontSize:12,color:MUT,padding:'20px 0',textAlign:'center'}}>Nobody owes you anything</div>:
+          topOwing.map(c=><div key={c.id} style={{marginBottom:11}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,gap:8}}>
+              <span style={{fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</span>
+              <span style={{...S.mono,fontWeight:700,color:RD,whiteSpace:'nowrap'}}>{fmt(c.outstanding)}</span>
+            </div>
+            <div style={{height:5,background:'#f0ede8',borderRadius:3}}><div style={{width:(c.outstanding/topOwing[0].outstanding*100)+'%',height:'100%',background:RD,opacity:0.7,borderRadius:3}}/></div>
           </div>)}
-          {riskyCount>0&&<div style={{marginTop:8,padding:'7px 10px',background:RDL,borderRadius:7,fontSize:12,color:RD,fontWeight:600}}>
-            Risk exposure: {fmt(riskExposure)} outstanding from {riskyCount} risky customers
-          </div>}
         </div>
-        <div style={S.card}>
-          <div style={S.h3}>Payment Mode Breakdown</div>
-          {(()=>{
-            const modes={Cash:0,'Online (UPI)':0,Cheque:0};
-            Py.forEach(p=>{if(modes[p.mode]!==undefined)modes[p.mode]+=p.amount;});
-            const total=Object.values(modes).reduce((s,v)=>s+v,0)||1;
-            return Object.entries(modes).map(([mode,amt])=><div key={mode} style={{marginBottom:10}}>
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
-                <span style={{fontWeight:600}}>{mode}</span>
-                <span style={{...S.mono,color:GR,fontWeight:700}}>{fmt(amt)} ({(amt/total*100).toFixed(0)}%)</span>
-              </div>
-              <div style={{height:6,background:'#eee',borderRadius:3}}>
-                <div style={{width:(amt/total*100)+'%',height:'100%',background:mode==='Cash'?GR:mode==='Online (UPI)'?BL:AMB,borderRadius:3,transition:'width .5s'}}/>
-              </div>
-            </div>);
-          })()}
+
+        <div style={card}>
+          <div style={{...label,marginBottom:12}}>Collections by mode · {R.label.toLowerCase()}</div>
+          {modes.length===0?<div style={{fontSize:12,color:MUT,padding:'20px 0',textAlign:'center'}}>No payments received in this period</div>:
+          modes.map(([m,v])=><div key={m} style={{marginBottom:11}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+              <span style={{fontWeight:700}}>{m} <span style={{fontWeight:500,color:MUT,fontSize:10}}>· {v.n}</span></span>
+              <span style={{...S.mono,fontWeight:700}}>{fmt(v.amt)} <span style={{color:MUT,fontWeight:500}}>{Math.round(v.amt/collected*100)}%</span></span>
+            </div>
+            <div style={{height:5,background:'#f0ede8',borderRadius:3}}><div style={{width:(v.amt/collected*100)+'%',height:'100%',background:modeColors[m],borderRadius:3}}/></div>
+          </div>)}
         </div>
       </div>
     </div>}
@@ -4183,7 +4189,7 @@ function Analytics({P,B,C,Py,Ret,mob}){
     {/* ── CUSTOMERS ── */}
     {tab==='customers'&&<div>
       <div style={{marginBottom:10,padding:'10px 14px',borderRadius:8,background:BLL,fontSize:12,color:BL,lineHeight:1.7}}>
-        <strong>Score explained:</strong> 100 = perfect customer. Deducted for: outstanding debt, returns, cheque bounces, slow payments, inactivity. Scores update live as you record transactions.
+        <strong>Score explained:</strong> 100 = perfect customer. Deducted for: outstanding dues, returns, cheque bounces, slow payments, inactivity. Customers with no bills or opening balance aren't scored.
       </div>
       <div style={{...S.card,padding:0,overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?500:800}}>
@@ -4196,7 +4202,7 @@ function Analytics({P,B,C,Py,Ret,mob}){
                 <div style={{fontSize:10,color:MUT}}>{c.phone}{c.shopname?' · '+c.shopname:''}</div>
               </td>
               <td style={{...S.td,minWidth:140}}><TierBar score={c.score} tier={c.tier} tierColor={c.tierColor} tierBg={c.tierBg}/></td>
-              <td style={S.td}><Bdg c={c.tier==='Premium'?'green':c.tier==='Good'?'blue':c.tier==='Moderate'?'amber':'red'}>{c.tier}</Bdg></td>
+              <td style={S.td}><Bdg c={{Premium:'green',Good:'blue',Moderate:'amber',Risky:'red'}[c.tier]||'gray'}>{c.tier==='New'?'No bills yet':c.tier}</Bdg></td>
               <td style={{...S.td,...S.mono,textAlign:'right'}}>{c.billCount}</td>
               <td style={{...S.td,...S.mono,fontWeight:700,color:c.outstanding>0?RD:GR}}>{fmt(c.outstanding)}</td>
               <td style={S.td}><span style={{...S.mono,color:c.returnRate>20?RD:c.returnRate>10?AMB:GR,fontWeight:c.returnRate>10?700:400}}>{c.returnRate.toFixed(1)}%</span></td>
