@@ -20,7 +20,8 @@ import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
 import JSZip from 'jszip';
 import html2canvas from 'html2canvas';
-import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, generateInvoicePDF, generateEWayBillPDF, compareEntries } from '@/lib/pdf';
+import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, generateInvoicePDF, generateEWayBillPDF, generateSupplierReconPDF, compareEntries } from '@/lib/pdf';
+import { normaliseStatement, reconcileSupplier } from '@/lib/supplierRecon';
 
 /* ── constants ── */
 // Empty by default - will be populated dynamically from actual products
@@ -634,7 +635,7 @@ export default function ShopOS(){
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} Ret={Ret} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
       {page==='bills'&&<Bills B={B} setB={setB} Py={Py} Ret={Ret} setPy={setPy} firm={firm} C={C} initBill={vBill} onClearInit={()=>setVBill(null)} activeFirm={activeFirm} mob={mob}/>}
-      {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} Py={Py} setPy={setPy} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
+      {page==='suppliers'&&<Suppliers SI={SI} setSI={setSI} SS={SS} setSS={setSS} Py={Py} setPy={setPy} Ret={Ret} firm={firm} gk={()=>firm?.geminiKey||''} mob={mob}/>
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} SI={SI} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
       {page==='ledger'&&<Ledger B={Bactive} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob} SI={SI}/>}
@@ -3461,77 +3462,110 @@ function ReconciliationHistory({mob,C}){
 }
 
 /* ── SUPPLIER RECONCILIATION ── */
-function SupplierRecon({SI,firm,gk,mob}){
-  const[sessionId,setSessionId]=useState(null);const[selectedSupplier,setSelectedSupplier]=useState('');const[toast,showT]=useToast();const[uploading,setUploading]=useState(false);
-  const[scanStatus,setScanStatus]=useState('');const[selectedFile,setSelectedFile]=useState(null);const[sessionLabel,setSessionLabel]=useState('');
-
-  const suppliers=[...new Set(SI.map(i=>i.supplierName))].sort();
-  const handleFile=async e=>{const file=e.target.files[0];if(!file)return;setSelectedFile(file);setSessionLabel(file.name.replace(/\.[^/.]+$/,''));};
-
-  const uploadAndReconcile=async()=>{if(!selectedFile)return;if(!selectedSupplier){showT('Select a supplier first','err');return;}if(!gk()){showT('Add Gemini API key in Settings first','err');return;}setScanStatus('Reading file...');setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const mimeType=selectedFile.type||'application/octet-stream';let csvText='';if(selectedFile.type.startsWith('text/')){csvText=new TextDecoder().decode(atob(b64).split('').map(c=>c.charCodeAt(0)));}setScanStatus('Creating session...');const sessionRes=await api.post('/api/supplier-recon-sessions',{supplierName:selectedSupplier,label:sessionLabel||'Supplier Statement'});setScanStatus('Processing statement...');const reconcileRes=await api.post('/api/supplier-reconcile',{apiKey:gk(),csvText,imageData:b64,imageType:mimeType,sessionId:sessionRes.id,supplierName:selectedSupplier,invoices:SI.filter(i=>i.supplierName===selectedSupplier)});setSessionId(reconcileRes.sessionId);setSelectedFile(null);setScanStatus('');showT('Statement processed!');};r.readAsDataURL(selectedFile);}catch(err){showT('Error: '+err.message,'err');setScanStatus('');}finally{setUploading(false);}};
-
-  if(sessionId){return<ReviewSupplierSession sessionId={sessionId} onBack={()=>{setSessionId(null);setSelectedFile(null);}} mob={mob} showT={showT}/>;}
-
-  return<div>
-    {toast}
-    <div style={{marginBottom:uploading?12:0}}><ScanProgress active={uploading} kind='statement' fileName={selectedFile?.name} status={scanStatus}/></div>
-    {!uploading&&scanStatus&&<div style={{padding:12,background:AMBL,borderRadius:8,marginBottom:12,fontSize:12,color:AMB}}>{scanStatus}</div>}
-    <div style={{...S.card,marginBottom:14}}>
-      <div style={S.h2}>Supplier Statement Reconciliation</div>
-      <div style={S.h3}>Select Supplier & Upload</div>
-      <Fld label='Select Supplier *'><select style={S.inp} value={selectedSupplier} onChange={e=>setSelectedSupplier(e.target.value)}><option value=''>Choose a supplier...</option>{suppliers.map(s=><option key={s} value={s}>{s}</option>)}</select></Fld>
-      <label style={{border:'1.5px dashed '+BORD,borderRadius:10,padding:'22px 16px',textAlign:'center',cursor:'pointer',background:BG,display:'block',marginBottom:12}}>
-        <input type='file' accept='.pdf,.csv,.txt,image/*' style={{display:'none'}} onChange={handleFile}/>
-        <div style={{fontSize:36,marginBottom:6}}>📋</div>
-        <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{selectedFile?selectedFile.name:'Tap to upload statement'}</div>
-        <div style={{fontSize:11,color:MUT}}>PDF, CSV, TXT, or image (JPG/PNG) • Max 10MB</div>
-      </label>
-      {selectedFile&&<><Fld label='Session Label'><input style={S.inp} value={sessionLabel} onChange={e=>setSessionLabel(e.target.value)} placeholder='e.g., ABC Traders Mar 2025'/></Fld><button style={S.btn('pri')} onClick={uploadAndReconcile} disabled={uploading}>{uploading?'Processing...':'Start Reconciliation'}</button></>}
+function SupplierReconTab({suppliers,SS,SI,Py,Ret,firm,gk,mob,cache,setCache,initial,onAddInvoice,onRecordPayment,onGoUpload}){
+  const[sup,setSup]=useState(initial?.supplier||'');
+  const stmts=SS.filter(s=>normalizeSupplierName(s.supplierName)===normalizeSupplierName(sup)).sort((a,b)=>new Date(b.statementDate||b.uploadedAt)-new Date(a.statementDate||a.uploadedAt));
+  const[stId,setStId]=useState(initial?.statementId||'');
+  useEffect(()=>{if(!stmts.some(s=>s.id===stId))setStId(stmts[0]?.id||'');},[sup,SS.length]);// eslint-disable-line react-hooks/exhaustive-deps
+  const[busy,setBusy]=useState(false);const[err,setErr]=useState('');const[showMatched,setShowMatched]=useState(false);const[pdfBusy,setPdfBusy]=useState(false);
+  const st=stmts.find(s=>s.id===stId);
+  const ext=stId?cache[stId]:null;
+  const run=async()=>{
+    if(!stId)return;if(!gk()){setErr('Add your Gemini API key in Settings first.');return;}
+    setBusy(true);setErr('');
+    try{
+      const res=await fetch('/api/supplier-statement-recon',{method:'POST',headers:await authH(),body:JSON.stringify({statementId:stId,apiKey:gk()})});
+      const j=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(j.error||('Server error '+res.status));
+      setCache(c=>({...c,[stId]:j}));
+    }catch(e){setErr(e.message);}finally{setBusy(false);}
+  };
+  const statement=ext?normaliseStatement(ext):null;
+  const r=statement&&statement.lines.length>0?reconcileSupplier({statement,supplierName:sup,invoices:SI,payments:Py,returns:Ret||[]}):null;
+  const owe=n=>Math.abs(n)<0.5?'Settled':(n>0?'You owe ':'Advance ')+fmt(Math.abs(n));
+  const dateIN=d=>d?new Date(typeof d==='number'?d*864e5:d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—';
+  const KL={invoice:'Invoice',payment:'Payment',return:'Return / CN'};
+  const card={background:'#fff',border:'1px solid '+BORD,borderRadius:12,padding:16};
+  const lbl={fontSize:11,fontWeight:700,color:MUT,textTransform:'uppercase',letterSpacing:'0.4px'};
+  const Section=({title,count,color,children,hint})=><div style={{...card,padding:0,marginBottom:14,overflow:'hidden'}}>
+    <div style={{padding:'11px 14px',borderBottom:'1px solid '+BORD,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+      <span style={{width:8,height:8,borderRadius:'50%',background:color}}/><span style={{fontSize:13,fontWeight:700}}>{title}</span><span style={{fontSize:11,fontWeight:700,color,background:color+'18',padding:'1px 8px',borderRadius:10}}>{count}</span>
+      {hint&&<span style={{fontSize:11,color:MUT,marginLeft:'auto'}}>{hint}</span>}
     </div>
+    <div style={{overflowX:'auto'}}>{children}</div>
   </div>;
-}
-
-function ReviewSupplierSession({sessionId,onBack,mob,showT}){
-  const[session,setSession]=useState(null);const[txns,setTxns]=useState([]);const[loading,setLoading]=useState(true);const[filter,setFilter]=useState('all');const[invoices,setInvoices]=useState([]);
-
-  useEffect(()=>{(async()=>{const res=await api.get('/api/supplier-recon-sessions/'+sessionId);setSession(res.session);setTxns(res.transactions);setInvoices([]);setLoading(false);})();},[ sessionId]);
-
-  const filtered=txns.filter(t=>filter==='all'||t.status===filter);const stats=session?.stats||{};const lockAll=async()=>{if(!confirm('Lock all matched transactions?'))return;for(const t of txns.filter(x=>x.status==='matched')){await api.patch('/api/supplier-recon-sessions/'+sessionId,{txnId:t.id,isReconciled:true});}showT('Locked all matched transactions');};const exportCsv=async()=>{const res=await fetch(`/api/supplier-recon-sessions/${sessionId}/export`);const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`SupplierRecon_${session?.supplierName}.csv`;a.click();};
-
-  if(loading)return<div><Spin/></div>;
+  const th={...S.th,fontSize:10};const td={...S.td,fontSize:12};
+  const downloadPDF=async()=>{setPdfBusy(true);try{const pdf=await generateSupplierReconPDF(firm,r,{fileName:st?.fileName});pdf.save(`Reconciliation_${sup.replace(/[^\w]+/g,'_')}_${r.periodTo}.pdf`);}catch(e){alert('PDF failed: '+e.message);}finally{setPdfBusy(false);}};
 
   return<div>
-    <button style={S.btn('def',true)} onClick={onBack}>← Back</button>
-    {session?.status==='locked'&&<div style={{padding:12,background:GRL,borderRadius:8,marginBottom:12,fontSize:12,fontWeight:700,color:GR}}>✓ This session is locked and reconciled</div>}
-    <div style={{display:'grid',gridTemplateColumns:mob?'1fr 1fr':'repeat(6,1fr)',gap:8,marginBottom:14}}>
-      {[{l:'Total',v:stats.total,c:BL,bg:BLL},{l:'Matched',v:stats.matched,c:GR,bg:GRL},{l:'Likely',v:stats.likely,c:AMB,bg:AMBL},{l:'Unmatched',v:stats.unmatched,c:RD,bg:RDL},{l:'Disputed',v:stats.disputed||0,c:PUR,bg:PURL},{l:'Locked',v:stats.matched,c:PUR,bg:PURL}].map(({l,v,c,bg})=><div key={l} style={{...S.met,background:bg,border:'0.5px solid '+c+'30'}}>
-        <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',color:c+'aa'}}>{l}</div>
-        <div style={{fontSize:24,fontWeight:800,color:c}}>{v||0}</div>
-      </div>)}
+    <div style={{...card,marginBottom:14}}>
+      <div style={{fontSize:14,fontWeight:700,marginBottom:2}}>Reconcile with supplier statement</div>
+      <div style={{fontSize:12,color:MUT,marginBottom:12}}>Compares the supplier's statement with your purchase invoices, payments and returns, and explains any difference.</div>
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1.4fr auto',gap:10,alignItems:'end'}}>
+        <Fld label='Supplier'><select style={S.inp} value={sup} onChange={e=>{setSup(e.target.value);setErr('');}}><option value=''>— Select supplier —</option>{suppliers.map(x=><option key={x} value={x}>{x}</option>)}</select></Fld>
+        <Fld label='Statement'>{!sup?<select style={S.inp} disabled><option>Select a supplier first</option></select>
+          :stmts.length===0?<div style={{...S.inp,color:MUT,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>No statements uploaded<button style={S.btn('def',true)} onClick={()=>onGoUpload(sup)}>Upload</button></div>
+          :<select style={S.inp} value={stId} onChange={e=>{setStId(e.target.value);setErr('');}}>{stmts.map(x=><option key={x.id} value={x.id}>{x.fileName} · {x.statementDate?new Date(x.statementDate).toLocaleDateString('en-IN'):new Date(x.uploadedAt).toLocaleDateString('en-IN')}</option>)}</select>}</Fld>
+        <div style={{marginBottom:10}}><button style={{...S.btn('pri'),opacity:!stId||busy?0.6:1}} disabled={!stId||busy} onClick={run}>{ext?'Re-read statement':'Reconcile'}</button></div>
+      </div>
+      <ScanProgress active={busy} kind='statement' fileName={st?.fileName}/>
+      {err&&!busy&&<div style={{padding:'10px 14px',borderRadius:8,background:RDL,color:RD,fontSize:12,marginTop:10}}><strong>Couldn't reconcile:</strong> {err}</div>}
+      {ext&&!busy&&!r&&<div style={{padding:'10px 14px',borderRadius:8,background:AMBL,color:AMB,fontSize:12,marginTop:10}}>No transactions were found in this file. Make sure it is the supplier's statement/ledger of your account, then try "Re-read statement".</div>}
     </div>
-    <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
-      {['all','matched','likely','unmatched','disputed','ignored'].map(f=><button key={f} onClick={()=>setFilter(f)} style={{...S.btn(filter===f?'pri':'def',true),textTransform:'capitalize'}}>{f}</button>)}
-    </div>
-    <div style={{...S.card,padding:0,overflowX:'auto'}}>
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:mob?400:1000}}>
-        <thead><tr>{['Date','Invoice No','Description','Amount','Type','Status','Score','Matched Invoice',''].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-        <tbody>{filtered.map(t=><tr key={t.id} style={{background:t.isReconciled?BL+'08':''}}>
-          <td style={S.td}>{t.date}</td>
-          <td style={{...S.td,fontWeight:600}}>{t.invoiceNo}</td>
-          <td style={{...S.td,maxWidth:150,overflow:'hidden',textOverflow:'ellipsis'}}>{t.description}</td>
-          <td style={{...S.td,...S.mono,color:GR,fontWeight:700}}>{fmt(t.amount)}</td>
-          <td style={S.td}><Bdg c={t.type==='credit_note'?'amber':'blue'}>{t.type}</Bdg></td>
-          <td style={S.td}><Bdg c={{matched:GR,likely:AMB,unmatched:RD,disputed:PUR,ignored:MUT}[t.status]}>{t.status}</Bdg></td>
-          <td style={{...S.td,...S.mono,fontSize:10}}>{t.score}</td>
-          <td style={{...S.td,fontSize:10}}>{t.matchRef||'—'}</td>
-          <td style={S.td}>{t.isReconciled?'✓':t.status==='matched'?<button style={S.btn('suc',true)} onClick={async()=>{await api.patch('/api/supplier-recon-sessions/'+sessionId,{txnId:t.id,isReconciled:true});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,isReconciled:true}:x));}}>Lock</button>:t.status==='likely'?<><button style={S.btn('def',true)} onClick={async()=>{await api.patch('/api/supplier-recon-sessions/'+sessionId,{txnId:t.id,matchStatus:'matched'});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,status:'matched'}:x));}}>Confirm</button><button style={S.btn('dan',true)} onClick={async()=>{await api.patch('/api/supplier-recon-sessions/'+sessionId,{txnId:t.id,matchStatus:'unmatched'});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,status:'unmatched'}:x));}}>Clear</button></>:<button style={S.btn('amb',true)} onClick={async()=>{await api.patch('/api/supplier-recon-sessions/'+sessionId,{txnId:t.id,matchStatus:'disputed'});setTxns(ts=>ts.map(x=>x.id===t.id?{...x,status:'disputed'}:x));}}>Raise Dispute</button>}</td>
-        </tr>)}</tbody>
-      </table>
-    </div>
-    <div style={{marginTop:14,display:'flex',gap:8}}>
-      <button style={S.btn('pri')} onClick={lockAll}>Lock All Matched</button>
-      <button style={S.btn('def')} onClick={exportCsv}>📥 Export CSV</button>
-    </div>
+
+    {r&&!busy&&<div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:10,flexWrap:'wrap',marginBottom:10}}>
+        <div><div style={{fontSize:15,fontWeight:800}}>{sup}</div><div style={{fontSize:12,color:MUT}}>{dateIN(r.periodFrom)} – {dateIN(r.periodTo)} · {r.lineCount} statement lines read{st?' · '+st.fileName:''}</div></div>
+        <button style={S.btn('def',true)} onClick={downloadPDF} disabled={pdfBusy}>{pdfBusy?<><Spin/> PDF…</>:'⬇ Download PDF'}</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:12,marginBottom:14}}>
+        {[['As per supplier statement',owe(r.theirClosing),BL],['As per your books',owe(r.ourClosing),AMB],[r.balanced?'Balances match':'Difference',r.balanced?'✓ Reconciled':fmt(Math.abs(r.difference)),r.balanced?GR:RD]].map(([l,v,c])=><div key={l} style={{...card,position:'relative',overflow:'hidden'}}>
+          <span style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:c}}/>
+          <div style={lbl}>{l}</div><div style={{fontSize:mob?18:21,fontWeight:800,color:c,marginTop:6,fontFamily:'DM Mono,monospace'}}>{v}</div>
+        </div>)}
+      </div>
+      {Math.abs(r.statementGap)>=1&&<div style={{padding:'10px 14px',borderRadius:8,background:AMBL,color:AMB,fontSize:12,marginBottom:14}}>The statement's printed closing balance doesn't equal its opening balance plus the entries read ({fmt(Math.abs(r.statementGap))} apart). A row may have been missed — check the statement or try "Re-read statement".</div>}
+
+      {!r.balanced&&<div style={{...card,marginBottom:14}}>
+        <div style={{...lbl,marginBottom:10}}>Why the balances differ</div>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><tbody>
+          <tr><td style={{...td,fontWeight:700}}>Balance as per your books</td><td style={{...td,color:MUT}}/><td style={{...td,textAlign:'right',fontWeight:700,fontFamily:'DM Mono,monospace'}}>{owe(r.ourClosing)}</td></tr>
+          {r.explanation.map(e=><tr key={e.label}><td style={td}>{e.label}</td><td style={{...td,color:MUT,fontSize:11}}>{e.note}</td><td style={{...td,textAlign:'right',fontFamily:'DM Mono,monospace',fontWeight:700,color:e.amount>0?RD:GR,whiteSpace:'nowrap'}}>{e.amount>0?'+ ':'− '}{fmt(Math.abs(e.amount))}</td></tr>)}
+          <tr style={{background:'#F4F6FA'}}><td style={{...td,fontWeight:800}}>Balance as per supplier</td><td style={td}/><td style={{...td,textAlign:'right',fontWeight:800,fontFamily:'DM Mono,monospace'}}>{owe(r.theirClosing)}</td></tr>
+        </tbody></table>
+      </div>}
+
+      {r.mismatched.length>0&&<Section title='Amount mismatch' count={r.mismatched.length} color={AMB} hint='Same document, different amount — check the bill'>
+        <table style={{width:'100%',borderCollapse:'collapse',minWidth:560}}><thead><tr>{['Type','Their ref','Date','Supplier says','Your books','Difference'].map(h=><th key={h} style={{...th,textAlign:['Supplier says','Your books','Difference'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+        <tbody>{r.mismatched.map(p=><tr key={p.t.idx}><td style={td}>{KL[p.kind]}</td><td style={{...td,fontFamily:'DM Mono,monospace'}}>{p.t.ref||'—'}</td><td style={td}>{dateIN(p.t.date)}</td><td style={{...td,textAlign:'right'}}>{fmt(p.t.debit||p.t.credit)}</td><td style={{...td,textAlign:'right'}}>{fmt(p.o.amount)}</td><td style={{...td,textAlign:'right',fontWeight:700,color:AMB}}>{fmt(p.diff)}</td></tr>)}</tbody></table>
+      </Section>}
+
+      {r.onlyTheirs.length>0&&<Section title='On supplier statement, missing in your books' count={r.onlyTheirs.length} color={RD}>
+        <table style={{width:'100%',borderCollapse:'collapse',minWidth:640}}><thead><tr>{['Date','Type','Ref','Particulars','Debit','Credit',''].map((h,k)=><th key={k} style={{...th,textAlign:h==='Debit'||h==='Credit'?'right':'left'}}>{h}</th>)}</tr></thead>
+        <tbody>{r.onlyTheirs.map(l=><tr key={l.idx}><td style={td}>{dateIN(l.date)}</td><td style={{...td,textTransform:'capitalize'}}>{l.type.replace('_',' ')}</td><td style={{...td,fontFamily:'DM Mono,monospace'}}>{l.ref||'—'}</td><td style={{...td,color:MUT,maxWidth:220}}>{l.description||'—'}</td><td style={{...td,textAlign:'right'}}>{l.debit?fmt(l.debit):''}</td><td style={{...td,textAlign:'right'}}>{l.credit?fmt(l.credit):''}</td>
+          <td style={{...td,textAlign:'right',whiteSpace:'nowrap'}}>{l.type==='invoice'&&l.debit>0?<button style={S.btn('pri',true)} onClick={()=>onAddInvoice({supplierName:sup,invoiceNo:l.ref,invoiceDate:l.date,amount:l.debit})}>Add invoice</button>
+            :l.type==='payment'&&l.credit>0?<button style={S.btn('def',true)} onClick={()=>onRecordPayment({supplier:sup,amount:l.credit,date:l.date,ref:l.ref})}>Record payment</button>
+            :l.type==='credit_note'?<span style={{fontSize:11,color:MUT}}>Record in Returns</span>:<span style={{fontSize:11,color:MUT}}>Check with supplier</span>}</td></tr>)}</tbody></table>
+      </Section>}
+
+      {r.onlyOurs.length>0&&<Section title='In your books, missing on supplier statement' count={r.onlyOurs.length} color={PUR}>
+        <table style={{width:'100%',borderCollapse:'collapse',minWidth:520}}><thead><tr>{['Date','Type','Ref','Amount','What to do'].map(h=><th key={h} style={{...th,textAlign:h==='Amount'?'right':'left'}}>{h}</th>)}</tr></thead>
+        <tbody>{r.onlyOurs.map(o=><tr key={o.key}><td style={td}>{dateIN(o.day)}</td><td style={td}>{KL[o.kind]}</td><td style={{...td,fontFamily:'DM Mono,monospace'}}>{o.ref||'—'}</td><td style={{...td,textAlign:'right',fontWeight:700}}>{fmt(o.amount)}</td><td style={{...td,fontSize:11,color:MUT}}>{o.kind==='payment'?'Share payment proof with supplier':o.kind==='return'?'Ask supplier for a credit note':'Check invoice belongs to this supplier'}</td></tr>)}</tbody></table>
+      </Section>}
+
+      {r.matched.length>0&&<div style={{...card,padding:0,overflow:'hidden'}}>
+        <button onClick={()=>setShowMatched(v=>!v)} style={{width:'100%',padding:'11px 14px',display:'flex',alignItems:'center',gap:8,background:'none',border:'none',cursor:'pointer',textAlign:'left'}}>
+          <span style={{width:8,height:8,borderRadius:'50%',background:GR}}/><span style={{fontSize:13,fontWeight:700}}>Matched</span><span style={{fontSize:11,fontWeight:700,color:GR,background:GRL,padding:'1px 8px',borderRadius:10}}>{r.matched.length}</span>
+          <span style={{marginLeft:'auto',fontSize:12,color:MUT}}>{showMatched?'Hide':'Show'}</span>
+        </button>
+        {showMatched&&<div style={{overflowX:'auto',borderTop:'1px solid '+BORD}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:520}}><thead><tr>{['Type','Their ref','Your ref','Date','Amount'].map(h=><th key={h} style={{...th,textAlign:h==='Amount'?'right':'left'}}>{h}</th>)}</tr></thead>
+          <tbody>{r.matched.map(p=><tr key={p.t.idx}><td style={td}>{KL[p.kind]}</td><td style={{...td,fontFamily:'DM Mono,monospace'}}>{p.t.ref||'—'}</td><td style={{...td,fontFamily:'DM Mono,monospace'}}>{p.o.ref||'—'}</td><td style={td}>{dateIN(p.t.date)}</td><td style={{...td,textAlign:'right'}}>{fmt(p.o.amount)}</td></tr>)}</tbody></table></div>}
+      </div>}
+    </div>}
+
+    {!ext&&!busy&&!err&&<div style={{...card,textAlign:'center',padding:'30px 16px',color:MUT,fontSize:12}}>
+      Pick a supplier and one of their uploaded statements, then press <strong>Reconcile</strong>.<br/>Statements are uploaded under the <strong>Statements</strong> tab (PDF, image or CSV).
+    </div>}
   </div>;
 }
 
@@ -4362,7 +4396,7 @@ function Analytics({P,B,C,Py,Ret,mob}){
   </div>;}
 
 /* ── SUPPLIERS ── */
-function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
+function Suppliers({SI,setSI,SS,setSS,Py,setPy,Ret,firm,gk,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   console.log('[Suppliers] Rendered with SI:', SI, 'Length:', SI?.length);
   const[srch,setSrch]=useState('');
@@ -4391,6 +4425,9 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
   const filtered=srch?suppliers.filter(s=>s.toLowerCase().includes(srch.toLowerCase())):suppliers;
 
   const openAdd=()=>{setEditInv(null);setForm(BLANK);setShowForm(true);};
+  const[reconCache,setReconCache]=useState({});const[reconInit,setReconInit]=useState(null);
+  const addFromRecon=({supplierName,invoiceNo,invoiceDate,amount})=>{setEditInv(null);setForm({...BLANK,supplierName,invoiceNo:invoiceNo||'',invoiceDate:invoiceDate||'',subtotal:String(amount),total:String(amount),notes:'Added from supplier statement reconciliation'});setShowForm(true);setTab('invoices');window.scrollTo({top:0,behavior:'smooth'});showT('Check GST/discount split, then save the invoice');};
+  const payFromRecon=({supplier,amount,date,ref})=>{setSelSupplier(supplier);setPayAmount(String(amount));setPayDate(date||new Date().toISOString().split('T')[0]);setPayRef(ref||'');if(/ch(q|eque)/i.test(ref||''))setPayMode('Cheque');setTab('payments');window.scrollTo({top:0,behavior:'smooth'});showT('Payment details filled in — review and record');};
   const openEdit=inv=>{setEditInv(inv.id);setForm({supplierName:inv.supplierName,supplierGSTIN:inv.supplierGSTIN||'',invoiceNo:inv.invoiceNo||'',invoiceDate:inv.invoiceDate||'',place:inv.place||'',subtotal:inv.subtotal||'',discount:inv.discount||'',discountPct:inv.discountPct||'',cgst:inv.cgst||'',sgst:inv.sgst||'',igst:inv.igst||'',roundOff:inv.roundOff||'',total:inv.total||'',notes:inv.notes||''});setShowForm(true);};
 
   const save=async()=>{
@@ -4545,6 +4582,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
       </div>
     </div>
     </>}
+    {tab==='reconciliation'&&<SupplierReconTab key={reconInit?.statementId||'recon'} suppliers={suppliers} SS={SS} SI={SI} Py={Py} Ret={Ret} firm={firm} gk={gk} mob={mob} cache={reconCache} setCache={setReconCache} initial={reconInit} onAddInvoice={addFromRecon} onRecordPayment={payFromRecon} onGoUpload={sp=>{setSelSupplier(sp);setTab('statements');}}/>}
     {tab==='statements'&&<div>
       <div style={{...S.card,marginBottom:14}}>
         <div style={S.h3}>Upload Supplier Statement</div>
@@ -4557,12 +4595,12 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
         </div>
         {suppliers.length===0?<div style={{padding:16,background:BG,borderRadius:8,color:MUT,fontSize:12}}>No suppliers yet. Add or scan a supplier invoice first, then upload their statements here.</div>
         :<label style={{border:'2px dashed '+(selSupplier?'#D6D2CA':BORD),borderRadius:12,padding:'22px 16px',textAlign:'center',cursor:selSupplier&&!uploading?'pointer':'not-allowed',background:'#FAF9F6',display:'block',opacity:selSupplier&&!uploading?1:0.55}}>
-          <input type='file' accept='.pdf,.csv,.txt,.xlsx,.xls,image/*' style={{display:'none'}} onChange={handleStatementUpload} disabled={uploading||!selSupplier}/>
+          <input type='file' accept='.pdf,.csv,.txt,image/*' style={{display:'none'}} onChange={handleStatementUpload} disabled={uploading||!selSupplier}/>
           <div style={{width:46,height:46,borderRadius:12,background:BLL,display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:8}}>
             <svg width='22' height='22' viewBox='0 0 24 24' fill='none' stroke={BL} strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/><path d='M14 3v5h5'/><path d='M12 17v-6'/><path d='m9 13 3-3 3 3'/></svg>
           </div>
           <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{!selSupplier?'Select a supplier above first':uploading?'Uploading…':'Upload statement for '+selSupplier}</div>
-          <div style={{fontSize:11,color:MUT}}>PDF, CSV, Excel, TXT or image · Max 10MB</div>
+          <div style={{fontSize:11,color:MUT}}>PDF, image (JPG/PNG) or CSV · Max 10MB · Excel? Save it as PDF or CSV first</div>
         </label>}
         <ScanProgress active={uploading} kind='upload' fileName={upName}/>
       </div>
@@ -4579,7 +4617,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
             <td style={S.td}><Bdg c='blue'>{(st.fileType||'').split('/').pop()||'file'}</Bdg></td>
             <td style={{...S.td,fontSize:11,color:MUT}}>{st.statementDate?new Date(st.statementDate).toLocaleDateString('en-IN'):new Date(st.uploadedAt).toLocaleDateString('en-IN')}</td>
             <td style={{...S.td,fontSize:11}}>{((st.fileSize||0)/1024).toFixed(1)}KB</td>
-            <td style={{...S.td,textAlign:'right'}}><button style={S.btn('dan',true)} onClick={async()=>{if(!confirm('Delete this statement?'))return;await api.del('/api/supplier-statements?id='+st.id);setSS(ss=>ss.filter(x=>x.id!==st.id));showT('Deleted');}}>Remove</button></td>
+            <td style={{...S.td,textAlign:'right',whiteSpace:'nowrap'}}><button style={{...S.btn('pri',true),marginRight:5}} onClick={()=>{setReconInit({supplier:normalizeSupplierName(st.supplierName),statementId:st.id});setTab('reconciliation');}}>Reconcile</button><button style={S.btn('dan',true)} onClick={async()=>{if(!confirm('Delete this statement?'))return;await api.del('/api/supplier-statements?id='+st.id);setSS(ss=>ss.filter(x=>x.id!==st.id));showT('Deleted');}}>Remove</button></td>
           </tr>)}</tbody>
         </table>
       </div>}
