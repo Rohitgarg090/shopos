@@ -33,7 +33,9 @@ const UPI_APPS=['PhonePe','Google Pay','Paytm','BHIM','Other'];
 const CHQ=[
   {k:'deposited',  l:'Pass',         c:'#B8690A',bg:'#FDF0E0',next:'cleared'},
   {k:'cleared',    l:'Cleared',      c:'#2E6B1F',bg:'#EBF5E4',next:null},
-  {k:'bounced',    l:'Bounced',      c:'#9B2626',bg:'#FDF0F0',next:null},
+  {k:'bounced',    l:'Bounced',      c:'#9B2626',bg:'#FDF0F0',next:'redeposited'},
+  {k:'redeposited',l:'Re-Deposited', c:'#1B5E8A',bg:'#E3EFF8',next:'recleared'},
+  {k:'recleared',  l:'Re-Cleared',   c:'#2E6B1F',bg:'#D0F0D8',next:null},
 ];
 const getStage=k=>CHQ.find(s=>s.k===k)||CHQ[0];
 const fmt=n=>'Rs.'+Number(n||0).toFixed(2);
@@ -1679,9 +1681,11 @@ function PayModal({bill,onSave,onClose}){
 function ChequeStatus({payment,onUpdate}){
   const st=getStage(payment.chequeStatus||'deposited');const[busy,setBusy]=useState(false);
   const adv=async()=>{if(!st.next)return;setBusy(true);try{const u=await api.patch('/api/payments',{id:payment.id,chequeStatus:st.next});onUpdate(u);}finally{setBusy(false)}};
+  const bounce=async()=>{if(['bounced','recleared','cleared'].includes(payment.chequeStatus))return;setBusy(true);try{const u=await api.patch('/api/payments',{id:payment.id,chequeStatus:'bounced'});onUpdate(u);}finally{setBusy(false)}};
   return<div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
     <span style={{padding:'3px 10px',borderRadius:20,background:st.bg,color:st.c,fontSize:11,fontWeight:700,border:'1px solid '+st.c+'40'}}>{st.l}</span>
-    {st.next&&<button onClick={adv} disabled={busy} style={{...S.btn('suc',true),fontSize:9,padding:'2px 7px'}}>{st.next==='cleared'?'Mark as Cleared':'Next'}</button>}
+    {st.next&&<button onClick={adv} disabled={busy} style={{...S.btn('suc',true),fontSize:9,padding:'2px 7px'}}>Advance</button>}
+    {!['bounced','recleared','cleared'].includes(payment.chequeStatus)&&<button onClick={bounce} disabled={busy} style={{...S.btn('dan',true),fontSize:9,padding:'2px 7px'}}>Bounce</button>}
   </div>;}
 
 /* ── PRINTABLE INVOICE ── */
