@@ -4442,7 +4442,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
             {suppliers.map(sup=>{
               const invs=SI.filter(i=>i.supplierName===sup);
               const totInv=invs.reduce((s,i)=>s+i.total,0);
-              const totPaid=Py.filter(p=>p.supplierId===sup&&p.paymentType==='supplier').reduce((s,p)=>s+p.amount,0);
+              const totPaid=Py.filter(p=>p.supplierId===sup&&p.paymentType==='supplier'&&!(p.mode==='Cheque'&&p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);
               const balance=totInv-totPaid;
               return<div key={sup} onClick={()=>setSelSupplier(sel=>sel===sup?null:sup)} style={{padding:'10px 14px',border:'0.5px solid '+(selSupplier===sup?AMB:BORD),borderRadius:8,cursor:'pointer',background:selSupplier===sup?AMBL:'#fff'}}>
                 <div style={{fontWeight:700,color:selSupplier===sup?AMB:TXT,fontSize:13}}>{sup}</div>
@@ -4475,7 +4475,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
                 if(!selSupplier){showT('Select a supplier','err');return;}
                 try{
                   const normalizedSupplier=normalizeSupplierName(selSupplier);
-                  const p=await api.post('/api/payments',{billId:null,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:normalizedSupplier,partyName:normalizedSupplier});
+                  const p=await api.post('/api/payments',{billId:null,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',chequeStatus:payMode==='Cheque'?'deposited':'',paymentType:'supplier',supplierId:normalizedSupplier,partyName:normalizedSupplier});
                   setPy([...Py,p]);
                   setPayAmount('');setPayRef('');setPayCity('');setPayDate(new Date().toISOString().split('T')[0]);
                   showT('Payment recorded!');
@@ -4489,13 +4489,14 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
             <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:TXT}}>Payment History</div>
             {Py.filter(p=>p.supplierId===selSupplier&&p.paymentType==='supplier').length===0?<div style={{...S.card,padding:'20px',textAlign:'center',color:MUT,fontSize:11}}>No payments recorded yet</div>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:mob?400:500}}>
-                <thead><tr>{['Date','Mode','Amount','Reference','City',''].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Date','Mode','Amount','Reference','City','Status',''].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>{Py.filter(p=>p.supplierId===selSupplier&&p.paymentType==='supplier').sort((a,b)=>new Date(b.date||b.createdAt)-new Date(a.date||a.createdAt)).map(p=><tr key={p.id}>
                   <td style={{...S.td,fontSize:10}}>{p.date?new Date(p.date).toLocaleDateString('en-IN'):new Date(p.createdAt).toLocaleDateString('en-IN')}</td>
                   <td style={S.td}><Bdg c={p.mode==='Cash'?'green':p.mode==='Cheque'?'amber':'blue'}>{p.mode}</Bdg></td>
-                  <td style={{...S.td,...S.mono,fontWeight:700,color:GR}}>₹{parseFloat(p.amount).toLocaleString('en-IN')}</td>
+                  <td style={{...S.td,...S.mono,fontWeight:700,color:p.mode==='Cheque'&&p.chequeStatus==='bounced'?RD:GR,textDecoration:p.mode==='Cheque'&&p.chequeStatus==='bounced'?'line-through':'none'}}>₹{parseFloat(p.amount).toLocaleString('en-IN')}</td>
                   <td style={{...S.td,fontSize:10}}>{p.chequeNo?'Chq #'+p.chequeNo:p.upiRef?'UTR: '+p.upiRef:p.reference||'—'}</td>
                   <td style={{...S.td,fontSize:10,color:MUT}}>{p.city||'—'}</td>
+                  <td style={S.td}>{p.mode==='Cheque'?<ChequeStatus payment={p} onUpdate={u=>setPy(py=>py.map(x=>x.id===u.id?u:x))}/>:<span style={{fontSize:11,color:MUT}}>—</span>}</td>
                   <td style={S.td}><button style={S.btn('dan',true)} onClick={async()=>{if(!confirm('Delete payment?'))return;await api.del('/api/payments?id='+p.id);setPy(Py.filter(x=>x.id!==p.id));showT('Deleted');}} >×</button></td>
                 </tr>)}</tbody>
               </table>
