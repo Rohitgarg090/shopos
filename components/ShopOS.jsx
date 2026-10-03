@@ -4376,8 +4376,9 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
   const[payMode,setPayMode]=useState('Cash');
   const[payRef,setPayRef]=useState('');
   const[payCity,setPayCity]=useState('');
-  const handleStatementUpload=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>(10*1024*1024)){showT('File too large (max 10MB)','err');return;}setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const res=await api.post('/api/supplier-statements',{supplierId:null,supplierName:selSupplier||'',fileName:file.name,fileType:file.type,fileData:b64,fileSize:file.size,description:'',statementDate:new Date().toISOString().split('T')[0]});setSS(ss=>[res,...ss]);showT('Statement uploaded!');};r.readAsDataURL(file);}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
-  const relatedStatements=selSupplier?SS.filter(s=>s.supplierName===selSupplier):[];
+  const handleStatementUpload=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(!selSupplier){showT('Select a supplier first','err');return;}if(file.size>(10*1024*1024)){showT('File too large (max 10MB)','err');return;}setUploading(true);setUpName(file.name);try{const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(String(ev.target.result).split(',')[1]);r.onerror=()=>rej(new Error('Could not read file'));r.readAsDataURL(file);});const res=await api.post('/api/supplier-statements',{supplierId:null,supplierName:selSupplier,fileName:file.name,fileType:file.type,fileData:b64,fileSize:file.size,description:'',statementDate:stmtDate||new Date().toISOString().split('T')[0]});if(res?.error)throw new Error(res.error);setSS(ss=>[res,...ss]);showT('Statement uploaded for '+selSupplier);}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
+  const[upName,setUpName]=useState('');const[stmtDate,setStmtDate]=useState(new Date().toISOString().split('T')[0]);
+  const relatedStatements=selSupplier?SS.filter(s=>normalizeSupplierName(s.supplierName)===normalizeSupplierName(selSupplier)):SS;
   const BLANK={supplierName:'',supplierGSTIN:'',invoiceNo:'',invoiceDate:'',place:'',subtotal:'',discount:'',discountPct:'',cgst:'',sgst:'',igst:'',roundOff:'',total:'',notes:''};
   const[form,setForm]=useState(BLANK);
   const[showForm,setShowForm]=useState(false);
@@ -4547,23 +4548,38 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
     {tab==='statements'&&<div>
       <div style={{...S.card,marginBottom:14}}>
         <div style={S.h3}>Upload Supplier Statement</div>
-        {!selSupplier?<div style={{padding:'16px',background:BG,borderRadius:8,color:MUT,fontSize:12}}>Select a supplier on the left to upload their statement</div>:<label style={{border:'1.5px dashed '+BORD,borderRadius:10,padding:'22px 16px',textAlign:'center',cursor:'pointer',background:BG,display:'block'}}>
-          <input type='file' accept='.pdf,.csv,.txt,image/*' style={{display:'none'}} onChange={handleStatementUpload} disabled={uploading}/>
-          <div style={{fontSize:36,marginBottom:6}}>📋</div>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{uploading?'Uploading...':'Tap to upload statement'}</div>
-          <div style={{fontSize:11,color:MUT}}>PDF, CSV, TXT, or image (JPG/PNG) • Max 10MB</div>
+        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'2fr 1fr',gap:10,marginBottom:12}}>
+          <Fld label='Supplier *'><select style={S.inp} value={selSupplier||''} onChange={e=>setSelSupplier(e.target.value||null)}>
+            <option value=''>— Select supplier —</option>
+            {suppliers.map(sp=><option key={sp} value={sp}>{sp}</option>)}
+          </select></Fld>
+          <Fld label='Statement date'><input style={S.inp} type='date' value={stmtDate} onChange={e=>setStmtDate(e.target.value)}/></Fld>
+        </div>
+        {suppliers.length===0?<div style={{padding:16,background:BG,borderRadius:8,color:MUT,fontSize:12}}>No suppliers yet. Add or scan a supplier invoice first, then upload their statements here.</div>
+        :<label style={{border:'2px dashed '+(selSupplier?'#D6D2CA':BORD),borderRadius:12,padding:'22px 16px',textAlign:'center',cursor:selSupplier&&!uploading?'pointer':'not-allowed',background:'#FAF9F6',display:'block',opacity:selSupplier&&!uploading?1:0.55}}>
+          <input type='file' accept='.pdf,.csv,.txt,.xlsx,.xls,image/*' style={{display:'none'}} onChange={handleStatementUpload} disabled={uploading||!selSupplier}/>
+          <div style={{width:46,height:46,borderRadius:12,background:BLL,display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:8}}>
+            <svg width='22' height='22' viewBox='0 0 24 24' fill='none' stroke={BL} strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/><path d='M14 3v5h5'/><path d='M12 17v-6'/><path d='m9 13 3-3 3 3'/></svg>
+          </div>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{!selSupplier?'Select a supplier above first':uploading?'Uploading…':'Upload statement for '+selSupplier}</div>
+          <div style={{fontSize:11,color:MUT}}>PDF, CSV, Excel, TXT or image · Max 10MB</div>
         </label>}
-        <ScanProgress active={uploading} kind='upload'/>
+        <ScanProgress active={uploading} kind='upload' fileName={upName}/>
       </div>
-      {relatedStatements.length===0?<div style={{...S.card,textAlign:'center',padding:40,color:MUT}}>No statements uploaded for {selSupplier||'this supplier'}</div>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?400:600}}>
-          <thead><tr>{['File Name','Type','Date','Size',''].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-          <tbody>{relatedStatements.map(s=><tr key={s.id}>
-            <td style={S.td}><div style={{fontWeight:600}}>{s.fileName}</div></td>
-            <td style={S.td}><Bdg c='blue'>{s.fileType.split('/').pop()}</Bdg></td>
-            <td style={{...S.td,fontSize:11,color:MUT}}>{s.statementDate?new Date(s.statementDate).toLocaleDateString('en-IN'):new Date(s.uploadedAt).toLocaleDateString('en-IN')}</td>
-            <td style={{...S.td,fontSize:11}}>{(s.fileSize/1024).toFixed(1)}KB</td>
-            <td style={S.td}><button style={S.btn('dan',true)} onClick={async()=>{if(!confirm('Delete?'))return;await api.del('/api/supplier-statements?id='+s.id);setSS(ss=>ss.filter(x=>x.id!==s.id));showT('Deleted');}}>Remove</button></td>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <div style={S.h3}>{selSupplier?'Statements · '+selSupplier:'All supplier statements'} ({relatedStatements.length})</div>
+        {selSupplier&&<button style={S.btn('def',true)} onClick={()=>setSelSupplier(null)}>Show all</button>}
+      </div>
+      {relatedStatements.length===0?<div style={{...S.card,textAlign:'center',padding:40,color:MUT}}>{selSupplier?'No statements uploaded for '+selSupplier+' yet':'No supplier statements uploaded yet'}</div>:<div style={{...S.card,padding:0,overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:mob?480:640}}>
+          <thead><tr>{['File Name',!selSupplier&&'Supplier','Type','Statement Date','Size',''].filter(h=>h!==false).map((h,i)=><th key={i} style={S.th}>{h}</th>)}</tr></thead>
+          <tbody>{relatedStatements.map(st=><tr key={st.id}>
+            <td style={S.td}><div style={{fontWeight:600}}>{st.fileName}</div></td>
+            {!selSupplier&&<td style={{...S.td,fontWeight:600}}>{st.supplierName||'—'}</td>}
+            <td style={S.td}><Bdg c='blue'>{(st.fileType||'').split('/').pop()||'file'}</Bdg></td>
+            <td style={{...S.td,fontSize:11,color:MUT}}>{st.statementDate?new Date(st.statementDate).toLocaleDateString('en-IN'):new Date(st.uploadedAt).toLocaleDateString('en-IN')}</td>
+            <td style={{...S.td,fontSize:11}}>{((st.fileSize||0)/1024).toFixed(1)}KB</td>
+            <td style={{...S.td,textAlign:'right'}}><button style={S.btn('dan',true)} onClick={async()=>{if(!confirm('Delete this statement?'))return;await api.del('/api/supplier-statements?id='+st.id);setSS(ss=>ss.filter(x=>x.id!==st.id));showT('Deleted');}}>Remove</button></td>
           </tr>)}</tbody>
         </table>
       </div>}
