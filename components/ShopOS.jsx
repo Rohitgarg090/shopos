@@ -4473,9 +4473,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,firm,gk,mob}){
                 if(!selSupplier){showT('Select a supplier','err');return;}
                 try{
                   const normalizedSupplier=normalizeSupplierName(selSupplier);
-                  const supInvoices=SI.filter(i=>i.supplierName===normalizedSupplier);
-                  const billId=supInvoices.length>0?supInvoices[0].id:null;
-                  const p=await api.post('/api/payments',{billId,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:normalizedSupplier,partyName:normalizedSupplier});
+                  const p=await api.post('/api/payments',{billId:null,date:payDate,mode:payMode,amount:parseFloat(payAmount),chequeNo:payMode==='Cheque'?payRef:'',upiRef:payMode==='UPI'?payRef:'',city:payCity,remarks:'',paymentType:'supplier',supplierId:normalizedSupplier,partyName:normalizedSupplier});
                   setPy([...Py,p]);
                   setPayAmount('');setPayRef('');setPayCity('');setPayDate(new Date().toISOString().split('T')[0]);
                   showT('Payment recorded!');
