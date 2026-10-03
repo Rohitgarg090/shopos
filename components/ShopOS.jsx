@@ -20,7 +20,7 @@ import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
 import JSZip from 'jszip';
 import html2canvas from 'html2canvas';
-import { buildStatementRows, generateCustomerPDF, generateLedgerPDF } from '@/lib/pdf';
+import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, compareEntries } from '@/lib/pdf';
 
 /* ── constants ── */
 // Empty by default - will be populated dynamically from actual products
@@ -2770,10 +2770,10 @@ function CustomerAccount({cust,B,Py,setPy,firm,C,onClose}){
   const upPay=u=>setPy(ps=>ps.map(p=>p.id===u.id?u:p));
   const[caTab,setCaTab]=useState('statement'); // statement | reconcile | files
   const entries=[
-    ...(obAmt>0?[{type:'Opening Balance',date:cust.openingBalanceDate||'2000-01-01',ref:'OB',debit:obAmt,credit:0,id:'ob',payObj:null}]:[]),
-    ...cb.map(b=>({type:'Invoice',date:b.date,ref:b.invoiceNo||'#'+b.id,debit:b.total,credit:0,id:'b'+b.id,payObj:null})),
-    ...validPay.map(p=>({type:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),debit:0,credit:p.amount,id:'p'+p.id,payObj:p})),
-  ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    ...(obAmt>0?[{type:'Opening Balance',date:cust.openingBalanceDate||'2000-01-01',ref:'OB',order:0,debit:obAmt,credit:0,id:'ob',payObj:null}]:[]),
+    ...cb.map(b=>({type:'Invoice',date:b.date,createdAt:b.date,ref:b.invoiceNo||'#'+b.id,debit:b.total,credit:0,id:'b'+b.id,payObj:null})),
+    ...validPay.map(p=>({type:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),createdAt:p.createdAt,debit:0,credit:p.amount,id:'p'+p.id,payObj:p})),
+  ].sort((a,b)=>compareEntries(b,a));
   let run=0;const withBal=[...entries].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   return<Modal title={'Account: '+cust.name+(cust.shopname?' — '+cust.shopname:'')} onClose={onClose} wide>
     {obAmt>0&&<div style={{padding:'7px 12px',background:AMBL,borderRadius:7,marginBottom:12,fontSize:12,color:AMB}}>Opening Balance: <strong>{fmt(obAmt)}</strong>{cust.openingBalanceDate?' as of '+new Date(cust.openingBalanceDate).toLocaleDateString('en-IN'):''}</div>}
@@ -3107,17 +3107,17 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
   const validPayments=Py.filter(p=>!(p.mode==='Cheque' && p.chequeStatus==='bounced'));
   const all=[
     // Sales Invoices (if ledgerType includes Sales)
-    ...((ledgerType==='All'||ledgerType==='Sales')?B.map(b=>({tp:'Sales Inv',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,partyId:b.customerId,partyType:'customer',debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})):[]),
+    ...((ledgerType==='All'||ledgerType==='Sales')?B.map(b=>({tp:'Sales Inv',date:b.date,ref:b.invoiceNo||'#'+b.id,party:b.customerName,partyId:b.customerId,partyType:'customer',createdAt:b.date,debit:b.total,credit:0,mode:'',bilty:b.biltyNo||'',id:'b'+b.id,payObj:null})):[]),
     // Purchase Invoices (if ledgerType includes Purchase)
-    ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.invoiceDate,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',debit:s.total,credit:0,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
+    ...((ledgerType==='All'||ledgerType==='Purchase')?(SI||[]).map(s=>({tp:'Purch Inv',date:s.invoiceDate,ref:s.invoiceNo||'#'+s.id,party:s.supplierName,partyId:s.supplierId,partyType:'supplier',createdAt:s.createdAt,debit:s.total,credit:0,mode:'',bilty:'',id:'s'+s.id,payObj:null})):[]),
     // Payments - FILTERED by ledger type using paymentType field
-    ...((ledgerType==='Sales'?validPayments.filter(p=>p.paymentType==='customer'):ledgerType==='Purchase'?validPayments.filter(p=>p.paymentType==='supplier'):validPayments).map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,partyId:p.customerId||p.supplierId,partyType:p.paymentType||'customer',debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p}))),
+    ...((ledgerType==='Sales'?validPayments.filter(p=>p.paymentType==='customer'):ledgerType==='Purchase'?validPayments.filter(p=>p.paymentType==='supplier'):validPayments).map(p=>({tp:'Payment',date:p.date||p.createdAt,ref:p.mode+(p.chequeNo?' #'+p.chequeNo:'')+(p.upiRef?' '+p.upiRef:''),party:p.partyName,partyId:p.customerId||p.supplierId,partyType:p.paymentType||'customer',createdAt:p.createdAt,debit:0,credit:p.amount,mode:p.mode,bilty:'',id:'p'+p.id,payObj:p}))),
     // Returns - FILTERED by ledger type
-    ...((Ret||[]).filter(r=>(ledgerType==='All'||(ledgerType==='Sales'&&r.type==='customer')||(ledgerType==='Purchase'&&r.type==='supplier')))).map(r=>({tp:r.type==='customer'?'Cust Ret':'Supp Ret',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',partyId:r.customerId||r.supplierId,partyType:r.type==='customer'?'customer':'supplier',debit:0,credit:r.total,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
+    ...((Ret||[]).filter(r=>(ledgerType==='All'||(ledgerType==='Sales'&&r.type==='customer')||(ledgerType==='Purchase'&&r.type==='supplier')))).map(r=>({tp:r.type==='customer'?'Cust Ret':'Supp Ret',date:r.date,ref:'RET-'+r.id,party:r.customerName||r.supplierName||'',partyId:r.customerId||r.supplierId,partyType:r.type==='customer'?'customer':'supplier',createdAt:r.createdAt,debit:0,credit:r.total,mode:'',bilty:'',id:'r'+r.id,payObj:null})),
     // Opening Balances - SALES ONLY (customers only)
-    ...((ledgerType==='All'||ledgerType==='Sales')?C.filter(c=>c.openingBalance>0).map(c=>({tp:'OB',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,partyId:c.id,partyType:'customer',debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})):[]),
+    ...((ledgerType==='All'||ledgerType==='Sales')?C.filter(c=>c.openingBalance>0).map(c=>({tp:'OB',date:c.openingBalanceDate||'2000-01-01',ref:'OB',party:c.name,partyId:c.id,partyType:'customer',order:0,debit:c.openingBalance||0,credit:0,mode:'',bilty:'',id:'ob'+c.id,payObj:null})):[]),
   ].map(e=>{const c=e.partyType==='customer'&&e.partyId?C.find(x=>x.id===e.partyId):null;return{...e,party:normalizeSupplierName(c?c.name:e.party)};})
-   .sort((a,b)=>new Date(b.date)-new Date(a.date));
+   .sort((a,b)=>compareEntries(b,a));
   const rows=all.filter(e=>{const pok=!fp||(e.party||'').toLowerCase().includes(fp.toLowerCase());const tok=ft==='All'||e.tp===ft||(ft==='Sales Inv'&&(e.tp==='Sales Inv'||e.tp==='OB'))||(ft==='Purch Inv'&&e.tp==='Purch Inv');const dok=!dateRange.from||!dateRange.to||(new Date(e.date)>=new Date(dateRange.from)&&new Date(e.date)<=new Date(dateRange.to+' 23:59:59'));return pok&&tok&&dok;});
   let run=0;const withBal=[...rows].reverse().map(e=>{run+=e.debit-e.credit;return{...e,bal:run}}).reverse();
   const tD=rows.reduce((s,e)=>s+e.debit,0),tC=rows.reduce((s,e)=>s+e.credit,0);
