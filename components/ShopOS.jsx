@@ -1014,8 +1014,10 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
 
     // Save supplier invoice record (if supplier name exists, with or without items)
     if(supplierBanner&&supplierBanner.supplier){
+      // Supplier invoice records the purchase cost; the markup only affects catalog selling price
+      const costOf=i=>markupPct&&i._costPrice!=null?i._costPrice:i.price;
       // Use extracted invoice totals (from Gemini) as primary source
-      const subtotal=supplierBanner.subtotal>0?supplierBanner.subtotal:items.reduce((s,i)=>s+i.price*i.qty,0);
+      const subtotal=supplierBanner.subtotal>0?supplierBanner.subtotal:items.reduce((s,i)=>s+costOf(i)*i.qty,0);
       const discount=supplierBanner.discount||0;
       const discountPct=supplierBanner.discountPct>0?supplierBanner.discountPct:(discount>0&&subtotal>0?+(discount/subtotal*100).toFixed(2):0);
       const cgst=supplierBanner.cgst||0;
@@ -1058,7 +1060,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
         roundOff:0,
         total:+total.toFixed(2),
         notes:'Scanned from: '+(supplierBanner.invoiceNo||''),
-        items:items.map(i=>({name:i.name,articleNo:i.articleNo||'',sizes:i.sizes,qty:i.qty,price:i.price,gst:i.gst,hsn:i.hsn||''})),
+        items:items.map(i=>({name:i.name,articleNo:i.articleNo||'',sizes:i.sizes,qty:i.qty,price:costOf(i),sellPrice:i.price,gst:i.gst,hsn:i.hsn||''})),
       };
       try{
         console.log('[ScanBill] Posting supplier invoice to API:', siPayload);
