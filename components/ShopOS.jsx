@@ -2392,7 +2392,7 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
             {fP.filter(p=>p.qty>0).map(p=>{
               const isFromSupplier=supplierName&&(SI||[]).filter(i=>i.supplierName===supplierName).some(inv=>inv.items&&inv.items.some(item=>item.sku===p.sku));
               return<div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',border:'0.5px solid '+(isFromSupplier?AMB:BORD),borderRadius:7,background:isFromSupplier?AMBL:'#fff'}}>
-                <div><div style={{fontWeight:600,fontSize:12}}>{p.name}{isFromSupplier&&<span style={{fontSize:9,color:AMB,marginLeft:4}}>★</span>}</div><div style={{fontSize:10,color:MUT}}>{p.cat} · {p.size} · {p.qty} in stock</div></div>
+                <div><div style={{fontWeight:600,fontSize:12}}>{p.name}{p.articleNo&&<span style={{fontSize:9,color:MUT,marginLeft:6}}>({p.articleNo})</span>}{isFromSupplier&&<span style={{fontSize:9,color:AMB,marginLeft:4}}>★</span>}</div><div style={{fontSize:10,color:MUT}}>{p.cat} · Size: {p.size} · Stock: {p.qty} pcs · {fmt(p.price)}</div></div>
                 <button style={S.btn('gho',true)} onClick={()=>addSuppItem(p)}>+ Add</button>
               </div>;
             })}
@@ -2403,7 +2403,7 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
         <div style={S.h3}>Items to Return to Supplier</div>
         {suppRetItems.length===0?<MT msg='Add items from catalog on the left'/>:<div>
           {suppRetItems.map(item=><div key={item.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'0.5px solid #f0ede8'}}>
-            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:12}}>{item.name}</div><div style={{fontSize:10,color:MUT}}>{item.size} · {item.qty} in stock · {fmt(item.price)} each</div></div>
+            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:12}}>{item.name}{item.articleNo&&<span style={{fontSize:9,color:MUT,marginLeft:6}}>({item.articleNo})</span>}</div><div style={{fontSize:10,color:MUT}}>Size: {item.size} · Stock: {item.qty} pcs · Price: {fmt(item.price)}</div></div>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
               <input style={{...S.inp,width:60,textAlign:'center'}} type='number' min='0' max={item.qty} value={item.retQty} onChange={e=>updSuppQty(item.id,e.target.value)}/>
               <button onClick={()=>remSuppItem(item.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#ccc',fontSize:16}}>x</button>
