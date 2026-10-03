@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { blockIfFree, getPlanForFirm } from '@/lib/plan';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
@@ -74,6 +75,8 @@ export async function POST(req) {
   try {
     const c = await ctx(req);
     if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const blocked = await blockIfFree(c.user.id, c.firmId, 'ai');
+    if (blocked) return blocked;
     const { statementId, apiKey } = await req.json();
     if (!apiKey) return NextResponse.json({ error: 'Add your Gemini API key in Settings first' }, { status: 400 });
     if (!statementId) return NextResponse.json({ error: 'Statement not specified' }, { status: 400 });

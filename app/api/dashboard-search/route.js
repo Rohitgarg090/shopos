@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { blockIfFree, getPlanForFirm } from '@/lib/plan';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
@@ -107,7 +108,10 @@ export async function POST(req) {
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!c.firmId) return NextResponse.json([]);
 
-  const { query, geminiKey } = await req.json();
+  const body = await req.json();
+  const { query } = body;
+  let geminiKey = body.geminiKey;
+  try { if (geminiKey && !(await getPlanForFirm(c.user.id, c.firmId)).external) geminiKey = null; } catch { /* keep key */ }
   console.log('[search] Query:', query, 'Key:', geminiKey ? 'yes' : 'no');
   if (!query) return NextResponse.json([]);
 

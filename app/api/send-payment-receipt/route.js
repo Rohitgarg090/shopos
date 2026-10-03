@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { blockIfFree, getPlanForFirm } from '@/lib/plan';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -21,6 +22,9 @@ export async function POST(req) {
     if (userError || !user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const blocked = await blockIfFree(user.id, firmId, 'messaging');
+    if (blocked) return blocked;
 
     const { paymentId, via, includeHistory } = await req.json();
 

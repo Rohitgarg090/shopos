@@ -107,7 +107,8 @@ export async function POST(req) {
     const { error: paymentUpdateError } = await sb
       .from('subscription_payments')
       .update({
-        status: 'completed',
+        status: 'paid',
+        paid_at: new Date().toISOString(),
         razorpay_payment_id: razorpay_payment_id,
         razorpay_signature: razorpay_signature,
       })
@@ -116,15 +117,27 @@ export async function POST(req) {
     if (paymentUpdateError) console.log('[verify] ✗ Payment update error:', paymentUpdateError.message);
     else console.log('[verify] ✓ Payment record updated');
 
-    // Calculate subscription dates
+    if (payment.status === 'paid') {
+      return Response.json({ success: true, message: 'Payment already verified', organization: { id: org.id, plan: payment.plan } });
+    }
+
+    // Calculate subscription dates — a renewal extends any time still remaining
     const now = new Date();
     const startDate = new Date(now);
-    let endDate = new Date(now);
+    const { data: limits } = await sb.from('trial_limits').select('paid_plan,paid_until').eq('user_id', user.id).maybeSingle();
+    const stillActive = limits?.paid_until && new Date(limits.paid_until) > now;
+    let endDate = new Date(stillActive ? limits.paid_until : now);
+    if (payment.billing_period === 'annual') endDate.setFullYear(endDate.getFullYear() + 1);
+    else endDate.setMonth(endDate.getMonth() + 1);
 
-    if (payment.billing_period === 'annual') {
-      endDate.setFullYear(endDate.getFullYear() + 1);
-    } else {
-      endDate.setMonth(endDate.getMonth() + 1);
+    // Activate the plan (single source of truth used for all feature/firm limits)
+    const { error: planErr } = await sb.from('trial_limits').upsert(
+      { user_id: user.id, paid_plan: payment.plan, paid_until: endDate.toISOString(), updated_at: now.toISOString() },
+      { onConflict: 'user_id' }
+    );
+    if (planErr) {
+      console.log('[verify] ✗ Plan activation error:', planErr.message);
+      return Response.json({ error: 'Payment received but plan activation failed — contact support with order ' + razorpay_order_id }, { status: 500 });
     }
 
     console.log('[verify] Updating organization subscription...');
@@ -142,8 +155,8 @@ export async function POST(req) {
       .eq('id', org.id);
 
     if (updateError) {
-      console.log('[verify] ✗ Organization update error:', updateError.message);
-      return Response.json({ error: 'Failed to update organization' }, { status: 500 });
+      // Non-fatal: the plan is already active in trial_limits
+      console.log('[verify] ✗ Organization update error (ignored):', updateError.message);
     }
 
     console.log('[verify] ✓ Organization updated');

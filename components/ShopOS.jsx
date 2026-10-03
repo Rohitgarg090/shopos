@@ -4,8 +4,6 @@ import { supabase } from '@/lib/supabase';
 import ModernLogin from '@/components/auth/modern-login';
 import UserMenu from '@/components/ui/user-menu';
 import BillingDashboard from '@/components/BillingDashboard';
-import TrialExtensionModal from '@/components/TrialExtensionModal';
-import UpgradeBlockModal from '@/components/UpgradeBlockModal';
 import BillingPopup from '@/components/BillingPopup';
 import SupportTickets from '@/components/SupportTickets';
 import { INDUSTRY_TEMPLATES, getAvailableIndustries, UOM_BY_INDUSTRY } from '@/lib/industry-templates';
@@ -71,12 +69,20 @@ let _activeFirmId=null;
 let _theme='minimal';
 const setActiveFirmId=id=>{_activeFirmId=id;};
 const authH=async()=>{const h={'Content-Type':'application/json','Authorization':'Bearer '+(await getToken())};if(_activeFirmId)h['x-firm-id']=_activeFirmId;return h;};
+// Server replies 402 {code:'PLAN_REQUIRED'} when the plan doesn't include a feature; the app shows the upgrade popup.
+const askUpgrade=detail=>{if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('shopos:upgrade',{detail}));};
+const checkPlanReply=async res=>{if(res.status!==402)return false;let j={};try{j=await res.clone().json();}catch{}if(j.code==='PLAN_REQUIRED'){askUpgrade(j);return j;}return false;};
+const handleRes=async res=>{if(res.ok)return res.json();let j={};try{j=await res.clone().json();}catch{}if(res.status===402&&j.code==='PLAN_REQUIRED')askUpgrade(j);throw new Error(j.error||`HTTP ${res.status}: ${res.statusText}`);};
+// Client-side mirror of the plan (server is the real gate)
+let _plan=null;
+const freePlan=()=>!!(_plan&&_plan.external===false);
+const needsPaid=(feature,label)=>{if(_plan&&_plan.external===false){askUpgrade({feature,error:(label||'This feature')+' is available on Business plans. Upgrade to use it.'});return true;}return false;};
 const api={
-  get:async u=>{const res=await fetch(u,{headers:await authH()});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
-  post:async(u,b)=>{const res=await fetch(u,{method:'POST',headers:await authH(),body:JSON.stringify(b)});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
-  put:async(u,b)=>{const res=await fetch(u,{method:'PUT',headers:await authH(),body:JSON.stringify(b)});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
-  patch:async(u,b)=>{const res=await fetch(u,{method:'PATCH',headers:await authH(),body:JSON.stringify(b)});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
-  del:async u=>{const res=await fetch(u,{method:'DELETE',headers:await authH()});if(!res.ok)throw new Error(`HTTP ${res.status}: ${res.statusText}`);return res.json();},
+  get:async u=>handleRes(await fetch(u,{headers:await authH()})),
+  post:async(u,b)=>handleRes(await fetch(u,{method:'POST',headers:await authH(),body:JSON.stringify(b)})),
+  put:async(u,b)=>handleRes(await fetch(u,{method:'PUT',headers:await authH(),body:JSON.stringify(b)})),
+  patch:async(u,b)=>handleRes(await fetch(u,{method:'PATCH',headers:await authH(),body:JSON.stringify(b)})),
+  del:async u=>handleRes(await fetch(u,{method:'DELETE',headers:await authH()})),
 };
 
 /* ── palette ── */
@@ -318,10 +324,8 @@ export default function ShopOS(){
   const[seq,setSeq]=useState(1);
   const[firmLoading,setFirmLoading]=useState(true);
   const[vBill,setVBill]=useState(null);
-  const[org,setOrg]=useState(null);
   const[pendingRequest,setPendingRequest]=useState(null);
-  const[showTrialExtend,setShowTrialExtend]=useState(false);
-  const[showUpgradeBlock,setShowUpgradeBlock]=useState(false);
+  const[planInfo,setPlanInfo]=useState(null);const[upgradeReason,setUpgradeReason]=useState('');const[planBannerHidden,setPlanBannerHidden]=useState(false);
   const[showBillingPopup,setShowBillingPopup]=useState(false);
   const[showSupport,setShowSupport]=useState(false);
   const[showQRScanner,setShowQRScanner]=useState(false);
@@ -395,22 +399,10 @@ export default function ShopOS(){
       window.removeEventListener('beforeunload',onBeforeUnload);
     };
   },[]);
-  // Check trial/subscription status
-  useEffect(()=>{
-    if(!ses)return;
-    const checkTrial=async()=>{
-      try{
-        const token=(await supabase.auth.getSession()).data.session?.access_token;
-        if(!token)return;
-        const res=await fetch('/api/subscription-payments/status',{headers:{'Authorization':`Bearer ${token}`}});
-        const data=await res.json();
-        setOrg(data);
-        if(data.status==='trial'&&data.trialDaysRemaining<=0){setShowUpgradeBlock(true);}
-        else if(data.status==='trial'&&data.trialDaysRemaining<=7){setShowTrialExtend(true);}
-      }catch(e){console.error('Failed to check trial:',e);}
-    };
-    checkTrial();
-  },[ses]);
+  // Subscription plan (Trial / Free / Business 4 / Business 10)
+  const loadPlan=useCallback(async()=>{try{const p=await api.get('/api/trial/status');_plan=p;setPlanInfo(p);}catch(e){console.error('Failed to load plan:',e);}},[]);
+  useEffect(()=>{if(ses)loadPlan();},[ses,loadPlan]);
+  useEffect(()=>{const h=e=>{setUpgradeReason(e.detail?.error||'');setShowBillingPopup(true);};window.addEventListener('shopos:upgrade',h);return()=>window.removeEventListener('shopos:upgrade',h);},[]);
 
   // Fetch announcements
   useEffect(()=>{
@@ -501,17 +493,8 @@ export default function ShopOS(){
       const trialRes=await api.get('/api/trial/status');
       console.log('[handleAddFirm] Trial response:', trialRes);
 
-      if(!trialRes){
-        console.log('[handleAddFirm] No trial data, showing upgrade block');
-        setShowUpgradeBlock(true);
-        return;
-      }
-
-      console.log('[handleAddFirm] Plan:', trialRes.plan, 'Current firms:', trialRes.currentFirmCount, 'Limit:', trialRes.firmCountLimit);
-
-      if((trialRes.plan==='free_trial'||trialRes.plan==='trial')&&trialRes.currentFirmCount>=trialRes.firmCountLimit){
-        console.log('[handleAddFirm] Trial user at firm limit, blocking creation');
-        setShowUpgradeBlock(true);
+      if(trialRes&&trialRes.canCreateFirm===false){
+        askUpgrade({feature:'firms',error:`Your ${trialRes.name} plan allows ${trialRes.firmLimit} firm${trialRes.firmLimit===1?'':'s'}. Upgrade to add more.`});
         return;
       }
 
@@ -582,6 +565,15 @@ export default function ShopOS(){
       {announcements.map(a=><AnnouncementBanner key={a.id} announcement={a}/>)}
     </div>}
 
+    {/* Plan banner: trial countdown / free plan nudge */}
+    {planInfo&&!planBannerHidden&&(planInfo.plan==='trial'||planInfo.plan==='free')&&<div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,flexWrap:'wrap',padding:'7px 14px',fontSize:12.5,background:planInfo.plan==='trial'?(planInfo.trialDaysLeft<=3?'#FDF0E0':'#EEF4FA'):'#F4F2EE',color:planInfo.plan==='trial'&&planInfo.trialDaysLeft<=3?'#8A4F06':'#1A1A18',borderBottom:'1px solid #E3E1D9'}}>
+      <span>{planInfo.plan==='trial'
+        ?<>Free trial: <strong>{planInfo.trialDaysLeft} day{planInfo.trialDaysLeft===1?'':'s'} left</strong> with all features. After that you stay on the Free plan.</>
+        :<>You're on the <strong>Free plan</strong>. AI scanning, E-Way Bill, E-Invoice and auto messaging need a Business plan.</>}</span>
+      <button onClick={()=>{setUpgradeReason('');setShowBillingPopup(true);}} style={{background:'#1B5E8A',color:'#fff',border:'none',borderRadius:7,padding:'4px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}>See plans</button>
+      <button onClick={()=>setPlanBannerHidden(true)} aria-label='Hide' style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:15}}>×</button>
+    </div>}
+
     {/* Desktop/Tablet nav */}
     {!mob&&<nav style={_theme==='modern'?{display:'flex',alignItems:'center',padding:'0 14px',background:'linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.95))',backdropFilter:'blur(20px)',borderBottom:'1px solid rgba(148,163,184,0.2)',boxShadow:'0 8px 32px rgba(0,0,0,0.15)',position:'sticky',top:announcements.length>0?56:0,zIndex:100,flexWrap:'wrap',minHeight:48}:{display:'flex',alignItems:'center',padding:'0 14px',background:'#fff',borderBottom:'0.5px solid '+BORD,position:'sticky',top:announcements.length>0?56:0,zIndex:100,flexWrap:'wrap',minHeight:46}} className='np'>
       <span style={_theme==='modern'?{fontSize:15,fontWeight:800,color:'#fff',marginRight:8,letterSpacing:'-0.5px'}:{fontSize:15,fontWeight:800,color:BL,marginRight:8,letterSpacing:'-0.5px'}}>SHOP<span style={{color:_theme==='modern'?'#FF8C42':AMB}}>OS</span></span>
@@ -630,7 +622,7 @@ export default function ShopOS(){
       {page==='dash'&&<Dashboard P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
       }{page==='analytics'&&<Analytics P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob}/>}
       {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}
-      {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={()=>setShowUpgradeBlock(true)} mob={mob}/>}
+      {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={msg=>askUpgrade({feature:'ai',error:msg||'AI scanning is available on Business plans.'})} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} Ret={Ret} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
@@ -639,33 +631,19 @@ export default function ShopOS(){
       }{page==='returns'&&<Returns P={P} setP={setP} B={B} C={C} Ret={Ret} setRet={setRet} SI={SI} mob={mob}/>}
       {page==='bank'&&<BankPage BS={BS} setBS={setBS} B={Bactive} Py={Py} setPy={setPy} firm={firm} C={C} mob={mob} gk={()=>firm?.geminiKey||''}/>}
       {page==='ledger'&&<Ledger B={Bactive} Py={Py} setPy={setPy} C={C} Ret={Ret} firm={firm} mob={mob} SI={SI}/>}
-      {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);}} mob={mob}/>}
-      {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} org={org} activeFirm={activeFirm}/>}
+      {page==='team'&&<Team activeFirm={activeFirm} firms={firms} setFirms={setFirms} onSwitchFirm={switchFirm} onNewFirm={async f=>{const nl=[...firms,f];setFirms(nl);switchFirm(f);loadPlan();}} mob={mob}/>}
+      {page==='settings'&&<Settings firm={firm} saveFirm={saveFirm} ses={ses} mob={mob} theme={theme} setTheme={setTheme} planInfo={planInfo} onUpgrade={()=>{setUpgradeReason('');setShowBillingPopup(true);}} activeFirm={activeFirm}/>}
         </>;
       })()}
     </div>
 
-    {/* Trial Extension Modal */}
-    <TrialExtensionModal
-      isOpen={showTrialExtend}
-      daysRemaining={org?.trialDaysRemaining||0}
-      onExtend={()=>{setShowTrialExtend(false);}}
-      onUpgrade={()=>{setShowTrialExtend(false);setPage('settings');}}
-      onClose={()=>setShowTrialExtend(false)}
-    />
-
-    {/* Upgrade Block Modal */}
-    <UpgradeBlockModal
-      isOpen={showUpgradeBlock}
-      onUpgrade={()=>{setShowUpgradeBlock(false);setPage('settings');}}
-      onExtendTrial={()=>{setShowUpgradeBlock(false);}}
-    />
-
     {/* Billing Popup */}
     <BillingPopup
       isOpen={showBillingPopup}
-      onClose={()=>setShowBillingPopup(false)}
-      onNavigateToBilling={()=>setPage('settings')}
+      onClose={()=>{setShowBillingPopup(false);setUpgradeReason('');}}
+      reason={upgradeReason}
+      planInfo={planInfo}
+      onPaid={loadPlan}
     />
 
     {/* Support Tickets Full Page */}
@@ -1026,6 +1004,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
 
   const upload=useCallback(async e=>{
     const file=e.target.files[0];if(!file)return;
+    if(needsPaid('ai','AI invoice scanning')){e.target.value='';return;}
     const k=gk();if(!k){setErr('Add your Gemini API key in Settings first.');return;}
     const isPDF=file.type==='application/pdf';
     if(file.size>(isPDF?20:10)*1024*1024){setErr('File too large — max '+(isPDF?'20MB for PDFs':'10MB for images')+'.');return;}
@@ -1070,12 +1049,12 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
 
         const data=await backendRes.json();
 
-        // Check if blocked by trial limits (403) or other errors
-        if(backendRes.status===403){
-          console.log('[ScanBill] ❌ BLOCKED by trial limits, showing upgrade modal');
+        // Plan doesn't include AI scanning
+        if(backendRes.status===402||backendRes.status===403){
           setScanning(false);
           setScanStatus('');
-          onUpgrade(); // Show upgrade modal
+          setErr(data.error||'AI scanning is available on Business plans.');
+          onUpgrade(data.error);
           return;
         }
 
@@ -2048,6 +2027,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
     const cust=C.find(c=>c.id===b.customerId);
     const toEmail=cust?.email||b.customerEmail||'';
     if(!toEmail){showT('No email on file for this customer. Update in Customers page.','err');return;}
+    if(needsPaid('messaging','Emailing invoices'))return;
     setPdfBusy(true);
     try{
       const res=await api.post('/api/send-invoice',{
@@ -2070,6 +2050,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
     const bal=b.total-paid;
     setPdfBusy(true);
     try{
+      if(freePlan())throw new Error('Free plan: opening WhatsApp directly');
       // Try Twilio first
       const res=await api.post('/api/whatsapp/send',{
         customerNumber:phone,
@@ -2105,6 +2086,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
     if(bal<=0){showT('No outstanding balance on this bill','err');return;}
     if(!phone){showT('No phone number for customer','err');return;}
     try{
+      if(freePlan())throw new Error('Free plan: opening WhatsApp directly');
       await api.post('/api/send-notification',{
         type:'reminder',
         channel:'whatsapp',
@@ -2137,7 +2119,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
     setPy(ps=>[p,...ps]);
     setPayBill(null);
     showT('Payment recorded!');
-    if(firm.notifEnabled&&p.billId){
+    if(firm.notifEnabled&&p.billId&&!freePlan()){
       const b=B.find(x=>x.id===p.billId);
       if(b){
         const cust=C.find(c=>c.id===b.customerId);
@@ -2156,6 +2138,7 @@ function Bills({B,setB,Py,Ret,setPy,firm,C,initBill,onClearInit,activeFirm,mob})
     }
   };
   const generateEWB=async b=>{
+    if(needsPaid('eway','E-Way Bill generation'))return;
     if(!firm.ewbUsername||!firm.ewbPassword){showT('Set E-Way Bill credentials in Settings first.','err');return;}
     setEwbLoading(b.id);
     try{
@@ -2585,6 +2568,7 @@ function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
   const custPay=Py.filter(p=>custBills.some(b=>b.id===p.billId)||isOBPay(p,customerId));
 
   const processFile=async(file)=>{
+    if(needsPaid('ai','AI statement reading'))return;
     const k=gk();
     if(!k){setErr('Add Gemini API key in Settings first.');return;}
     setScanning(true);setErr(null);setScanStatus('');setStmtFileName(file.name);
@@ -2603,7 +2587,8 @@ function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
           body={apiKey:k,csvText:text,bills:custBills,payments:custPay};
           setScanStatus('Gemini parsing CSV transactions...');
         }
-        const res=await fetch('/api/reconcile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const res=await fetch('/api/reconcile',{method:'POST',headers:await authH(),body:JSON.stringify(body)});
+        if(await checkPlanReply(res))throw new Error('AI statement reading is available on Business plans.');
         const data=await res.json();
         if(data.error)throw new Error(data.error);
         setTransactions(data.transactions||[]);
@@ -3370,7 +3355,7 @@ function FirmReconciliation({BS,B,Py,firm,C,gk,mob}){
 
   const handleFile=async e=>{const file=e.target.files[0];if(!file)return;setSelectedFile(file);setSessionLabel(file.name.replace(/\.[^/.]+$/,''));};
 
-  const uploadAndReconcile=async()=>{if(!selectedFile)return;if(!gk()){showT('Add Gemini API key in Settings first','err');return;}setScanStatus('Extracting transactions...');setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const mimeType=selectedFile.type||'application/octet-stream';let csvText='';if(selectedFile.type.startsWith('text/')){csvText=new TextDecoder().decode(atob(b64).split('').map(c=>c.charCodeAt(0)));}const reconcileRes=await api.post('/api/reconcile',{apiKey:gk(),csvText,imageData:b64,imageType:mimeType});const txns=reconcileRes.transactions||[];setScanStatus('Creating session...');const sessionRes=await api.post('/api/bank-reconciliation',{label:sessionLabel||'Bank Statement',bankStmtId:null,transactions:txns});setSessionId(sessionRes.id);setSelectedFile(null);setScanStatus('');showT('Statement processed! Review & match entries below.');};r.readAsDataURL(selectedFile);}catch(err){showT('Error: '+err.message,'err');setScanStatus('');}finally{setUploading(false);}};
+  const uploadAndReconcile=async()=>{if(!selectedFile)return;if(needsPaid('ai','AI statement reading'))return;if(!gk()){showT('Add Gemini API key in Settings first','err');return;}setScanStatus('Extracting transactions...');setUploading(true);try{const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(String(ev.target.result).split(',')[1]);r.onerror=()=>rej(new Error('Could not read file'));r.readAsDataURL(selectedFile);});const mimeType=selectedFile.type||'application/octet-stream';const isText=mimeType.startsWith('text/')||/\.(csv|txt)$/i.test(selectedFile.name);const csvText=isText?new TextDecoder().decode(Uint8Array.from(atob(b64),c=>c.charCodeAt(0))):'';const reconcileRes=await api.post('/api/reconcile',isText?{apiKey:gk(),csvText}:{apiKey:gk(),imageData:b64,imageType:mimeType});const txns=reconcileRes.transactions||[];setScanStatus('Creating session...');const sessionRes=await api.post('/api/bank-reconciliation',{label:sessionLabel||'Bank Statement',bankStmtId:null,transactions:txns});setSessionId(sessionRes.id);setSelectedFile(null);setScanStatus('');showT('Statement processed! Review & match entries below.');}catch(err){showT('Error: '+err.message,'err');setScanStatus('');}finally{setUploading(false);}};
 
   if(sessionId){return<ReviewSession sessionId={sessionId} onBack={()=>{setSessionId(null);setSelectedFile(null);}} C={C} mob={mob} showT={showT}/>;}
 
@@ -3471,10 +3456,11 @@ function SupplierReconTab({suppliers,SS,SI,Py,Ret,firm,gk,mob,cache,setCache,ini
   const st=stmts.find(s=>s.id===stId);
   const ext=stId?cache[stId]:null;
   const run=async()=>{
-    if(!stId)return;if(!gk()){setErr('Add your Gemini API key in Settings first.');return;}
+    if(!stId)return;if(needsPaid('ai','Supplier reconciliation'))return;if(!gk()){setErr('Add your Gemini API key in Settings first.');return;}
     setBusy(true);setErr('');
     try{
       const res=await fetch('/api/supplier-statement-recon',{method:'POST',headers:await authH(),body:JSON.stringify({statementId:stId,apiKey:gk()})});
+      await checkPlanReply(res);
       const j=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(j.error||('Server error '+res.status));
       setCache(c=>({...c,[stId]:j}));
@@ -3649,7 +3635,7 @@ function IndustrySetup({firm,saveFirm,S,mob}){
   </div>;
 }
 
-function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
+function Settings({firm,saveFirm,ses,mob,theme,setTheme,planInfo,onUpgrade,activeFirm}){
   const[f,setF]=useState(firm);const[saved,setSaved]=useState(false);const[logoUploading,setLogoUploading]=useState(false);
   const[settingsTab,setSettingsTab]=useState('account');
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
@@ -3664,6 +3650,19 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,org,activeFirm}){
   return<div>
     <div style={S.h2}>Settings</div>
     {ses&&<div style={{padding:'7px 12px',background:BLL,borderRadius:7,marginBottom:14,fontSize:12,color:BL}}>Logged in as <strong>{ses.user?.email}</strong></div>}
+    {planInfo&&<div style={{...S.card,marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+      <div>
+        <div style={{fontSize:11,fontWeight:700,color:MUT,textTransform:'uppercase',letterSpacing:'0.4px'}}>Your plan</div>
+        <div style={{fontSize:17,fontWeight:800,marginTop:3,color:planInfo.plan==='free'?TXT:BL}}>{planInfo.name}</div>
+        <div style={{fontSize:12,color:MUT,marginTop:2}}>
+          {planInfo.currentFirmCount??0} of {planInfo.firmLimit} firm{planInfo.firmLimit===1?'':'s'} used
+          {planInfo.plan==='trial'&&<> · trial ends in {planInfo.trialDaysLeft} day{planInfo.trialDaysLeft===1?'':'s'}, then Free</>}
+          {planInfo.paidUntil&&['business4','business10'].includes(planInfo.plan)&&<> · renews {new Date(planInfo.paidUntil).getFullYear()>2090?'never (lifetime)':'on '+new Date(planInfo.paidUntil).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</>}
+        </div>
+        {planInfo.plan==='free'&&<div style={{fontSize:11,color:AMB,marginTop:4}}>AI scanning, E-Way Bill, E-Invoice and Email/WhatsApp/SMS sending need a Business plan.</div>}
+      </div>
+      {planInfo.plan!=='business10'&&<button style={S.btn('pri')} onClick={onUpgrade}>{planInfo.plan==='business4'?'Upgrade to 10 firms':'Upgrade'}</button>}
+    </div>}
 
     {/* Settings Tabs */}
     <div style={{display:'flex',gap:8,marginBottom:20,borderBottom:'1px solid '+BORD,paddingBottom:0,overflowX:'auto'}}>
@@ -3969,21 +3968,11 @@ function Team({activeFirm,firms,setFirms,onSwitchFirm,onNewFirm,mob}){
   const createFirm=async()=>{
     if(!newFirmName){showT('Enter firm name','err');return;}
 
-    // Check trial limits before creating firm
     try{
-      const trialRes=await api.get('/api/trial/status');
-      if(trialRes&&(trialRes.plan==='free_trial'||trialRes.plan==='trial')&&trialRes.currentFirmCount>=trialRes.firmCountLimit){
-        showT('Trial users can only create 1 firm. Upgrade to Business plan.','err');
-        return;
-      }
-    }catch(e){
-      console.error('Trial check error:',e);
-      // Continue anyway if trial check fails
-    }
-
-    const res=await api.post('/api/firms',{name:newFirmName});
-    if(res.error){showT(res.error,'err');return;}
-    setNewFirmName('');showT('Firm created!');onNewFirm(res);
+      const res=await api.post('/api/firms',{name:newFirmName});
+      if(res.error){showT(res.error,'err');return;}
+      setNewFirmName('');showT('Firm created!');onNewFirm(res);
+    }catch(e){showT(e.message,'err');}
   };
 
   const canManage=activeFirm&&['owner','manager'].includes(activeFirm.role);

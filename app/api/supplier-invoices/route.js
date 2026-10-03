@@ -50,65 +50,7 @@ export async function POST(req) {
 
     if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Check trial limits
-    console.log('[supplier-invoices] Fetching trial limits for user:', c.user.id);
-
-    const { data: trial, error: trialError } = await c.sb
-      .from('trial_limits')
-      .select('*')
-      .eq('user_id', c.user.id)
-      .single();
-
-    console.log('[supplier-invoices] Trial query result:', {
-      hasData: !!trial,
-      error: trialError?.message,
-      plan: trial?.subscription_plan,
-      scansUsed: trial?.ai_scans_used,
-      scansLimit: trial?.ai_scans_limit,
-    });
-
-    // Validate trial limits
-    if (trial) {
-      // Check if trial expired
-      if (trial.trial_ends_at && new Date() > new Date(trial.trial_ends_at)) {
-        console.log('[supplier-invoices] BLOCKING: Trial expired');
-        return NextResponse.json(
-          { error: 'Your trial has expired. Please upgrade to continue uploading invoices.' },
-          { status: 403 }
-        );
-      }
-
-      // Check free trial limit
-      if ((trial.subscription_plan === 'free_trial' || trial.subscription_plan === 'trial') &&
-          trial.ai_scans_used >= trial.ai_scans_limit) {
-        console.log('[supplier-invoices] BLOCKING: Free trial limit reached');
-        return NextResponse.json(
-          {
-            error: `You have used all ${trial.ai_scans_limit} free invoice scans. Upgrade to Business plan for unlimited.`,
-            scansUsed: trial.ai_scans_used,
-            scansLimit: trial.ai_scans_limit,
-          },
-          { status: 403 }
-        );
-      }
-
-      // Check basic plan monthly limit
-      if (trial.subscription_plan === 'basic' && trial.ai_scans_used_this_month >= 50) {
-        console.log('[supplier-invoices] BLOCKING: Basic plan limit reached');
-        return NextResponse.json(
-          {
-            error: "You have reached your 50 AI scans/month limit. Limit resets next month.",
-            scansUsedThisMonth: trial.ai_scans_used_this_month,
-          },
-          { status: 403 }
-        );
-      }
-    } else {
-      console.log('[supplier-invoices] WARNING: No trial record found');
-    }
-
-    console.log('[supplier-invoices] Trial check PASSED, creating invoice');
-
+    // Saving supplier invoices is a core feature on every plan; AI scanning is gated in /api/extract-invoice-items.
     // Create invoice
     let invoiceData = null;
     const b = await req.json();
@@ -191,45 +133,6 @@ export async function POST(req) {
     }
 
     console.log('[supplier-invoices] Invoice created:', { id: invoiceData.id });
-
-    // Increment counter AFTER successful invoice creation
-    if (trial) {
-      try {
-        console.log('[supplier-invoices] INCREMENTING counter for plan:', trial.subscription_plan);
-
-        if (trial.subscription_plan === 'free_trial' || trial.subscription_plan === 'trial') {
-          const newCount = trial.ai_scans_used + 1;
-          console.log('[supplier-invoices] Updating ai_scans_used:', trial.ai_scans_used, '→', newCount);
-
-          const { error: updateError } = await c.sb
-            .from('trial_limits')
-            .update({ ai_scans_used: newCount })
-            .eq('user_id', c.user.id);
-
-          if (updateError) {
-            console.error('[supplier-invoices] Update error:', updateError.message);
-          } else {
-            console.log('[supplier-invoices] ✅ Counter updated successfully');
-          }
-        } else if (trial.subscription_plan === 'basic') {
-          const newCount = trial.ai_scans_used_this_month + 1;
-          console.log('[supplier-invoices] Updating ai_scans_used_this_month:', trial.ai_scans_used_this_month, '→', newCount);
-
-          const { error: updateError } = await c.sb
-            .from('trial_limits')
-            .update({ ai_scans_used_this_month: newCount })
-            .eq('user_id', c.user.id);
-
-          if (updateError) {
-            console.error('[supplier-invoices] Update error:', updateError.message);
-          } else {
-            console.log('[supplier-invoices] ✅ Monthly counter updated successfully');
-          }
-        }
-      } catch (e) {
-        console.error('[supplier-invoices] ❌ Error incrementing counter:', e.message);
-      }
-    }
 
     console.log('=== [supplier-invoices] POST END ===\n');
     return NextResponse.json(shape(invoiceData), { status: 201 });

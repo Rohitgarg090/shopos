@@ -1,324 +1,141 @@
 'use client';
-import { X, Check, Zap } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export default function BillingPopup({ isOpen, onClose }) {
-  const [billingPeriod, setBillingPeriod] = useState('monthly');
-  const [selectedPlan, setSelectedPlan] = useState(null);
+const PLANS = [
+  { id: 'business4', name: 'Business 4', price: 1499, firms: 4, tag: '' },
+  { id: 'business10', name: 'Business 10', price: 2499, firms: 10, tag: 'Best value' },
+];
+const FEATURES = [
+  'Unlimited invoices, customers & products',
+  'AI invoice scanning (supplier bills)',
+  'AI bank & supplier statement reconciliation',
+  'E-Way Bill & E-Invoice',
+  'Email, WhatsApp & SMS sending',
+  'Team members with roles (owner, manager, staff)',
+];
+
+export default function BillingPopup({ isOpen, onClose, reason, planInfo, onPaid }) {
+  const [selected, setSelected] = useState('business4');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [couponCode, setCouponCode] = useState('');
+  const [done, setDone] = useState(null);
 
   if (!isOpen) return null;
+  const current = planInfo?.plan;
 
-  const handleUpgrade = async () => {
-    console.log('[BillingPopup] handleUpgrade called, selectedPlan:', selectedPlan);
-    if (!selectedPlan) {
-      console.log('[BillingPopup] No plan selected');
-      setError('Please select a plan');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
+  const pay = async () => {
+    setLoading(true); setError(null);
     try {
-      console.log('[BillingPopup] Getting session...');
       const { data: { session } } = await supabase.auth.getSession();
-      console.log('[BillingPopup] Session OK:', session?.user?.email || 'NO SESSION');
+      if (!session?.access_token) throw new Error('Please sign in again');
+      const plan = PLANS.find(p => p.id === selected);
 
-      if (!session?.access_token) {
-        console.log('[BillingPopup] No access token');
-        setError('Authentication required');
-        setLoading(false);
-        return;
-      }
-
-      const planDetails = plans.find(p => p.id === selectedPlan);
-      let amount = billingPeriod === 'annual' ? planDetails.annualPrice * 100 : planDetails.monthlyPrice * 100;
-
-      if (couponCode) {
-        amount = Math.floor(amount * 0.9);
-      }
-
-      console.log('[BillingPopup] Creating order - plan:', selectedPlan, 'period:', billingPeriod, 'amount:', amount);
-
-      // Step 1: Create order on backend
-      const createOrderRes = await fetch('/api/subscription-payments/create-order', {
+      const res = await fetch('/api/subscription-payments/create-order', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          plan: selectedPlan,
-          billingPeriod: billingPeriod,
-          couponCode: couponCode || null,
-          amount: amount
-        })
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: plan.id, billingPeriod: 'annual', couponCode: couponCode.trim() || null }),
       });
+      const order = await res.json().catch(() => ({}));
+      if (!res.ok || !order.orderId) throw new Error(order.error || 'Could not start payment');
+      if (!window.Razorpay) throw new Error('Payment window could not load — check your internet and retry');
 
-      if (!createOrderRes.ok) {
-        const errData = await createOrderRes.json();
-        console.log('[BillingPopup] Create order failed:', errData);
-        setError(errData.error || 'Failed to create order');
-        setLoading(false);
-        return;
-      }
-
-      const orderData = await createOrderRes.json();
-      console.log('[BillingPopup] Order created:', orderData.orderId);
-
-      if (!orderData.orderId) {
-        setError('Failed to create payment order');
-        setLoading(false);
-        return;
-      }
-
-      // Step 2: Open Razorpay checkout
-      if (!window.Razorpay) {
-        console.log('[BillingPopup] Razorpay script not loaded');
-        setError('Razorpay script not loaded');
-        setLoading(false);
-        return;
-      }
-
-      const options = {
-        key: orderData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        order_id: orderData.orderId,
-        amount: orderData.amount,
+      const rzp = new window.Razorpay({
+        key: order.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        order_id: order.orderId,
+        amount: order.amount,
         currency: 'INR',
         name: 'ShopOS',
-        description: `${planDetails.name} Plan - ${billingPeriod === 'annual' ? 'Annual' : 'Monthly'}`,
-        prefill: {
-          name: 'Customer',
-          email: '',
-          contact: ''
-        },
-        handler: async (paymentResponse) => {
-          console.log('[BillingPopup] Payment successful, verifying...');
+        description: `${plan.name} — 1 year`,
+        prefill: { email: session.user?.email || '' },
+        theme: { color: '#1B5E8A' },
+        handler: async (r) => {
           try {
-            const verifyRes = await fetch('/api/subscription-payments/verify', {
+            const v = await fetch('/api/subscription-payments/verify', {
               method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${session.access_token}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                razorpay_order_id: paymentResponse.razorpay_order_id,
-                razorpay_payment_id: paymentResponse.razorpay_payment_id,
-                razorpay_signature: paymentResponse.razorpay_signature,
-                plan: selectedPlan,
-                billingPeriod: billingPeriod
-              })
+              headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ razorpay_order_id: r.razorpay_order_id, razorpay_payment_id: r.razorpay_payment_id, razorpay_signature: r.razorpay_signature }),
             });
-
-            if (verifyRes.ok) {
-              console.log('[BillingPopup] Payment verified successfully');
-              window.location.href = '/settings?billing_success=true';
-            } else {
-              const errData = await verifyRes.json();
-              setError('Payment verification failed: ' + (errData.error || 'Unknown error'));
-            }
-          } catch (err) {
-            setError('Verification error: ' + err.message);
-          }
-          setLoading(false);
+            const vj = await v.json().catch(() => ({}));
+            if (!v.ok) throw new Error(vj.error || 'Verification failed');
+            setDone(plan.name);
+            onPaid && onPaid();
+          } catch (e) {
+            setError('Payment received but not confirmed: ' + e.message + '. Contact support with order ' + r.razorpay_order_id);
+          } finally { setLoading(false); }
         },
-        modal: {
-          ondismiss: () => {
-            console.log('[BillingPopup] Payment modal dismissed');
-            setLoading(false);
-          }
-        },
-        theme: { color: '#3b82f6' }
-      };
-
-      console.log('[BillingPopup] Opening Razorpay checkout');
-      const rzp = new window.Razorpay(options);
+        modal: { ondismiss: () => setLoading(false) },
+      });
       rzp.open();
-    } catch (err) {
-      console.error('[BillingPopup] Error:', err.message);
-      setError('Error: ' + err.message);
-      setLoading(false);
+    } catch (e) {
+      setError(e.message); setLoading(false);
     }
   };
 
-  const plans = [
-    {
-      id: 'starter',
-      name: 'Starter',
-      monthlyPrice: 799,
-      annualPrice: 6999,
-      firms: '1 firm',
-      users: '2 users',
-      features: ['Invoices', 'Basic Analytics', 'Customers', 'Email Support'],
-      popular: false
-    },
-    {
-      id: 'business',
-      name: 'Business',
-      monthlyPrice: 1499,
-      annualPrice: 12999,
-      firms: '3 firms',
-      users: '5 users',
-      features: ['Everything in Starter', 'Advanced Analytics', 'Suppliers', 'Bank Reconciliation', 'Priority Support'],
-      popular: true
-    },
-    {
-      id: 'pro',
-      name: 'Pro',
-      monthlyPrice: 2499,
-      annualPrice: 21999,
-      firms: 'Unlimited',
-      users: 'Unlimited',
-      features: ['Everything in Business', 'Data Migration', 'API Access', 'Dedicated Support'],
-      popular: false
-    }
-  ];
+  const wrap = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 16 };
+  const box = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', fontFamily: "'Inter',system-ui,sans-serif", color: '#1A1A18' };
+
+  if (done) return (
+    <div style={wrap} onClick={onClose}>
+      <div style={{ ...box, maxWidth: 420, padding: 28, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+        <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#EBF5E4', color: '#2E6B1F', fontSize: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>✓</div>
+        <div style={{ fontSize: 19, fontWeight: 800 }}>You're on {done}</div>
+        <div style={{ fontSize: 13, color: '#666', margin: '6px 0 18px' }}>All features are unlocked for 1 year. Thank you!</div>
+        <button onClick={onClose} style={{ background: '#1B5E8A', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 22px', fontWeight: 700, cursor: 'pointer' }}>Continue</button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" style={{top: 60}}>
-      {/* Glasmorphic modal */}
-      <div className="relative w-full max-w-5xl max-h-[calc(100vh-120px)] overflow-y-auto rounded-3xl backdrop-blur-3xl border border-white border-opacity-30 bg-gradient-to-br from-white/10 to-white/5 shadow-2xl p-6">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition z-10"
-        >
-          <X size={24} className="text-white" />
-        </button>
-
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-white mb-3">
-            Choose Your Plan
-          </h2>
-          <p className="text-white text-opacity-70 text-lg max-w-2xl mx-auto">
-            Flexible pricing for every business size. Start free, upgrade anytime.
-          </p>
+    <div style={wrap} onClick={onClose}>
+      <div style={box} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '20px 22px 14px', borderBottom: '1px solid #EEE', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 19, fontWeight: 800 }}>Upgrade ShopOS</div>
+            <div style={{ fontSize: 12.5, color: '#666', marginTop: 3 }}>
+              {current ? <>You're on <strong>{planInfo.name}</strong>{current === 'trial' ? ` · ${planInfo.trialDaysLeft} day${planInfo.trialDaysLeft === 1 ? '' : 's'} left` : ''}. </> : null}Simple yearly pricing.
+            </div>
+          </div>
+          <button onClick={onClose} aria-label='Close' style={{ background: 'none', border: 'none', fontSize: 22, color: '#999', cursor: 'pointer', alignSelf: 'flex-start' }}>×</button>
         </div>
 
-        {/* Billing Toggle */}
-        <div className="flex justify-center mb-12">
-          <div className="inline-flex rounded-full p-1 bg-white bg-opacity-10 backdrop-blur-md border border-white border-opacity-20">
-            <button
-              onClick={() => setBillingPeriod('monthly')}
-              className={`px-6 py-2 rounded-full font-semibold transition ${
-                billingPeriod === 'monthly'
-                  ? 'bg-white bg-opacity-20 text-white shadow-lg'
-                  : 'text-white text-opacity-70 hover:text-opacity-100'
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBillingPeriod('annual')}
-              className={`px-6 py-2 rounded-full font-semibold transition ${
-                billingPeriod === 'annual'
-                  ? 'bg-white bg-opacity-20 text-white shadow-lg'
-                  : 'text-white text-opacity-70 hover:text-opacity-100'
-              }`}
-            >
-              Annual
-              <span className="ml-2 text-xs bg-gradient-to-r from-amber-400 to-orange-500 text-white px-2 py-0.5 rounded-full">
-                Save 27%
-              </span>
-            </button>
-          </div>
-        </div>
+        {reason && <div style={{ margin: '14px 22px 0', padding: '10px 12px', background: '#FDF0E0', color: '#8A4F06', borderRadius: 9, fontSize: 12.5, fontWeight: 600 }}>{reason}</div>}
 
-        {/* Error message */}
-        {error && (
-          <div className="mb-6 bg-red-500 bg-opacity-20 border border-red-500 border-opacity-50 text-red-200 px-4 py-3 rounded-lg">
-            {error}
-          </div>
-        )}
-
-        {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {plans.map((plan) => {
-            const price = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.annualPrice;
-            const isSelected = selectedPlan === plan.id;
+        <div style={{ padding: '16px 22px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
+          {PLANS.map(p => {
+            const on = selected === p.id, isCurrent = current === p.id;
             return (
-              <div
-                key={plan.id}
-                onClick={() => {
-                  console.log('[BillingPopup] Plan selected:', plan.id);
-                  setSelectedPlan(plan.id);
-                  setError(null);
-                }}
-                className={`relative rounded-2xl backdrop-blur-xl border transition-all duration-300 p-8 group hover:shadow-2xl cursor-pointer ${
-                  isSelected
-                    ? 'bg-gradient-to-br from-blue-500/30 to-blue-600/20 border-blue-500 border-opacity-100 ring-2 ring-blue-500'
-                    : plan.popular
-                    ? 'bg-gradient-to-br from-white/20 to-white/10 border-white border-opacity-40 ring-2 ring-white ring-opacity-50 scale-105 md:scale-100'
-                    : 'bg-white bg-opacity-10 border-white border-opacity-20 hover:bg-opacity-15 hover:border-opacity-30'
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-gradient-to-r from-amber-400 via-orange-500 to-pink-600 text-white text-sm font-bold px-4 py-1 rounded-full shadow-lg">
-                      Most Popular
-                    </span>
-                  </div>
-                )}
-
-                <div className="mb-6">
-                  <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-bold text-white">₹{price}</span>
-                    <span className="text-white text-opacity-60">/{billingPeriod === 'annual' ? 'year' : 'month'}</span>
-                  </div>
-                </div>
-
-                <div className="mb-8 pb-8 border-b border-white border-opacity-20 space-y-2">
-                  <div className="flex items-center gap-2 text-white text-opacity-80">
-                    <span className="font-semibold">{plan.firms}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-white text-opacity-80">
-                    <span className="font-semibold">{plan.users}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3 mb-8">
-                  {plan.features.map((feature, idx) => (
-                    <div key={idx} className="flex items-start gap-3">
-                      <Check size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-                      <span className="text-white text-opacity-80 text-sm">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    console.log('[BillingPopup] Get Started clicked for plan:', plan.id);
-                    setSelectedPlan(plan.id);
-                    setTimeout(() => handleUpgrade(), 100);
-                  }}
-                  disabled={loading}
-                  className={`w-full py-3 px-4 rounded-lg font-semibold transition ${
-                    loading ? 'opacity-50 cursor-not-allowed' : ''
-                  } ${
-                    plan.popular
-                      ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white hover:from-blue-600 hover:to-cyan-600 shadow-lg disabled:from-blue-500 disabled:to-cyan-500'
-                      : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30 border border-white border-opacity-30 disabled:opacity-50'
-                  }`}
-                >
-                  {loading ? 'Processing...' : 'Get Started'}
-                </button>
-              </div>
+              <button key={p.id} onClick={() => setSelected(p.id)} disabled={isCurrent}
+                style={{ textAlign: 'left', padding: 16, borderRadius: 12, cursor: isCurrent ? 'default' : 'pointer', background: on ? '#F0F6FB' : '#fff', border: '2px solid ' + (on ? '#1B5E8A' : '#E3E1D9'), position: 'relative', opacity: isCurrent ? 0.6 : 1 }}>
+                {p.tag && <span style={{ position: 'absolute', top: -10, right: 12, background: '#1B5E8A', color: '#fff', fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 10 }}>{p.tag}</span>}
+                <div style={{ fontSize: 14, fontWeight: 800 }}>{p.name}</div>
+                <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>Up to {p.firms} firms</div>
+                <div style={{ marginTop: 10 }}><span style={{ fontSize: 26, fontWeight: 800 }}>₹{p.price.toLocaleString('en-IN')}</span><span style={{ fontSize: 12, color: '#666' }}> /year</span></div>
+                <div style={{ fontSize: 11, color: '#2E6B1F', fontWeight: 600, marginTop: 2 }}>≈ ₹{Math.round(p.price / 12)}/month</div>
+                {isCurrent && <div style={{ fontSize: 11, fontWeight: 700, color: '#1B5E8A', marginTop: 6 }}>Current plan</div>}
+              </button>
             );
           })}
         </div>
 
-        {/* Footer */}
-        <div className="text-center pt-8 border-t border-white border-opacity-20">
-          <p className="text-white text-opacity-60 text-sm">
-            14-day free trial included. No credit card required.
-          </p>
+        <div style={{ padding: '0 22px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 8 }}>Both plans include</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: '6px 14px' }}>
+            {FEATURES.map(f => <div key={f} style={{ fontSize: 12.5, display: 'flex', gap: 7 }}><span style={{ color: '#2E6B1F', fontWeight: 800 }}>✓</span>{f}</div>)}
+          </div>
+          <div style={{ fontSize: 11.5, color: '#888', marginTop: 10 }}>Free plan: 1 firm with billing, inventory, ledger & accounts — without AI, E-Way, E-Invoice and messaging.</div>
+        </div>
+
+        <div style={{ padding: '16px 22px 20px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #EEE', marginTop: 16 }}>
+          <input value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder='Coupon code (optional)'
+            style={{ flex: 1, minWidth: 160, padding: '9px 12px', border: '1px solid #E3E1D9', borderRadius: 9, fontSize: 13 }} />
+          <button onClick={pay} disabled={loading || current === selected}
+            style={{ background: '#1B5E8A', color: '#fff', border: 'none', borderRadius: 9, padding: '11px 20px', fontWeight: 700, fontSize: 14, cursor: loading ? 'wait' : 'pointer', opacity: loading || current === selected ? 0.6 : 1 }}>
+            {loading ? 'Opening payment…' : `Pay ₹${PLANS.find(p => p.id === selected).price.toLocaleString('en-IN')} / year`}
+          </button>
+          {error && <div style={{ width: '100%', fontSize: 12.5, color: '#9B2626', background: '#FDF0F0', padding: '8px 12px', borderRadius: 8 }}>{error}</div>}
+          <div style={{ width: '100%', fontSize: 11, color: '#999' }}>Secure payment via Razorpay (UPI, cards, netbanking). Renewing early adds a year to your current plan.</div>
         </div>
       </div>
     </div>

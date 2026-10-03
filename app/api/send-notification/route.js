@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { blockIfFree, getPlanForFirm } from '@/lib/plan';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
@@ -118,6 +119,9 @@ export async function POST(req) {
       console.log('[send-notification] No firm selected');
       return NextResponse.json({ error: 'No firm selected' }, { status: 400 });
     }
+
+    const blocked = await blockIfFree(c.user.id, c.firmId, 'messaging');
+    if (blocked) return blocked;
 
     const body = await req.json();
     console.log('[send-notification] Request body received:', { type: body.type, channel: body.channel, recipientCount: body.recipients?.length, hasImage: !!body.image, hasCustomMessage: !!body.customMessage });

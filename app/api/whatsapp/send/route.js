@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import twilio from 'twilio';
 import { validatePhoneNumber, sanitizeText, getSafeErrorMessage } from '@/lib/security';
+import { blockIfFree, getPlanForFirm } from '@/lib/plan';
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -20,13 +21,16 @@ async function ctx(req) {
     { global: { headers: { Authorization: `Bearer ${token}` } } }
   );
   const { data: { user } } = await sb.auth.getUser();
-  return user ? { user } : null;
+  return user ? { user, firmId: req.headers.get('x-firm-id') } : null;
 }
 
 export async function POST(req) {
   try {
     const c = await ctx(req);
     if (!c) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const blocked = await blockIfFree(c.user.id, c.firmId, 'messaging');
+    if (blocked) return blocked;
 
     if (!accountSid || !authToken) {
       return Response.json(

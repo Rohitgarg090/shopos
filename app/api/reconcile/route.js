@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { matchTransactions } from '@/lib/reconcileEngine';
+import { blockIfFree, getPlanForFirm } from '@/lib/plan';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
@@ -89,6 +90,9 @@ export async function POST(req) {
   try {
     const c = await ctx(req);
     if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const blocked = await blockIfFree(c.user.id, c.firmId, 'ai');
+    if (blocked) return blocked;
 
     const body = await req.json();
     const { apiKey, csvText, imageData, imageType, bills, payments, sessionId, scope, firmId } = body;

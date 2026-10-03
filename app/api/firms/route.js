@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { getPlan, countOwnedFirms } from '@/lib/plan';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
@@ -76,6 +77,17 @@ export async function POST(req) {
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { name } = await req.json();
   if (!name) return NextResponse.json({ error: 'Firm name required' }, { status: 400 });
+
+  try {
+    const plan = await getPlan(c.user.id);
+    const owned = await countOwnedFirms(c.user.id);
+    if (owned >= plan.firmLimit) {
+      return NextResponse.json({
+        error: `Your ${plan.name} plan allows ${plan.firmLimit} firm${plan.firmLimit === 1 ? '' : 's'}. Upgrade to add more.`,
+        code: 'PLAN_REQUIRED', feature: 'firms', plan: plan.plan, firmLimit: plan.firmLimit, owned,
+      }, { status: 402 });
+    }
+  } catch (e) { console.error('[firms] plan check failed, allowing:', e.message); }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const adminSb = serviceKey

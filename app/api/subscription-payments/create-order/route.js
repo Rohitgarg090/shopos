@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { PAID_PLAN_IDS } from '@/lib/plan';
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -65,7 +66,14 @@ export async function POST(req) {
     if (orgError) console.log('[create-order] Org error:', orgError.message);
     console.log('[create-order] Org found:', org?.id || 'NOT FOUND');
 
-    if (!org) {
+    let orgRow = org;
+    if (!orgRow) {
+      const { data: created } = await sb.from('organizations')
+        .insert({ owner_id: user.id, name: user.email?.split('@')[0] || 'Organization', email: user.email, status: 'trial', plan: 'starter' })
+        .select().single();
+      orgRow = created;
+    }
+    if (!orgRow) {
       return Response.json({ error: 'Organization not found' }, { status: 404 });
     }
 
@@ -82,8 +90,11 @@ export async function POST(req) {
       return Response.json({ error: `Plan not found: ${plan}` }, { status: 404 });
     }
 
-    // Determine price
-    let amount = billingPeriod === 'annual' ? planData.price_annual : planData.price_monthly;
+    if (!PAID_PLAN_IDS.includes(plan) || billingPeriod !== 'annual') {
+      return Response.json({ error: 'Only annual Business 4 / Business 10 plans can be purchased' }, { status: 400 });
+    }
+    // Determine price (paise, from DB — never trust the client)
+    let amount = planData.price_annual;
 
     console.log('[create-order] Amount:', amount, 'Period:', billingPeriod);
 
@@ -128,7 +139,7 @@ export async function POST(req) {
     // Create Razorpay order via API
     // Receipt must be max 40 chars, so use short format
     const timestamp = Date.now().toString().slice(-8);
-    const receipt = `${org.id.slice(0, 20)}_${timestamp}`.slice(0, 40);
+    const receipt = `${orgRow.id.slice(0, 20)}_${timestamp}`.slice(0, 40);
 
     console.log('[create-order] Creating Razorpay order...');
     console.log('[create-order] Receipt:', receipt, '| KeyID check:', RAZORPAY_KEY_ID ? '✓ SET' : '✗ MISSING');
@@ -144,7 +155,7 @@ export async function POST(req) {
         currency: 'INR',
         receipt: receipt,
         notes: {
-          organization_id: org.id,
+          organization_id: orgRow.id,
           plan: plan,
           billing_period: billingPeriod,
         }
@@ -165,7 +176,7 @@ export async function POST(req) {
     const { data: payment, error: paymentError } = await sb
       .from('subscription_payments')
       .insert({
-        organization_id: org.id,
+        organization_id: orgRow.id,
         amount: finalAmount,
         plan: plan,
         billing_period: billingPeriod,
@@ -192,10 +203,10 @@ export async function POST(req) {
       currency: 'INR',
       keyId: RAZORPAY_KEY_ID,
       organization: {
-        id: org.id,
-        name: org.name,
-        email: org.email,
-        phone: org.phone,
+        id: orgRow.id,
+        name: orgRow.name,
+        email: orgRow.email,
+        phone: orgRow.phone,
       }
     });
   } catch (error) {

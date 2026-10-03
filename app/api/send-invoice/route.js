@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import QRCode from 'qrcode';
+import { blockIfFree, getPlanForFirm } from '@/lib/plan';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
@@ -166,6 +167,9 @@ function buildInvoiceHTML(bill, firm, payments = []) {
 export async function POST(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const blocked = await blockIfFree(c.user.id, c.firmId, 'messaging');
+  if (blocked) return blocked;
 
   const body = await req.json();
   const { bill, firm, payments, toEmail, customSubject, customBody } = body;

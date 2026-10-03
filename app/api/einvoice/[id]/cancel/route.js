@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { blockIfFree } from '@/lib/plan';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -20,6 +21,8 @@ export async function POST(req, { params }) {
   try {
     const c = await ctx(req);
     if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const blocked = await blockIfFree(c.user.id, c.firmId, 'einvoice');
+    if (blocked) return blocked;
     if (!c.firmId) return NextResponse.json({ error: 'No firm context' }, { status: 400 });
 
     const { id } = params;

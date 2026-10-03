@@ -1,15 +1,11 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 
-const monthlyPrices = { basic: 1299, business: 1549, pro: 4999 };
-const annualPrices = { basic: 974, business: 1159, pro: 3749 };
 
 export default function ShoposLanding() {
-  const [isAnnual, setIsAnnual] = useState(false);
   const [activeSendChannel, setActiveSendChannel] = useState(0);
   const containerRef = useRef(null);
 
-  const prices = { monthly: monthlyPrices, annual: annualPrices };
 
   useEffect(() => {
     const root = containerRef.current;
@@ -2297,85 +2293,75 @@ to{ opacity: 1; transform: translateY(0); }
           <h2 className="section-title">Simple, honest pricing</h2>
           <p className="section-sub mx-auto">No hidden fees. No per-transaction charges. Scale as your business grows.</p>
         </div>
-        <div className="pricing-toggle fade-in">
-          <span className="toggle-label">Monthly</span>
-          <label className="toggle-switch">
-            <input type="checkbox" checked={isAnnual} onChange={(e) => setIsAnnual(e.target.checked)} />
-            <span className="toggle-slider"></span>
-          </label>
-          <span className="toggle-label">Annually</span>
-          <span className="save-badge">Save 25%</span>
-        </div>
         <div className="pricing-cards fade-in">
-          {/* Basic */}
+          {/* Free */}
           <div className="pricing-card">
-            <div className="plan-name">Basic</div>
+            <div className="plan-name">Free</div>
             <div className="plan-firms">🏪 1 Firm</div>
             <div className="plan-price">
               <span className="price-currency">₹</span>
-              <span className="price-amount">{isAnnual ? prices.annual.basic.toLocaleString('en-IN') : prices.monthly.basic.toLocaleString('en-IN')}</span>
+              <span className="price-amount">0</span>
             </div>
-            <div className="price-period">/month</div>
-            <div className="plan-desc" style={{marginTop: '8px'}}>Perfect for solo traders and single-shop owners just getting started with digital accounting.</div>
+            <div className="price-period">forever</div>
+            <div className="plan-desc" style={{marginTop: '8px'}}>Everything a single shop needs to bill, track stock and keep accounts — free, forever.</div>
             <div className="plan-divider"></div>
             <ul className="plan-features">
               <li className="plan-feature"><span className="plan-feature-check">✓</span> 1 Firm / Company</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Unlimited invoices</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Inventory management</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> WhatsApp & email sending</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> GST reports (GSTR-1, 3B)</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> AI invoice scanner (50/mo)</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Mobile app access</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Unlimited invoices & customers</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Inventory & QR labels</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Ledger, accounts & GST reports</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Cheque & payment tracking</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Share bills on WhatsApp</li>
+              <li className="plan-feature" style={{opacity: 0.55}}><span className="plan-feature-check">–</span> No AI scanning, E-Way, E-Invoice</li>
+              <li className="plan-feature" style={{opacity: 0.55}}><span className="plan-feature-check">–</span> No auto Email / WhatsApp / SMS</li>
             </ul>
-            <a href="/auth?mode=signup" className="btn btn-primary" style={{width: '100%', justifyContent: 'center'}}>Start Free Trial →</a>
+            <a href="/auth?mode=signup" className="btn btn-primary" style={{width: '100%', justifyContent: 'center'}}>Start Free →</a>
           </div>
-          {/* Business */}
+          {/* Business 4 */}
           <div className="pricing-card featured">
             <div className="popular-badge">⭐ Most Popular</div>
-            <div className="plan-name">Business</div>
-            <div className="plan-firms">🏪 Up to 3 Firms</div>
+            <div className="plan-name">Business 4</div>
+            <div className="plan-firms">🏪 Up to 4 Firms</div>
             <div className="plan-price">
               <span className="price-currency">₹</span>
-              <span className="price-amount">{isAnnual ? prices.annual.business.toLocaleString('en-IN') : prices.monthly.business.toLocaleString('en-IN')}</span>
+              <span className="price-amount">1,499</span>
             </div>
-            <div className="price-period">/month</div>
-            <div className="plan-desc" style={{marginTop: '8px'}}>For growing traders managing multiple shops or product lines under one roof.</div>
+            <div className="price-period">/year · just ₹125/month</div>
+            <div className="plan-desc" style={{marginTop: '8px'}}>For growing traders running more than one shop or firm, with every automation unlocked.</div>
             <div className="plan-divider"></div>
             <ul className="plan-features">
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Up to 3 Firms</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Everything in Basic</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> AI scanner unlimited</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Bank reconciliation</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> e-Way bill integration</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> e-Invoice generation</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Up to 4 Firms</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Everything in Free</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> AI invoice scanner</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> AI bank & supplier reconciliation</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> E-Way Bill & E-Invoice</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Email, WhatsApp & SMS sending</li>
               <li className="plan-feature"><span className="plan-feature-check">✓</span> Priority support</li>
             </ul>
-            <a href="/auth?mode=signup" className="btn btn-white btn-lg" style={{width: '100%', justifyContent: 'center'}}>Start Free Trial →</a>
+            <a href="/auth?mode=signup" className="btn btn-white btn-lg" style={{width: '100%', justifyContent: 'center'}}>Start 14-Day Trial →</a>
           </div>
-          {/* Business Pro */}
+          {/* Business 10 */}
           <div className="pricing-card">
-            <div className="plan-name">Business Pro</div>
-            <div className="plan-firms">🏪 Unlimited Firms</div>
+            <div className="plan-name">Business 10</div>
+            <div className="plan-firms">🏪 Up to 10 Firms</div>
             <div className="plan-price">
               <span className="price-currency">₹</span>
-              <span className="price-amount">{isAnnual ? prices.annual.pro.toLocaleString('en-IN') : prices.monthly.pro.toLocaleString('en-IN')}</span>
+              <span className="price-amount">2,499</span>
             </div>
-            <div className="price-period">/month</div>
-            <div className="plan-desc" style={{marginTop: '8px'}}>For large wholesale groups, distributors, and multi-city operations with complex requirements.</div>
+            <div className="price-period">/year · just ₹208/month</div>
+            <div className="plan-desc" style={{marginTop: '8px'}}>For wholesale groups and distributors managing many firms from one login.</div>
             <div className="plan-divider"></div>
             <ul className="plan-features">
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Unlimited Firms</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Everything in Business</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Custom integrations</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Custom reports</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> Data migration help</li>
-              <li className="plan-feature"><span className="plan-feature-check">✓</span> SLA & uptime guarantee</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Up to 10 Firms</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Everything in Business 4</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Best for distributors & multi-shop groups</li>
+              <li className="plan-feature"><span className="plan-feature-check">✓</span> Priority support</li>
             </ul>
-            <a href="/auth?mode=signup" className="btn btn-primary" style={{width: '100%', justifyContent: 'center'}}>Start Free Trial →</a>
+            <a href="/auth?mode=signup" className="btn btn-primary" style={{width: '100%', justifyContent: 'center'}}>Start 14-Day Trial →</a>
           </div>
         </div>
         <div className="fade-in" style={{textAlign: 'center', marginTop: '32px', fontSize: '14px', color: 'var(--muted)'}}>
-          All plans include 14-day free trial · No credit card required · Cancel anytime
+          Every new account gets a 14-day trial of all features · No credit card required · Then free forever, or upgrade anytime
         </div>
       </section>
 
@@ -2448,11 +2434,11 @@ to{ opacity: 1; transform: translateY(0); }
                 <td><span className="check-p">Limited</span></td>
               </tr>
               <tr>
-                <td>Starting Price / month</td>
-                <td className="highlight">₹1,299</td>
+                <td>Starting Price</td>
+                <td className="highlight">Free · ₹1,499/yr</td>
                 <td>₹18,000/yr</td>
-                <td>₹599</td>
-                <td>₹2,999</td>
+                <td>₹599/mo</td>
+                <td>₹2,999/mo</td>
               </tr>
               <tr>
                 <td>Free Trial</td>
@@ -2514,7 +2500,7 @@ to{ opacity: 1; transform: translateY(0); }
         <div className="cta-content fade-in">
           <div className="section-label" style={{justifyContent: 'center', color: 'rgba(255,255,255,0.4)'}}>Get Started Today</div>
           <h2 className="section-title">Ready to modernize<br />your wholesale business?</h2>
-          <p className="cta-sub">Join thousands of wholesale traders who've switched to Shopos. 14-day free trial, no card needed.</p>
+          <p className="cta-sub">Join thousands of wholesale traders who've switched to Shopos. 14-day full trial, no card needed — then free forever.</p>
           <div className="cta-btns">
             <a href="/auth?mode=signup" className="btn btn-white btn-lg">Start Free Trial — 14 Days →</a>
             <a href="#" className="btn btn-outline-white btn-lg">Schedule a Demo</a>
