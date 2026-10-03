@@ -1232,17 +1232,22 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
         </div>}
         {items.length>0&&<>
           <div style={{marginTop:12,padding:'12px 14px',background:'#f0f7ff',borderRadius:8,border:'1px solid '+BL,fontSize:11}}>
-            <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:12,marginBottom:10}}>
-              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Articles</div><div style={{fontSize:16,fontWeight:800,color:BL}}>{items.length}</div></div>
-              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Total PCS</div><div style={{fontSize:16,fontWeight:800,color:BL}}>{items.reduce((s,i)=>s+i.qty,0)}</div></div>
-              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Subtotal</div><div style={{fontSize:16,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>s+(i.qty*i.price),0))}</div></div>
-            </div>
             <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:12}}>
-              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>GST Charges</div><div style={{fontSize:16,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>{const gst=((i.qty*i.price)*i.gst)/100;return s+gst;},0))}</div></div>
-              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Total Invoice</div><div style={{fontSize:16,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>s+(i.qty*i.price+(i.qty*i.price*i.gst/100)),0))}</div></div>
-              {markupPct&&<div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>After {markupPct}% Markup</div><div style={{fontSize:16,fontWeight:800,color:AMB,...S.mono}}>{fmt(items.reduce((s,i)=>{const base=i.qty*i.price;const gst=base*i.gst/100;const total=base+gst;const withMarkup=total*(1+markupPct/100);return s+withMarkup;},0))}</div></div>}
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Articles</div><div style={{fontSize:18,fontWeight:800,color:BL}}>{items.length}</div></div>
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Total PCS</div><div style={{fontSize:18,fontWeight:800,color:BL}}>{items.reduce((s,i)=>s+i.qty,0)}</div></div>
+              <div><div style={{color:MUT,fontSize:10,fontWeight:600,textTransform:'uppercase',marginBottom:4}}>Subtotal</div><div style={{fontSize:18,fontWeight:800,color:BL,...S.mono}}>{fmt(items.reduce((s,i)=>s+(i.qty*i.price),0))}</div></div>
             </div>
           </div>
+          {/* Item-wise breakdown for tally */}
+          {items.length>0&&<div style={{marginTop:8,fontSize:10}}>
+            <div style={{color:MUT,fontWeight:600,textTransform:'uppercase',marginBottom:6,paddingLeft:2}}>Item-wise Qty × Price (for tally)</div>
+            <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(2,1fr)',gap:6,maxHeight:120,overflowY:'auto',paddingRight:8}}>
+              {items.map((item,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:10,padding:'3px 6px',background:BG,borderRadius:4}}>
+                <span><span style={{fontWeight:600,color:BL}}>{item.articleNo||'—'}</span> {item.name.substring(0,15)}</span>
+                <span style={{...S.mono,fontWeight:600,color:BL,minWidth:80,textAlign:'right'}}>{item.qty} × {item.price} = {fmt(item.qty*item.price)}</span>
+              </div>)}
+            </div>
+          </div>}
           <div style={{marginTop:10,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
             {markupPct&&<span style={{fontSize:11,color:AMB,fontWeight:600}}>✓ {markupPct}% markup applied to all items</span>}
             <button style={S.btn('suc')} onClick={addToCatalog}>Add All to Catalog</button>
