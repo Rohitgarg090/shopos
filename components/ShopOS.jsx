@@ -31,7 +31,7 @@ const GST_RATES=[0,5,12,18,28];
 const PAY_MODES=['Cash','Online (UPI)','Cheque'];
 const UPI_APPS=['PhonePe','Google Pay','Paytm','BHIM','Other'];
 const CHQ=[
-  {k:'deposited',  l:'Pass',         c:'#B8690A',bg:'#FDF0E0',next:'cleared'},
+  {k:'deposited',  l:'Pending',      c:'#B8690A',bg:'#FDF0E0',next:'cleared'},
   {k:'cleared',    l:'Cleared',      c:'#2E6B1F',bg:'#EBF5E4',next:null},
   {k:'bounced',    l:'Bounced',      c:'#9B2626',bg:'#FDF0F0',next:'redeposited'},
   {k:'redeposited',l:'Re-Deposited', c:'#1B5E8A',bg:'#E3EFF8',next:'recleared'},
@@ -1678,14 +1678,16 @@ function PayModal({bill,onSave,onClose}){
   </Modal>;}
 
 /* ── CHEQUE STATUS ── */
-function ChequeStatus({payment,onUpdate}){
+function ChequeStatus({payment,onUpdate,onStatusChange}){
   const st=getStage(payment.chequeStatus||'deposited');const[busy,setBusy]=useState(false);
-  const adv=async()=>{if(!st.next)return;setBusy(true);try{const u=await api.patch('/api/payments',{id:payment.id,chequeStatus:st.next});onUpdate(u);}finally{setBusy(false)}};
-  const bounce=async()=>{if(['bounced','recleared','cleared'].includes(payment.chequeStatus))return;setBusy(true);try{const u=await api.patch('/api/payments',{id:payment.id,chequeStatus:'bounced'});onUpdate(u);}finally{setBusy(false)}};
+  const set=async s=>{setBusy(true);try{if(onStatusChange)await onStatusChange(s);else{const u=await api.patch('/api/payments',{id:payment.id,chequeStatus:s});onUpdate&&onUpdate(u);}}finally{setBusy(false)}};
+  const pending=st.k==='deposited'||st.k==='redeposited';
+  const b=(label,kind,s)=><button onClick={()=>set(s)} disabled={busy} style={{...S.btn(kind,true),fontSize:9,padding:'2px 7px'}}>{label}</button>;
   return<div style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
     <span style={{padding:'3px 10px',borderRadius:20,background:st.bg,color:st.c,fontSize:11,fontWeight:700,border:'1px solid '+st.c+'40'}}>{st.l}</span>
-    {st.next&&<button onClick={adv} disabled={busy} style={{...S.btn('suc',true),fontSize:9,padding:'2px 7px'}}>Advance</button>}
-    {!['bounced','recleared','cleared'].includes(payment.chequeStatus)&&<button onClick={bounce} disabled={busy} style={{...S.btn('dan',true),fontSize:9,padding:'2px 7px'}}>Bounce</button>}
+    {pending&&b('Pass','suc',st.next)}
+    {pending&&b('Bounce','dan','bounced')}
+    {st.k==='bounced'&&b('Re-Deposit','pri','redeposited')}
   </div>;}
 
 /* ── PRINTABLE INVOICE ── */
