@@ -981,7 +981,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   const[items,setItems]=useState([]);
   const[scanning,setScanning]=useState(false);
   const[scanStatus,setScanStatus]=useState('');
-  const[preview,setPreview]=useState(null);
+  const[preview,setPreview]=useState(null);const[dragOn,setDragOn]=useState(false);const[showMan,setShowMan]=useState(false);
   const[fileType,setFileType]=useState('');const[scanFileName,setScanFileName]=useState('');
   const[err,setErr]=useState(null);
   const[toast,showT]=useToast();
@@ -1235,8 +1235,18 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   };
 
   return<div>
-    <div style={S.h2}>Scan Supplier Invoice</div>{toast}
-    {!gk()&&<div style={{padding:'10px 16px',borderRadius:8,background:AMBL,color:AMB,fontSize:13,marginBottom:12,fontWeight:500}}>Warning: Add Gemini API key in Settings to enable AI scanning.</div>}
+    {(()=>{const step=items.length>0?2:scanning?1:1;return<div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:12,flexWrap:'wrap',marginBottom:14}}>
+      <div><div style={{...S.h2,marginBottom:2}}>Scan Supplier Invoice</div><div style={{fontSize:12,color:MUT}}>Upload a supplier bill — items go to your catalog and the bill is recorded under Suppliers.</div></div>
+      {!mob&&<div style={{display:'flex',alignItems:'center',gap:6}}>
+        {[['1','Upload bill'],['2','Review & markup'],['3','Save to catalog']].map(([n,l],i)=>{const on=i+1<=step,cur=i+1===step;return<React.Fragment key={n}>
+          {i>0&&<span style={{width:22,height:1,background:on?BL:BORD}}/>}
+          <span style={{display:'flex',alignItems:'center',gap:6,fontSize:11.5,fontWeight:cur?700:500,color:on?BL:MUT}}>
+            <span style={{width:20,height:20,borderRadius:'50%',background:on?BL:'#ECE9E3',color:on?'#fff':MUT,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:10.5,fontWeight:800}}>{i+1<step?'✓':n}</span>{l}
+          </span>
+        </React.Fragment>;})}
+      </div>}
+    </div>;})()}{toast}
+    {!gk()&&<div style={{padding:'10px 16px',borderRadius:8,background:AMBL,color:AMB,fontSize:13,marginBottom:12,fontWeight:500}}>Add your Gemini API key in Settings to enable AI scanning. You can still add items manually below.</div>}
     {supplierBanner&&<div style={{padding:'10px 16px',borderRadius:8,background:GRL,color:GR,fontSize:12,marginBottom:12,border:'0.5px solid #a0c890',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
       <div>
         <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>Invoice read successfully</div>
@@ -1250,21 +1260,35 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
       </div>
       <button onClick={()=>setSupplierBanner(null)} style={{background:'none',border:'none',cursor:'pointer',color:GR,fontSize:16}}>x</button>
     </div>}
-    <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:16}}>
+    <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'minmax(0,5fr) minmax(0,7fr)',gap:16,alignItems:'start'}}>
       <div>
         <div style={{...S.card,marginBottom:14}}>
-          <div style={S.h3}>Upload Supplier Invoice</div>
-          <label style={{border:'1.5px dashed '+BORD,borderRadius:10,padding:'22px 16px',textAlign:'center',cursor:'pointer',background:BG,display:'block'}}>
-            <input type='file' accept='image/jpeg,image/png,image/webp,image/heic,application/pdf' style={{display:'none'}} onChange={upload}/>
-            <div style={{fontSize:36,marginBottom:6}}>?</div>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>Tap to upload invoice</div>
-            <div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',marginBottom:6}}>
-              {[['JPG/PNG',BL,BLL],['PDF',RD,RDL],['WEBP/HEIC',GR,GRL]].map(([l,c,bg])=><span key={l} style={{background:bg,color:c,padding:'2px 9px',borderRadius:12,fontSize:11,fontWeight:600}}>{l}</span>)}
+          {!(preview||scanFileName)||scanning?<label
+            onDragOver={e=>{e.preventDefault();setDragOn(true);}} onDragLeave={()=>setDragOn(false)}
+            onDrop={e=>{e.preventDefault();setDragOn(false);if(!scanning&&e.dataTransfer.files?.[0])upload({target:{files:e.dataTransfer.files}});}}
+            style={{border:'2px dashed '+(dragOn?BL:'#D6D2CA'),borderRadius:12,padding:'26px 16px',textAlign:'center',cursor:scanning?'default':'pointer',background:dragOn?BLL:'#FAF9F6',display:'block',transition:'all .15s',opacity:scanning?0.6:1}}>
+            <input type='file' accept='image/jpeg,image/png,image/webp,image/heic,application/pdf' style={{display:'none'}} onChange={upload} disabled={scanning}/>
+            <div style={{width:52,height:52,borderRadius:14,background:BLL,display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:10}}>
+              <svg width='26' height='26' viewBox='0 0 24 24' fill='none' stroke={BL} strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/><path d='M14 3v5h5'/><path d='M12 17v-6'/><path d='m9 13 3-3 3 3'/></svg>
             </div>
-            <div style={{fontSize:11,color:MUT}}>Gemini AI reads article numbers, quantities, sizes, HSN codes</div>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{dragOn?'Drop the bill here':mob?'Tap to upload or take a photo':'Drag & drop the supplier bill'}</div>
+            {!mob&&<div style={{fontSize:12,color:MUT,marginBottom:10}}>or <span style={{color:BL,fontWeight:700,textDecoration:'underline'}}>browse files</span></div>}
+            <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginTop:mob?8:0}}>
+              {['PDF','JPG','PNG','WEBP','HEIC'].map(l=><span key={l} style={{background:'#fff',border:'1px solid '+BORD,color:MUT,padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:700}}>{l}</span>)}
+            </div>
+            <div style={{fontSize:10.5,color:MUT,marginTop:8}}>AI reads supplier, invoice no., article nos., sizes, qty, prices & HSN · PDF up to 20MB</div>
           </label>
-          {preview&&<img src={preview} alt='Invoice preview' style={{width:'100%',maxHeight:220,objectFit:'contain',borderRadius:8,marginTop:12,border:'0.5px solid '+BORD}}/>}
-          {!preview&&fileType==='application/pdf'&&!scanning&&<div style={{marginTop:10,padding:'9px 12px',background:RDL,borderRadius:8,fontSize:12,color:RD}}>PDF uploaded</div>}
+          :<div style={{display:'flex',gap:12,alignItems:'center'}}>
+            {preview?<img src={preview} alt='Bill preview' style={{width:72,height:90,objectFit:'cover',borderRadius:8,border:'1px solid '+BORD,flexShrink:0}}/>
+              :<div style={{width:72,height:90,borderRadius:8,background:RDL,color:RD,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:13,flexShrink:0}}>PDF</div>}
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{scanFileName||'Uploaded bill'}</div>
+              <div style={{fontSize:11,color:err?RD:GR,marginTop:2,fontWeight:600}}>{err?'Could not read this bill':items.length>0?'✓ '+items.length+' items extracted':'Uploaded'}</div>
+              <label style={{...S.btn('def',true),marginTop:8,cursor:'pointer'}}>
+                <input type='file' accept='image/jpeg,image/png,image/webp,image/heic,application/pdf' style={{display:'none'}} onChange={upload}/>Replace bill
+              </label>
+            </div>
+          </div>}
           <ScanProgress active={scanning} kind='invoice' fileName={scanFileName} status={scanStatus}/>
           {err&&!scanning&&<div style={{padding:'10px 14px',borderRadius:8,background:RDL,color:RD,fontSize:12,marginTop:10,lineHeight:1.5}}><strong>Error:</strong> {err}</div>}
         </div>
@@ -1288,8 +1312,12 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
           </div>
           <div style={{fontSize:11,color:AMB}}>Tip: Cost prices shown in grey. Markup prices will be saved to catalog as selling price.</div>
         </div>}
-        <div style={S.card}>
-          <div style={S.h3}>Add Line Item Manually</div>
+        <div style={{...S.card,padding:0,overflow:'hidden'}}>
+          <button onClick={()=>setShowMan(v=>!v)} style={{width:'100%',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'13px 16px',background:'none',border:'none',cursor:'pointer',textAlign:'left'}}>
+            <span><span style={{fontSize:13,fontWeight:700,color:TXT}}>Add an item manually</span><span style={{display:'block',fontSize:11,color:MUT,marginTop:1}}>For bills without a scan, or items the AI missed</span></span>
+            <span style={{fontSize:18,color:MUT,transform:showMan?'rotate(45deg)':'none',transition:'transform .15s'}}>+</span>
+          </button>
+          {showMan&&<div style={{padding:'0 16px 16px',borderTop:'1px solid '+BORD,paddingTop:12}}>
           <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:8,marginBottom:10}}>
             <Fld label='Article No'><input style={S.inp} value={man.articleNo} onChange={e=>setMan(m=>({...m,articleNo:e.target.value}))} placeholder='9925'/></Fld>
             <Fld label='Product Name *'><input style={S.inp} value={man.name} onChange={e=>setMan(m=>({...m,name:e.target.value}))} placeholder='PANSARI'/></Fld>
@@ -1301,7 +1329,8 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
             <Fld label='HSN'><input style={S.inp} value={man.hsn} onChange={e=>setMan(m=>({...m,hsn:e.target.value}))} placeholder='6203'/></Fld>
             <Fld label='Color' span2><input style={S.inp} value={man.color} onChange={e=>setMan(m=>({...m,color:e.target.value}))} placeholder='Red, Blue... (optional)'/></Fld>
           </div>
-          <button style={S.btn('gho')} onClick={addMan}>+ Add to Extracted List</button>
+          <button style={S.btn('pri')} onClick={addMan}>+ Add to items</button>
+          </div>}
         </div>
       </div>
       <div style={S.card}>
@@ -1321,7 +1350,16 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
             <button style={{...S.btn('def',true),fontSize:11}} onClick={()=>setSupplierBanner(null)}>Dismiss</button>
           </div>}
         </div>
-        {items.length===0?<MT msg='Upload a supplier invoice above, or add items manually.'/> :<div style={{maxHeight:600,overflowY:'auto',display:'flex',flexDirection:'column',gap:8}}>
+        {items.length===0?<div style={{padding:'28px 8px 18px',textAlign:'center'}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{scanning?'Reading your bill…':'No items yet'}</div>
+          <div style={{fontSize:12,color:MUT,marginBottom:18}}>{scanning?'Items will appear here as soon as the scan finishes.':'Upload a bill on the left, or add items manually.'}</div>
+          <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(3,1fr)',gap:10,textAlign:'left'}}>
+            {[['1','Upload','Photo or PDF of the supplier bill'],['2','Review','Check qty & prices, set a markup % for selling price'],['3','Save','Adds stock to catalog and records the purchase bill']].map(([n,t,d])=><div key={n} style={{padding:'12px',borderRadius:10,background:'#FAF9F6',border:'1px solid '+BORD}}>
+              <div style={{width:22,height:22,borderRadius:'50%',background:BLL,color:BL,fontSize:11,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:6}}>{n}</div>
+              <div style={{fontSize:12,fontWeight:700}}>{t}</div><div style={{fontSize:11,color:MUT,marginTop:2,lineHeight:1.4}}>{d}</div>
+            </div>)}
+          </div>
+        </div>:<div style={{maxHeight:600,overflowY:'auto',display:'flex',flexDirection:'column',gap:8}}>
           {items.map((item,i)=><div key={i} style={{padding:'10px 12px',borderRadius:8,border:'0.5px solid '+BORD,background:'#fafaf8'}}>
             <div style={{display:'grid',gridTemplateColumns:'90px 1fr',gap:6,marginBottom:6}}>
               <div><label style={S.lbl}>Article No</label><input style={{...S.inp,fontSize:12,fontFamily:'DM Mono,monospace',fontWeight:700,color:BL}} value={item.articleNo||''} onChange={e=>upd(i,'articleNo',e.target.value)} placeholder='code'/></div>
