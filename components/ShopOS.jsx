@@ -20,7 +20,7 @@ import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
 import JSZip from 'jszip';
 import html2canvas from 'html2canvas';
-import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, generateInvoicePDF, compareEntries } from '@/lib/pdf';
+import { buildStatementRows, generateCustomerPDF, generateLedgerPDF, generateInvoicePDF, generateEWayBillPDF, compareEntries } from '@/lib/pdf';
 
 /* ── constants ── */
 // Empty by default - will be populated dynamically from actual products
@@ -1850,48 +1850,8 @@ function EWayBillModal({bill,firm,onClose}){
   const totalGST=(bill?.items||[]).reduce((s,i)=>s+i.gstAmt,0);
 
   const genPDF=async()=>{
-    const{default:jsPDF}=await import('jspdf');
-    const pdf=new jsPDF('p','mm','a4');
-    const lm=15,tw=180,y=(n)=>n;
-    pdf.setFillColor(27,58,107);pdf.rect(0,0,210,20,'F');
-    pdf.setTextColor(255,255,255);pdf.setFontSize(14);pdf.setFont('helvetica','bold');
-    pdf.text('E-WAY BILL (For Movement of Goods)',105,13,{align:'center'});
-    pdf.setTextColor(0,0,0);pdf.setFontSize(9);
-    let cy=28;
-    const row=(label,val,x,y,w)=>{pdf.setFont('helvetica','bold');pdf.text(label,x,y);pdf.setFont('helvetica','normal');pdf.text(String(val||''),x+w,y);};
-    pdf.setFillColor(230,240,255);pdf.rect(lm,cy-4,tw,7,'F');
-    pdf.setFont('helvetica','bold');pdf.setFontSize(9);pdf.text('PART A — Consignment Details',lm+2,cy);cy+=10;
-    row('Supply Type:',f.supplyType,lm,cy,35);row('Sub Type:',f.subType,lm+90,cy,25);cy+=8;
-    row('Document Type:',f.docType,lm,cy,35);row('Document No.:',bill?.invoiceNo||'',lm+90,cy,25);cy+=8;
-    row('Document Date:',f.docDate,lm,cy,35);row('Taxable Value:',fmt(totalTaxable),lm+90,cy,30);cy+=8;
-    pdf.setDrawColor(200,200,200);pdf.line(lm,cy,lm+tw,cy);cy+=8;
-    pdf.setFillColor(230,240,255);pdf.rect(lm,cy-4,tw,7,'F');
-    pdf.setFont('helvetica','bold');pdf.text('FROM (Consignor)',lm+2,cy);cy+=10;
-    row('Name:',firm.name,lm,cy,25);cy+=7;
-    row('GSTIN:',firm.gstin||'N/A',lm,cy,25);cy+=7;
-    row('Address:',firm.address,lm,cy,25);cy+=7;
-    row('State:',firm.state||'Madhya Pradesh',lm,cy,25);cy+=10;
-    pdf.setFillColor(230,240,255);pdf.rect(lm,cy-4,tw,7,'F');
-    pdf.setFont('helvetica','bold');pdf.text('TO (Consignee)',lm+2,cy);cy+=10;
-    row('Name:',bill?.customerName||'',lm,cy,25);cy+=7;
-    row('GSTIN:',bill?.customerGST||'N/A',lm,cy,25);cy+=7;
-    row('Address:',bill?.customerAddr||'',lm,cy,25);cy+=10;
-    pdf.setFillColor(230,240,255);pdf.rect(lm,cy-4,tw,7,'F');
-    pdf.setFont('helvetica','bold');pdf.text('ITEM DETAILS',lm+2,cy);cy+=10;
-    pdf.setFontSize(8);
-    ['#','Description','HSN','Qty','Taxable Value','GST Rate','CGST','SGST','Total'].forEach((h,i)=>{const xs=[lm,lm+8,lm+55,lm+75,lm+90,lm+115,lm+130,lm+150,lm+165];pdf.setFont('helvetica','bold');pdf.text(h,xs[i],cy);});cy+=6;
-    pdf.setFont('helvetica','normal');
-    (bill?.items||[]).forEach((item,idx)=>{const xs=[lm,lm+8,lm+55,lm+75,lm+90,lm+115,lm+130,lm+150,lm+165];const vals=[String(idx+1),item.name.substring(0,20),item.hsn||item.sku||'',String(item.qty),fmt(item.rate*item.qty),item.gstRate+'%',fmt(item.gstAmt/2),fmt(item.gstAmt/2),fmt(item.total)];vals.forEach((v,i)=>pdf.text(v,xs[i],cy));cy+=6;if(cy>260){pdf.addPage();cy=20;}});
-    cy+=4;pdf.setDrawColor(200,200,200);pdf.line(lm,cy,lm+tw,cy);cy+=8;
-    pdf.setFont('helvetica','bold');pdf.setFontSize(9);pdf.text('Total Taxable: '+fmt(totalTaxable)+'   Total CGST: '+fmt(totalGST/2)+'   Total SGST: '+fmt(totalGST/2)+'   Grand Total: '+fmt(totalTaxable+totalGST),lm,cy);cy+=12;
-    pdf.setFillColor(230,240,255);pdf.rect(lm,cy-4,tw,7,'F');
-    pdf.setFont('helvetica','bold');pdf.text('PART B — Transporter Details',lm+2,cy);cy+=10;
-    row('Transporter Name:',f.transporterName,lm,cy,40);row('Vehicle No.:',f.vehicleNo,lm+90,cy,30);cy+=8;
-    row('LR / Docket No.:',f.lrNumber,lm,cy,40);row('Distance (km):',f.distance,lm+90,cy,30);cy+=8;
-    row('Mode of Transport:',f.transMode,lm,cy,40);cy+=12;
-    pdf.setFontSize(8);pdf.setFont('helvetica','normal');pdf.setTextColor(150,150,150);
-    pdf.text('NOTE: This is a draft E-Way Bill format. Upload the final invoice to ewaybillgst.gov.in to generate the official E-Way Bill with EWB number.',lm,cy,{maxWidth:tw});
-    pdf.save('EWayBill-'+(bill?.invoiceNo||bill?.id)+'.pdf');
+    try{const pdf=await generateEWayBillPDF({bill,firm,form:f});pdf.save('EWayBill-'+(bill?.invoiceNo||bill?.id)+'.pdf');}
+    catch(e){console.error('E-Way PDF error:',e);alert('PDF failed: '+e.message);}
   };
 
   return<Modal title='Generate E-Way Bill' onClose={onClose} wide>
@@ -2743,7 +2703,7 @@ function CustomerAccount({cust,B,Py,setPy,firm,C,Ret=[],onClose}){
       <div style={{display:'flex',gap:6,borderBottom:'0.5px solid '+BORD,paddingBottom:10,flex:1,minWidth:300}}>
         {[['statement','Transactions'],['payment','Payment Received'],['notifications','Notifications'],['files','Documents']].map(([t,l])=><button key={t} onClick={()=>setCaTab(t)} style={{padding:'6px 14px',borderRadius:7,border:'0.5px solid '+(caTab===t?BL:BORD),background:caTab===t?BL:'#fff',color:caTab===t?'#fff':MUT,cursor:'pointer',fontSize:12,fontWeight:600}}>{l}</button>)}
       </div>
-      <button onClick={async()=>{try{const entries=buildStatementRows(B,Py,C,cust.id,null,null,Ret);const pdf=generateCustomerPDF(firm,cust,entries,C);pdf.save(`${cust.name}_Account_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){alert('PDF failed: '+e.message);}}} style={S.btn('pur')}>⬇ PDF</button>
+      <button onClick={async()=>{try{const entries=buildStatementRows(B,Py,C,cust.id,null,null,Ret);const pdf=await generateCustomerPDF(firm,cust,entries,C);pdf.save(`${(cust.name||'Customer').replace(/[^\w]+/g,'_')}_Statement_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){alert('PDF failed: '+e.message);}}} style={S.btn('pur')}>⬇ PDF</button>
     </div>
 
     {caTab==='statement'&&<div>
@@ -3086,7 +3046,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
       <div style={{display:'flex',gap:6}}>
         <button style={S.btn('def')} disabled={dlLoading} onClick={()=>downloadLedger('csv')}>📥 {dlLoading?'Downloading...':'Download CSV'}</button>
         <button style={S.btn('def')} disabled={dlLoading} onClick={()=>downloadLedger('json')}>📥 {dlLoading?'Downloading...':'Download JSON'}</button>
-        <button style={S.btn('pur')} onClick={async()=>{try{const pdf=generateLedgerPDF(firm,withBal,{dateFrom:dateRange.from,dateTo:dateRange.to,party:fp,type:ft});pdf.save(`Ledger_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){console.error('Ledger PDF error:',e);showT('PDF failed: '+e.message,'err');}}} >⬇ PDF</button>
+        <button style={S.btn('pur')} onClick={async()=>{try{const pdf=await generateLedgerPDF(firm,withBal,{dateFrom:dateRange.from,dateTo:dateRange.to,party:fp?normalizeSupplierName(fp):'',type:ft,ledgerType});pdf.save(`${ledgerType==='All'?'':ledgerType+'_'}Ledger${fp?'_'+normalizeSupplierName(fp).replace(/[^\w]+/g,'_'):''}_${new Date().toISOString().split('T')[0]}.pdf`);}catch(e){console.error('Ledger PDF error:',e);showT('PDF failed: '+e.message,'err');}}} >⬇ PDF</button>
       </div>
     </div>
     <DateRangeFilter onDateChange={setDateRange}/>
