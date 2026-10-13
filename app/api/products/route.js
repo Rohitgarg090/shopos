@@ -56,6 +56,22 @@ export async function PUT(req) {
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
   if (product.firm_id && product.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  // Add stock atomically in the database (no read-modify-write from a possibly stale browser copy)
+  if (f.addQty !== undefined) {
+    const add = Math.round(+f.addQty || 0);
+    if (add > 0) {
+      const { data: prod } = await c.sb.from('products').select('sku').eq('id', id).single();
+      const { error: incErr } = await c.sb.rpc('increment_stock', { p_sku: prod?.sku, p_qty: add });
+      if (incErr) return NextResponse.json({ error: incErr.message }, { status: 500 });
+    }
+    delete f.addQty;
+    if (!Object.keys(f).length) {
+      const { data: fresh, error: fErr } = await c.sb.from('products').select('*').eq('id', id).single();
+      if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 });
+      return NextResponse.json(shape(fresh));
+    }
+  }
+
   // Only update fields that are provided
   const updates = {};
   if (f.name  !== undefined) updates.name       = f.name;

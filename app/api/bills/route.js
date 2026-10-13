@@ -62,6 +62,7 @@ export async function POST(req) {
     customer_gst: b.customerGST || '', customer_email: b.customerEmail || '', customer_addr: b.customerAddr || '',
     is_relative: !!b.isRelative, subtotal: b.subtotal, discount: b.discount || 0, gst_total: b.gst,
     markup: b.markup || 0, total: b.total, transport_name: b.transportName || '', lr_number: b.lrNumber || '',
+    bill_date: /^\d{4}-\d{2}-\d{2}$/.test(b.billDate || '') ? b.billDate : '',
   };
   const itemRows = b.items.map(i => ({
     sku: i.sku || '', name: i.name, cat: i.cat, size: i.size, color: i.color || '', article_no: i.articleNo || '',
@@ -83,7 +84,9 @@ export async function POST(req) {
 
   // Fallback until bills_atomic.sql is applied (not atomic)
   console.warn('[bills] create_bill() missing — run supabase/migrations/bills_atomic.sql');
-  const { data: bill, error: bErr } = await c.sb.from('bills').insert([{ ...billRow, invoice_no: b.invoiceNo, firm_id: c.firmId }]).select().single();
+  const { bill_date, ...plainRow } = billRow;
+  const { data: bill, error: bErr } = await c.sb.from('bills').insert([{ ...plainRow, invoice_no: b.invoiceNo, firm_id: c.firmId,
+    ...(bill_date && bill_date < new Date().toISOString().slice(0, 10) ? { created_at: bill_date + 'T12:00:00+05:30' } : {}) }]).select().single();
   if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 });
   const { error: iErr } = await c.sb.from('bill_items').insert(itemRows.map(({ sku, ...i }) => ({ ...i, bill_id: bill.id, product_sku: sku || null })));
   if (iErr) {

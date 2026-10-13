@@ -25,6 +25,8 @@ language plpgsql security invoker set search_path = public as $$
 declare
   v_no text;
   v_id integer;
+  v_date date;
+  v_created timestamptz := now();
   r record;
 begin
   if not public.is_firm_member(p_firm_id) then
@@ -52,17 +54,28 @@ begin
     end if;
   end loop;
 
+  -- Optional bill date (YYYY-MM-DD) for backdated invoices; never in the future (India time).
+  if coalesce(p_bill->>'bill_date', '') <> '' then
+    v_date := (p_bill->>'bill_date')::date;
+    if v_date > (now() at time zone 'Asia/Kolkata')::date then
+      raise exception 'Invoice date cannot be in the future' using errcode = 'P0001';
+    end if;
+    if v_date < (now() at time zone 'Asia/Kolkata')::date then
+      v_created := (v_date::text || ' 12:00:00')::timestamp at time zone 'Asia/Kolkata';
+    end if;
+  end if;
+
   v_no := public.next_invoice_no(p_firm_id, p_prefix);
 
   insert into bills (invoice_no, customer_id, customer_name, customer_phone, customer_gst, customer_email,
                      customer_addr, is_relative, subtotal, discount, gst_total, markup, total,
-                     transport_name, lr_number, firm_id)
+                     transport_name, lr_number, firm_id, created_at)
   values (v_no, nullif(p_bill->>'customer_id', ''), p_bill->>'customer_name', coalesce(p_bill->>'customer_phone', ''),
           coalesce(p_bill->>'customer_gst', ''), coalesce(p_bill->>'customer_email', ''), coalesce(p_bill->>'customer_addr', ''),
           coalesce((p_bill->>'is_relative')::boolean, false), coalesce((p_bill->>'subtotal')::numeric, 0),
           coalesce((p_bill->>'discount')::numeric, 0), coalesce((p_bill->>'gst_total')::numeric, 0),
           coalesce((p_bill->>'markup')::numeric, 0), coalesce((p_bill->>'total')::numeric, 0),
-          coalesce(p_bill->>'transport_name', ''), coalesce(p_bill->>'lr_number', ''), p_firm_id)
+          coalesce(p_bill->>'transport_name', ''), coalesce(p_bill->>'lr_number', ''), p_firm_id, v_created)
   returning bills.id into v_id;
 
   insert into bill_items (bill_id, product_sku, name, cat, size, color, article_no, hsn, qty, rate, gst_rate, gst_amt, total)

@@ -979,7 +979,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   const[markupPct,setMarkupPct]=useState('');
   const[man,setMan]=useState({articleNo:'',name:'',cat:'',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});
   const[industry,setIndustry]=useState('general');const[userCategories,setUserCategories]=useState([]);
-  const gk=()=>firm?.geminiKey||(isBR?JSON.parse(localStorage.getItem('shopos_firm')||'{}').geminiKey||'':'');
+  const gk=()=>firm?.geminiKey||'';
 
   // Load industry settings on mount
   useEffect(()=>{const loadInd=async()=>{try{const res=await api.get('/api/firm-industry');setIndustry(res.industryType||'general');setUserCategories(res.categories||[]);console.log('[ScanBill] Loaded industry:',res.industryType,'with',res.categories?.length||0,'categories');}catch(e){console.error('[ScanBill] Failed to load industry:',e);}};loadInd();},[]);
@@ -1106,11 +1106,17 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
     let n=0;
     for(const item of items){
       const sizes=(item.sizes||'Free Size').split(',').map(s=>s.trim()).filter(Boolean);
-      for(const sz of sizes){
-        const perSize=Math.max(1,Math.round(item.qty/sizes.length));
-        const ex=P.find(p=>item.articleNo?(p.articleNo===item.articleNo&&p.size===sz):(p.name===item.name&&p.size===sz));
-        if(ex){const u=await api.put('/api/products',{id:ex.id,qty:ex.qty+perSize});setP(ps=>ps.map(p=>p.id===ex.id?u:p));}
-        else{const c=await api.post('/api/products',{name:item.name+(sizes.length>1?' ('+sz+')':''),sku:rnd9(),cat:item.cat||'Others',sub:'',size:sz,color:item.color||'',price:+item.price,gst:+item.gst,qty:perSize,hsn:item.hsn||'',articleNo:item.articleNo||''});setP(ps=>[c,...ps]);}
+      // split the bill quantity exactly across sizes (5 over S,M,L → 2,2,1 — never more than billed)
+      const totalQty=Math.max(0,Math.round(+item.qty||0)),baseQty=Math.floor(totalQty/sizes.length),extraQty=totalQty%sizes.length;
+      const nrm=v=>String(v||'').trim().replace(/\s+/g,' ').toUpperCase();
+      for(const [k,sz] of sizes.entries()){
+        const perSize=baseQty+(k<extraQty?1:0);
+        const pname=item.name+(sizes.length>1?' ('+sz+')':'');
+        // same article + size (ignoring case/spaces) is the same product — add stock instead of creating a duplicate
+        const matches=P.filter(p=>nrm(p.size)===nrm(sz)&&(item.articleNo?nrm(p.articleNo)===nrm(item.articleNo):(nrm(p.name)===nrm(pname)||nrm(p.name)===nrm(item.name))));
+        const ex=matches.sort((a,b)=>(b.qty||0)-(a.qty||0))[0];
+        if(ex){const u=perSize>0?await api.put('/api/products',{id:ex.id,addQty:perSize}):ex;setP(ps=>ps.map(p=>p.id===ex.id?u:p));}
+        else{const c=await api.post('/api/products',{name:pname,sku:rnd9(),cat:item.cat||'Others',sub:'',size:sz,color:item.color||'',price:+item.price,gst:+item.gst,qty:perSize,hsn:item.hsn||'',articleNo:item.articleNo||''});setP(ps=>[c,...ps]);}
         n++;
       }
     }
@@ -1619,6 +1625,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
     }
   },[cart]);const[bc,setBc]=useState('');const[catF,setCatF]=useState('All');const[cSrch,setCS]=useState('');const[gstMode,setGM]=useState('excl');const[custSrch,setCuS]=useState('');const[disc,setDisc]=useState('');
   const[transportName,setTransportName]=useState('');const[lrNumber,setLrNumber]=useState('');
+  const todayLocal=()=>new Date().toLocaleDateString('en-CA');const[billDate,setBillDate]=useState(todayLocal());
   const[showCamera,setShowCamera]=useState(false);
   const[submitting,setSub]=useState(false);const[toast,showT]=useToast();const bcRef=useRef(null);
   // Global scanner listener — captures input from USB barcode scanners
@@ -1666,7 +1673,13 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
       searchSku=parts.BC||s;searchArt=parts.ART||s;searchSize=parts.SIZE||null;
     }
     // Find product by BC (sku), articleNo, or raw input
-    let p=P.find(x=>x.sku===searchSku)||(searchArt?P.find(x=>x.articleNo===searchArt&&(!searchSize||x.size===searchSize)):null)||P.find(x=>x.sku===s||x.articleNo===s);
+    // Exact barcode first; otherwise article (+size from QR) ignoring case — and if the catalog has several
+    // entries for it (duplicates or sizes), pick one that still has stock.
+    const nrm=v=>String(v||'').trim().toUpperCase();
+    const pick=list=>list.find(x=>x.qty>0)||list[0];
+    let p=P.find(x=>x.sku===searchSku)||P.find(x=>x.sku===s)
+      ||pick(P.filter(x=>searchArt&&nrm(x.articleNo)===nrm(searchArt)&&(!searchSize||nrm(x.size)===nrm(searchSize))))
+      ||pick(P.filter(x=>nrm(x.articleNo)===nrm(s)));
     if(!p){showT('Product not found: '+s,'err');return;}
     if(p.qty===0){showT(p.name+' out of stock!','err');return;}
     if((cart.find(x=>x.id===p.id)?.qty||0)>=p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');setBc('');return;}
@@ -1682,10 +1695,10 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   const genBill=async()=>{const cName=normalizeSupplierName(isRel?rn||'Walk-in':sel?.name);if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}if(overStock())return;setSub(true);
     const{sub,gt,mk,disc:discAmt,total}=calc();let inv='';try{inv=await(getNextInvoiceNo||nextInv)();}catch(e){/* server assigns the number */}
     const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
-    try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber});
+    try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber,billDate});
     const fp=await api.get('/api/products');setP(Array.isArray(fp)?fp:[]);
-    const bill={id:r.id,invoiceNo:r.invoiceNo||inv,date:new Date().toISOString(),customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items:items.map(i=>({...i,gstAmt:i.gstAmt||0})),subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,biltyNo:'',transportName,lrNumber};
-    setB(bs=>[bill,...bs]);setCart([]);setSel(null);setStep('cust');setIsRel(false);setRn('');setRi('');setDisc('');setTransportName('');setLrNumber('');
+    const bill={id:r.id,invoiceNo:r.invoiceNo||inv,date:billDate<todayLocal()?new Date(billDate+'T12:00:00+05:30').toISOString():new Date().toISOString(),customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items:items.map(i=>({...i,gstAmt:i.gstAmt||0})),subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,biltyNo:'',transportName,lrNumber};
+    setB(bs=>[bill,...bs]);setCart([]);setSel(null);setStep('cust');setIsRel(false);setRn('');setRi('');setDisc('');setTransportName('');setLrNumber('');setBillDate(todayLocal());
     // Clear POS session storage after bill generated
     if(isBR){['pos_step','pos_sel','pos_isrel','pos_rn','pos_ri','shopos_cart'].forEach(k=>sessionStorage.removeItem(k));}
     onDone(bill);}catch(e){showT('Failed: '+e.message,'err')}finally{setSub(false)}};
@@ -1796,7 +1809,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
             </div>;})}
           </div>
         </div>
-      </div><Cart/>
+      </div>{Cart()}
     </div>}
     {step==='checkout'&&<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 300px',gap:14}}>
       <div style={S.card}><div style={S.h2}>Order Summary</div>
@@ -1804,6 +1817,11 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
         <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:400}}><thead><tr>{['Product','Size','Qty','Rate',!isRel&&'GST%','Total'].filter(Boolean).map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
         <tbody>{cart.map(c=>{const p=P.find(x=>x.id===c.id);if(!p)return null;const base=gstMode==='incl'?p.price/(1+p.gst/100):p.price;const line=isRel?base*c.qty:base*(1+p.gst/100)*c.qty;return<tr key={c.id}><td style={S.td}><div style={{fontWeight:600}}>{p.name}</div>{p.articleNo&&<div style={{fontSize:9,color:BL,...S.mono}}>Art: {p.articleNo}</div>}</td><td style={S.td}><Bdg c='gray'>{p.size}</Bdg></td><td style={{...S.td,...S.mono,fontWeight:700}}>{c.qty}</td><td style={{...S.td,...S.mono}}>{fmt(base)}</td>{!isRel&&<td style={S.td}><Bdg c='blue'>{p.gst}%</Bdg></td>}<td style={{...S.td,...S.mono,fontWeight:800,color:GR}}>{fmt(line)}</td></tr>;})}
         </tbody></table></div>
+        <div style={{marginTop:14,padding:'12px 14px',background:billDate<todayLocal()?AMBL:BG,borderRadius:8,border:'0.5px solid '+(billDate<todayLocal()?AMB+'60':BORD),display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <div style={{flex:'0 0 auto'}}><label style={S.lbl}>Invoice date</label><input style={{...S.inp,width:170,margin:0}} type='date' value={billDate} max={todayLocal()} onChange={e=>setBillDate(e.target.value||todayLocal())}/></div>
+          {billDate<todayLocal()?<div style={{fontSize:12,color:AMB,fontWeight:600}}>Backdated invoice — dated {new Date(billDate+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}. <button onClick={()=>setBillDate(todayLocal())} style={{background:'none',border:'none',color:BL,cursor:'pointer',fontWeight:700,padding:0}}>Use today</button></div>
+            :<div style={{fontSize:11,color:MUT}}>Today by default. Pick an earlier date for a backdated invoice.</div>}
+        </div>
         <div style={{marginTop:14,padding:'12px 14px',background:BG,borderRadius:8,border:'0.5px solid '+BORD}}>
           <div style={S.h3}>Transport Details (Optional)</div>
           <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10}}>
@@ -1813,7 +1831,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
           <div style={{fontSize:11,color:MUT,marginTop:6}}>Can also be added/edited later from Bills page.</div>
         </div>
         <button style={{...S.btn('def'),marginTop:10}} onClick={()=>setStep('items')}>Back</button>
-      </div><Cart/>
+      </div>{Cart()}
     </div>}
   </div>;}
 
@@ -2647,7 +2665,7 @@ function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
   const[err,setErr]=useState(null);
   const[toast,showT]=useToast();
   const[filterStatus,setFilterStatus]=useState('all');
-  const gk=()=>isBR?JSON.parse(localStorage.getItem('shopos_firm')||'{}').geminiKey||firm?.geminiKey||'':'';
+  const gk=()=>firm?.geminiKey||'';
 
   const custBills=B.filter(b=>b.customerId===customerId);
   const custPay=Py.filter(p=>custBills.some(b=>b.id===p.billId)||isOBPay(p,customerId));
