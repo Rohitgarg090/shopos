@@ -1,5 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { clientIp, limitOr429 } from '@/lib/rateLimit';
+import { randomInt } from 'crypto';
 
 const adminClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,11 +9,13 @@ const adminClient = createClient(
 );
 
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(randomInt(100000, 1000000));
 }
 
 export async function POST(req) {
   try {
+    const limited = await limitOr429([[`wa-send-otp:ip:${clientIp(req)}`, 5, 900]]);
+    if (limited) return limited;
     const { firmId, phoneNumber } = await req.json();
 
     if (!firmId || !phoneNumber) {

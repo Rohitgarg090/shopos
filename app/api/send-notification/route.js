@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { blockIfFree, getPlanForFirm } from '@/lib/plan';
+import { adminDb, isFirmMember } from '@/lib/firmAccess';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
@@ -136,7 +137,8 @@ export async function POST(req) {
 
     // Load firm settings
     console.log('[send-notification] Loading firm settings for firmId:', c.firmId);
-    const { data: settings } = await c.sb.from('firm_settings')
+    if (!(await isFirmMember(c.user.id, c.firmId))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { data: settings } = await adminDb().from('firm_settings')
       .select('msg91_key, msg91_sms_template, msg91_wa_template, name, mobile')
       .eq('firm_id', c.firmId)
       .single();

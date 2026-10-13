@@ -1,5 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
+import { clientIp, limitOr429 } from '@/lib/rateLimit';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,17 +9,16 @@ const supabase = createClient(
 );
 
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 async function sendEmailViaResend(email, otp) {
   console.log('\n📧 [sendEmail] Starting email send');
   console.log('[sendEmail] Target email:', email);
-  console.log('[sendEmail] OTP:', otp);
 
   if (!process.env.RESEND_API_KEY) {
     console.log('[sendEmail] ⚠️ RESEND_API_KEY not configured - dev mode');
-    console.log(`[DEV] Email would be sent to ${email} with OTP: ${otp}`);
+    console.warn('[DEV] RESEND_API_KEY not set — OTP email not sent');
     return true;
   }
 
@@ -86,7 +87,7 @@ async function sendEmailViaResend(email, otp) {
 export async function POST(req) {
   console.log('\n🔐 [forgot-password] POST request received');
   try {
-    const { email } = await req.json();
+    const email = ((await req.json()).email || '').toLowerCase().trim();
     console.log('[forgot-password] Email:', email);
 
     if (!email) {
@@ -97,10 +98,19 @@ export async function POST(req) {
       );
     }
 
+    // Limit reset emails: 3 per email per 15 min, 10 per IP per 15 min
+    const limited = await limitOr429([
+      [`reset-request:email:${email}`, 3, 900],
+      [`reset-request:ip:${clientIp(req)}`, 10, 900],
+    ], 'Too many reset requests. Please wait 15 minutes and try again.');
+    if (limited) return limited;
+
+    // A new code replaces any earlier unused ones
+    await supabase.from('password_reset_tokens').update({ used: true }).eq('email', email).eq('used', false);
+
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
-    console.log(`[forgot-password] Generated OTP: ${otp}`);
     console.log(`[forgot-password] OTP expires at: ${expiresAt}`);
 
     // Store OTP in database

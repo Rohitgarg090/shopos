@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { adminDb, isFirmMember } from '@/lib/firmAccess';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
@@ -8,7 +9,11 @@ async function ctx(req) {
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     { global: { headers: { Authorization: `Bearer ${token}` } } });
   const { data: { user } } = await sb.auth.getUser();
-  return user ? { user, sb, firmId: req.headers.get('x-firm-id') } : null;
+  if (!user) return null;
+  const firmId = req.headers.get('x-firm-id');
+  // firm_settings is owner-only under RLS; members read/write their firm's industry settings via the server key
+  if (!(await isFirmMember(user.id, firmId))) return null;
+  return { user, sb: adminDb(), firmId };
 }
 
 // GET: Retrieve firm's industry settings

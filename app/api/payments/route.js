@@ -44,12 +44,10 @@ export async function GET(req) {
   const { data: firmCusts } = await c.sb.from('customers').select('id').eq('firm_id', c.firmId);
   const custIds = new Set((firmCusts || []).map(x => String(x.id)));
 
-  // Include supplier payments, payments linked to this firm's bills, and
-  // opening-balance payments (no bill) for this firm's customers
+  // Only this firm's payments. Older rows saved without firm_id fall back to their bill/customer link.
   const filtered = (data || []).filter(p =>
-    (p.payment_type === 'supplier' && p.supplier_id) ||
-    (billIds.includes(p.bill_id)) ||
-    (!p.bill_id && p.customer_id && custIds.has(String(p.customer_id)))
+    p.firm_id ? p.firm_id === c.firmId
+      : (billIds.includes(p.bill_id) || (!p.bill_id && p.customer_id && custIds.has(String(p.customer_id))))
   );
 
   return NextResponse.json(filtered.map(shape));
@@ -60,6 +58,7 @@ export async function POST(req) {
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const b = await req.json();
   const { data, error } = await c.sb.from('payments').insert([{
+    firm_id: c.firmId||null,
     bill_id: b.billId||null, mode: b.mode, amount: +b.amount,
     date: b.date||null, party_name: b.partyName||'', city: b.city||'',
     remarks: b.remarks||'', upi_app: b.upiApp||'', upi_ref: b.upiRef||'',
@@ -72,24 +71,28 @@ export async function POST(req) {
   return NextResponse.json(shape(data), { status: 201 });
 }
 
+// A payment belongs to the active firm if its firm_id matches, or (older rows without firm_id)
+// if its bill or customer belongs to the firm.
+async function ownsPayment(c, id) {
+  const { data: p } = await c.sb.from('payments').select('firm_id, bill_id, customer_id').eq('id', id).maybeSingle();
+  if (!p) return { status: 404, error: 'Payment not found' };
+  if (p.firm_id) return p.firm_id === c.firmId ? { ok: true } : { status: 403, error: 'Forbidden' };
+  if (p.bill_id) {
+    const { data: bill } = await c.sb.from('bills').select('firm_id').eq('id', p.bill_id).maybeSingle();
+    if (bill?.firm_id === c.firmId) return { ok: true };
+  } else if (p.customer_id) {
+    const { data: cust } = await c.sb.from('customers').select('firm_id').eq('id', p.customer_id).maybeSingle();
+    if (cust?.firm_id === c.firmId) return { ok: true };
+  }
+  return { status: 403, error: 'Forbidden' };
+}
+
 export async function PATCH(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id, chequeStatus } = await req.json();
-
-  const { data: payment } = await c.sb.from('payments').select('bill_id, payment_type, supplier_id, customer_id').eq('id', id).single();
-  if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
-
-  // Same ownership rules as GET/DELETE: supplier payments have no bill
-  if (payment.bill_id) {
-    const { data: bill } = await c.sb.from('bills').select('firm_id').eq('id', payment.bill_id).single();
-    if (!bill || bill.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  } else if (payment.customer_id) {
-    const { data: cust } = await c.sb.from('customers').select('firm_id').eq('id', payment.customer_id).single();
-    if (!cust || cust.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  } else if (!(payment.payment_type === 'supplier' && payment.supplier_id)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const own = await ownsPayment(c, id);
+  if (!own.ok) return NextResponse.json({ error: own.error }, { status: own.status });
 
   const { data, error } = await c.sb.from('payments')
     .update({ cheque_status: chequeStatus }).eq('id', id).select().single();
@@ -101,19 +104,8 @@ export async function DELETE(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = new URL(req.url).searchParams.get('id');
-
-  // Verify payment exists
-  const { data: payment } = await c.sb.from('payments').select('bill_id, payment_type, supplier_id, customer_id').eq('id', id).single();
-  if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
-
-  if (!payment.bill_id && payment.customer_id && payment.payment_type !== 'supplier') {
-    const { data: cust } = await c.sb.from('customers').select('firm_id').eq('id', payment.customer_id).single();
-    if (!cust || cust.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  } else if (payment.payment_type === 'customer' || payment.payment_type === null) {
-    const { data: bill } = await c.sb.from('bills').select('firm_id').eq('id', payment.bill_id).single();
-    if (!bill || bill.firm_id !== c.firmId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  // Supplier payments: just check auth, no firm check needed
+  const own = await ownsPayment(c, id);
+  if (!own.ok) return NextResponse.json({ error: own.error }, { status: own.status });
 
   const { error } = await c.sb.from('payments').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

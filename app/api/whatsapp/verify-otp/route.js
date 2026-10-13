@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { clientIp, limitOr429 } from '@/lib/rateLimit';
 
 const adminClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -12,6 +13,8 @@ let ongoingSessions = {}; // Store ongoing Baileys sessions in memory
 
 export async function POST(req) {
   try {
+    const limited = await limitOr429([[`wa-verify-otp:ip:${clientIp(req)}`, 10, 600]]);
+    if (limited) return limited;
     const { firmId, phoneNumber, otp } = await req.json();
 
     if (!firmId || !phoneNumber || !otp) {

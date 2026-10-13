@@ -1,5 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { clientIp, limitOr429 } from '@/lib/rateLimit';
+import { randomInt } from 'crypto';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,17 +9,16 @@ const supabase = createClient(
 );
 
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(randomInt(100000, 1000000));
 }
 
 async function sendEmailViaResend(email, otp, name) {
   console.log('\n📧 [sendVerificationEmail] Starting email send');
   console.log('[sendVerificationEmail] Target email:', email);
-  console.log('[sendVerificationEmail] OTP:', otp);
 
   if (!process.env.RESEND_API_KEY) {
     console.log('[sendVerificationEmail] ⚠️ RESEND_API_KEY not configured - dev mode');
-    console.log(`[DEV] Email would be sent to ${email} with OTP: ${otp}`);
+    console.warn('[DEV] RESEND_API_KEY not set — OTP email not sent');
     return true;
   }
 
@@ -85,6 +86,8 @@ async function sendEmailViaResend(email, otp, name) {
 }
 
 export async function POST(req) {
+    const limited = await limitOr429([[`send-verify-email:ip:${clientIp(req)}`, 5, 900]]);
+    if (limited) return limited;
   console.log('\n🔐 [send-verification-email] POST request received');
   try {
     const { email, name } = await req.json();
@@ -121,7 +124,6 @@ export async function POST(req) {
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
-    console.log(`[send-verification-email] Generated OTP: ${otp}`);
     console.log(`[send-verification-email] OTP expires at: ${expiresAt}`);
 
     // Delete old OTP for this email if exists

@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { createClient } from '@supabase/supabase-js';
+import { clientIp, limitOr429 } from '@/lib/rateLimit';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -9,6 +10,8 @@ const supabase = createClient(
 
 export async function POST(req) {
   try {
+    const limited = await limitOr429([[`ca-signup:ip:${clientIp(req)}`, 10, 3600]]);
+    if (limited) return limited;
     const { email, password, name, phone, firmName, gstin, pan, address, city, state } = await req.json();
 
     // Validation

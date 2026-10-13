@@ -75,6 +75,7 @@ export async function POST(req, { params }) {
   // Create payment
   const { data: payment, error: paymentErr } = await c.sb.from('payments')
     .insert([{
+      firm_id: c.firmId,
       bill_id: billId || null,
       mode: mode || 'Bank Transfer',
       amount: txn.amount,
