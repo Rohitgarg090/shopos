@@ -30,12 +30,19 @@ export async function POST(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const b = await req.json();
-  // Same phone number already in this firm → refuse (double click / duplicate entry)
-  const digits = String(b.phone || '').replace(/\D/g, '').slice(-10);
-  if (digits.length >= 10 && c.firmId) {
-    const { data: same } = await c.sb.from('customers').select('id, name, phone').eq('firm_id', c.firmId).ilike('phone', `%${digits}`);
-    const dup = (same || []).find(x => String(x.phone || '').replace(/\D/g, '').slice(-10) === digits);
-    if (dup) return NextResponse.json({ error: `A customer with phone ${b.phone} already exists: ${dup.name}`, code: 'DUPLICATE', id: dup.id }, { status: 409 });
+  // Exact duplicate (every identifying field the same) in this firm → refuse.
+  // One person may run several shops with the same phone, so phone alone is not a duplicate.
+  const norm = v => String(v || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  const digits = v => String(v || '').replace(/\D/g, '').slice(-10);
+  if (c.firmId && b.name) {
+    const { data: same } = await c.sb.from('customers').select('id, name, phone, shopname, gst, addr, state, pincode')
+      .eq('firm_id', c.firmId).ilike('name', String(b.name).trim());
+    const dup = (same || []).find(x =>
+      norm(x.name) === norm(b.name) && norm(x.shopname) === norm(b.shopname) &&
+      digits(x.phone) === digits(b.phone) && norm(x.gst) === norm(b.gst) &&
+      norm(x.state || 'Madhya Pradesh') === norm(b.state || 'Madhya Pradesh') &&
+      digits(x.pincode) === digits(b.pincode) && norm(x.addr) === norm(b.addr));
+    if (dup) return NextResponse.json({ error: `This customer already exists: ${dup.name}${dup.shopname ? ' (' + dup.shopname + ')' : ''}`, code: 'DUPLICATE', id: dup.id }, { status: 409 });
   }
   const { data, error } = await c.sb.from('customers').insert([{
     name: b.name, phone: b.phone, shopname: b.shopname||'', gst: b.gst||'',

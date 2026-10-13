@@ -192,6 +192,12 @@ function ScanProgress({active,kind='invoice',fileName,status}){
     </div>
     {(status||slow)&&!done&&<div style={{fontSize:11,color:MUT,marginTop:8}}>{status||'Large or multi-page documents can take up to a minute…'}</div>}
   </div>;}
+// Covers its (position:relative) parent with a spinner while a save is in progress; blocks clicks underneath.
+function SavingOverlay({show,text}){if(!show)return null;return<div role='status' aria-live='polite' style={{position:'absolute',inset:0,background:'rgba(255,255,255,0.85)',backdropFilter:'blur(1.5px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10,borderRadius:'inherit',zIndex:20,cursor:'progress'}}>
+  <span style={{width:30,height:30,border:'3px solid rgba(27,94,138,.25)',borderTopColor:BL,borderRadius:'50%',animation:'spin .7s linear infinite',display:'inline-block'}}/>
+  <div style={{fontSize:14,fontWeight:700,color:BL}}>{text}</div>
+  <div style={{fontSize:11,color:MUT}}>Please wait — don't close or refresh</div>
+</div>;}
 // Runs an async action at most once at a time — protects save buttons from double clicks/taps.
 function useOnce(){const r=useRef(false);const[busy,setBusy]=useState(false);const once=useCallback(fn=>async(...args)=>{if(r.current)return;r.current=true;setBusy(true);try{return await fn(...args);}finally{r.current=false;setBusy(false);}},[]);return[busy,once];}
 function useToast(){const[t,setT]=useState(null);const show=(msg,tp='ok')=>{setT({msg,tp});setTimeout(()=>setT(null),3500)};const el=t&&<div style={{padding:'9px 14px',borderRadius:8,fontSize:13,fontWeight:500,marginBottom:10,background:t.tp==='ok'?GRL:RDL,color:t.tp==='ok'?GR:RD}}>{t.msg}</div>;return[el,show];}
@@ -1323,7 +1329,8 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
           </div>}
         </div>
       </div>
-      <div style={S.card}>
+      <div style={{...S.card,position:'relative'}}>
+        <SavingOverlay show={scanSaving} text={items.length?'Adding items to catalog & saving supplier bill…':'Saving supplier bill…'}/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <div style={S.h3}>Extracted Items</div>
@@ -1746,7 +1753,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
           {C.length===0?<MT msg='No customers. Add one on the right.'/>:<div style={{maxHeight:300,overflowY:'auto',display:'flex',flexDirection:'column',gap:6}}>{fC.map(c=><div key={c.id} onClick={()=>{setSel(c);setStep('items');setTimeout(()=>bcRef.current?.focus(),200)}} style={{padding:'10px 14px',border:'0.5px solid '+(sel?.id===c.id?BL:BORD),borderRadius:8,cursor:'pointer',background:sel?.id===c.id?BLL:'#fff'}}><div style={{fontWeight:700}}>{c.name}</div><div style={{fontSize:12,color:MUT}}>{c.phone}{c.shopname?' · '+c.shopname:''}</div>{c.gst&&<div style={{...S.mono,fontSize:10,color:BL}}>GSTIN: {c.gst}</div>}</div>)}</div>}
         </>}
       </div>
-      <div style={S.card}><div style={S.h2}>Add New Customer</div>
+      <div style={{...S.card,position:'relative'}}><SavingOverlay show={posBusy&&step==='cust'} text='Creating customer…'/><div style={S.h2}>Add New Customer</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
           <Fld label='Name *'><input style={S.inp} value={cForm.name} onChange={e=>setCF(f=>({...f,name:e.target.value}))} placeholder='Full name'/></Fld>
           <Fld label='Mobile *'><input style={S.inp} value={cForm.phone} onChange={e=>setCF(f=>({...f,phone:e.target.value}))} placeholder='Mobile'/></Fld>
@@ -1755,7 +1762,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
           <Fld label='Email'><input style={S.inp} value={cForm.email} onChange={e=>setCF(f=>({...f,email:e.target.value}))} placeholder='email@example.com'/></Fld>
           <Fld label='City/Area'><input style={S.inp} value={cForm.addr} onChange={e=>setCF(f=>({...f,addr:e.target.value}))} placeholder='City'/></Fld>
         </div>
-        <button style={{...S.btn('pri'),opacity:posBusy?0.6:1}} disabled={posBusy} onClick={saveCustOnce}>{posBusy?'Saving…':'Save & Proceed'}</button>
+        <button style={{...S.btn('pri'),opacity:posBusy?0.6:1}} disabled={posBusy} onClick={saveCustOnce}>{posBusy?'Creating…':'Save & Proceed'}</button>
       </div>
     </div>}
     {step==='items'&&<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 300px',gap:14}}>
@@ -3128,7 +3135,8 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh,Ret=[]}){
       ))}
     </div>}
     {broadcastShow&&<BroadcastModal firm={firm} C={C} B={B} Py={Py} onClose={()=>setBroadcastShow(false)} onSent={()=>{setBroadcastShow(false);showT('Broadcast sent!')}}/>}
-    {show&&<div style={{...S.card,marginBottom:12}}>
+    {show&&<div style={{...S.card,marginBottom:12,position:'relative'}}>
+      <SavingOverlay show={custSaving} text={editId?'Updating customer…':'Creating customer…'}/>
       <div style={S.h2}>{editId?'Edit Customer':'New Customer'}</div>
       <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:8,marginBottom:8}}>
         <Fld label='Name *'><input style={S.inp} value={f.name} onChange={e=>setF(x=>({...x,name:e.target.value}))} placeholder='Full name'/></Fld>
@@ -3146,7 +3154,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh,Ret=[]}){
           <input style={S.inp} type='date' value={f.openingBalanceDate} onChange={e=>setF(x=>({...x,openingBalanceDate:e.target.value}))}/>
         </Fld>
       </div>
-      <div style={{display:'flex',gap:8}}><button style={{...S.btn('pri'),opacity:custSaving?0.6:1}} disabled={custSaving} onClick={save}>{custSaving?'Saving…':'Save'}</button><button style={S.btn()} onClick={()=>{setShow(false);setEditId(null);}}>Cancel</button></div>
+      <div style={{display:'flex',gap:8}}><button style={{...S.btn('pri'),opacity:custSaving?0.6:1}} disabled={custSaving} onClick={save}>{custSaving?(editId?'Updating…':'Creating…'):'Save'}</button><button style={S.btn()} onClick={()=>{setShow(false);setEditId(null);}}>Cancel</button></div>
     </div>}
     <div style={{position:'relative',marginBottom:14}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,background:'#fff',padding:'8px 12px',borderRadius:8,border:'0.5px solid '+BORD}}>
