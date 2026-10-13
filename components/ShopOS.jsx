@@ -192,6 +192,8 @@ function ScanProgress({active,kind='invoice',fileName,status}){
     </div>
     {(status||slow)&&!done&&<div style={{fontSize:11,color:MUT,marginTop:8}}>{status||'Large or multi-page documents can take up to a minute…'}</div>}
   </div>;}
+// Runs an async action at most once at a time — protects save buttons from double clicks/taps.
+function useOnce(){const r=useRef(false);const[busy,setBusy]=useState(false);const once=useCallback(fn=>async(...args)=>{if(r.current)return;r.current=true;setBusy(true);try{return await fn(...args);}finally{r.current=false;setBusy(false);}},[]);return[busy,once];}
 function useToast(){const[t,setT]=useState(null);const show=(msg,tp='ok')=>{setT({msg,tp});setTimeout(()=>setT(null),3500)};const el=t&&<div style={{padding:'9px 14px',borderRadius:8,fontSize:13,fontWeight:500,marginBottom:10,background:t.tp==='ok'?GRL:RDL,color:t.tp==='ok'?GR:RD}}>{t.msg}</div>;return[el,show];}
 function Modal({title,onClose,children,wide}){
   const ww=isBR?window.innerWidth:1200;
@@ -1087,7 +1089,12 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   const upd=(i,k,v)=>setItems(it=>it.map((x,ix)=>ix===i?{...x,[k]:v,...(k==='price'&&!markupPct?{_costPrice:v}:{})}:x));
   const rem=i=>setItems(it=>it.filter((_,ix)=>ix!==i));
   const addMan=()=>{if(!man.name)return;setItems(it=>[...it,{...man,qty:+man.qty,price:+man.price,_costPrice:+man.price,gst:+man.gst,qrCount:+man.qty}]);setMan({articleNo:'',name:'',cat:'',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});};
+  const[scanSaving,onceScan]=useOnce();
   const addToCatalog=async()=>{
+    const invNo=String(supplierBanner?.invoiceNo||'').trim();
+    if(invNo&&supplierBanner?.supplier&&(SI||[]).some(i=>normalizeSupplierName(i.supplierName)===normalizeSupplierName(supplierBanner.supplier)&&String(i.invoiceNo||'').trim()===invNo)){
+      showT(`Bill ${invNo} from ${normalizeSupplierName(supplierBanner.supplier)} is already saved — stock was not added again.`,'err');return;
+    }
     let n=0;
     for(const item of items){
       const sizes=(item.sizes||'Free Size').split(',').map(s=>s.trim()).filter(Boolean);
@@ -1214,6 +1221,8 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
       setSupplierBanner(null);
     }catch(err){showT('Error: '+err.message,'err');}
   };
+  const addToCatalogOnce=onceScan(async()=>{try{await addToCatalog();}catch(e){showT('Failed: '+e.message,'err');}});
+  const saveInvoiceOnlyOnce=onceScan(async()=>{try{await saveInvoiceOnly();}catch(e){showT('Failed: '+e.message,'err');}});
 
   return<div>
     {(()=>{const step=items.length>0?2:scanning?1:1;return<div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:12,flexWrap:'wrap',marginBottom:14}}>
@@ -1323,11 +1332,11 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
           </div>
           {items.length>0&&<div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
             <button style={S.btn('pur')} onClick={onLabels}>QR Labels</button>
-            <button style={S.btn('suc')} onClick={addToCatalog}>Add to Catalog</button>
+            <button style={{...S.btn('suc'),opacity:scanSaving?0.6:1}} disabled={scanSaving} onClick={addToCatalogOnce}>{scanSaving?'Saving…':'Add to Catalog'}</button>
             <button style={{...S.btn('dan',true),fontSize:11}} onClick={()=>{setItems([]);setSupplierBanner(null);setMarkupPct('');}}>Clear</button>
           </div>}
           {supplierBanner&&items.length===0&&<div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
-            <button style={S.btn('pri')} onClick={saveInvoiceOnly}>💾 Save Invoice Only</button>
+            <button style={{...S.btn('pri'),opacity:scanSaving?0.6:1}} disabled={scanSaving} onClick={saveInvoiceOnlyOnce}>{scanSaving?'Saving…':'💾 Save Invoice Only'}</button>
             <button style={{...S.btn('def',true),fontSize:11}} onClick={()=>setSupplierBanner(null)}>Dismiss</button>
           </div>}
         </div>
@@ -1381,7 +1390,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
           </div>
           <div style={{marginTop:10,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
             {markupPct&&<span style={{fontSize:11,color:AMB,fontWeight:600}}>✓ {markupPct}% markup applied to all items</span>}
-            <button style={S.btn('suc')} onClick={addToCatalog}>Add All to Catalog</button>
+            <button style={{...S.btn('suc'),opacity:scanSaving?0.6:1}} disabled={scanSaving} onClick={addToCatalogOnce}>{scanSaving?'Saving…':'Add All to Catalog'}</button>
           </div>
         </>}
       </div>
@@ -1671,6 +1680,9 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
     // Clear POS session storage after bill generated
     if(isBR){['pos_step','pos_sel','pos_isrel','pos_rn','pos_ri','shopos_cart'].forEach(k=>sessionStorage.removeItem(k));}
     onDone(bill);}catch(e){showT('Failed: '+e.message,'err')}finally{setSub(false)}};
+  const[posBusy,oncePos]=useOnce();
+  const genBillOnce=oncePos(genBill);
+  const saveCustOnce=oncePos(async()=>{try{await saveCust();}catch(e){showT('Failed: '+e.message,'err');}});
   const{sub,gt,mk,disc:discAmt,total}=calc();
   const activeCats=new Set(P.map(p=>p.cat));const fG=P.filter(p=>p.qty>0&&(catF==='All'||p.cat===catF)&&(p.name.toLowerCase().includes(cSrch.toLowerCase())||p.sku.includes(cSrch)||(p.articleNo||'').includes(cSrch)));
   const fC=C.filter(c=>(c.name+' '+c.phone+' '+(c.shopname||'')).toLowerCase().includes(custSrch.toLowerCase()));
@@ -1696,7 +1708,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
       {discAmt>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:GR,marginBottom:2}}><span>- Discount</span><span style={S.mono}>-{fmt(discAmt)}</span></div>}
       <div style={{display:'flex',justifyContent:'space-between',fontSize:15,fontWeight:800,paddingTop:6,borderTop:'0.5px solid '+BORD}}><span>Grand Total</span><span style={{...S.mono,color:GR,fontSize:16}}>{fmt(total)}</span></div>
       {step==='items'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'9px'}} onClick={()=>cart.length&&!overStock()?setStep('checkout'):null}>Proceed to Checkout</button>}
-      {step==='checkout'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'10px',fontSize:14}} onClick={genBill} disabled={submitting}>{submitting?'Generating...':'Generate Bill'}</button>}
+      {step==='checkout'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'10px',fontSize:14}} onClick={genBillOnce} disabled={submitting||posBusy}>{submitting||posBusy?'Generating...':'Generate Bill'}</button>}
       {cart.length>0&&<button style={{...S.btn('dan'),width:'100%',justifyContent:'center',marginTop:6}} onClick={()=>setCart([])}>Clear Cart</button>}
     </div></div>;
 
@@ -1743,7 +1755,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
           <Fld label='Email'><input style={S.inp} value={cForm.email} onChange={e=>setCF(f=>({...f,email:e.target.value}))} placeholder='email@example.com'/></Fld>
           <Fld label='City/Area'><input style={S.inp} value={cForm.addr} onChange={e=>setCF(f=>({...f,addr:e.target.value}))} placeholder='City'/></Fld>
         </div>
-        <button style={S.btn('pri')} onClick={saveCust}>Save & Proceed</button>
+        <button style={{...S.btn('pri'),opacity:posBusy?0.6:1}} disabled={posBusy} onClick={saveCustOnce}>{posBusy?'Saving…':'Save & Proceed'}</button>
       </div>
     </div>}
     {step==='items'&&<div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 300px',gap:14}}>
@@ -3084,7 +3096,9 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh,Ret=[]}){
   const openEdit=c=>{setEditId(c.id);setF({name:c.name,phone:c.phone,shopname:c.shopname||'',gst:c.gst||'',addr:c.addr||'',email:c.email||'',state:c.state||'Madhya Pradesh',pincode:c.pincode||'',openingBalance:c.openingBalance||'',openingBalanceDate:c.openingBalanceDate||''});setShow(true);};
   const handleRefresh=async()=>{setRefreshing(true);await onRefresh?.();setRefreshing(false);};
   const toggleCol=col=>{const nc=visCols.includes(col)?visCols.filter(c=>c!==col):[...visCols,col];setVisCols(nc);if(isBR)localStorage.setItem('custVisCols',JSON.stringify(nc));};
-  const save=async()=>{
+  const[custSaving,onceCust]=useOnce();
+  const save=onceCust(async()=>{try{await saveCustomerForm();}catch(e){showT('Failed: '+e.message,'err');}});
+  const saveCustomerForm=async()=>{
     if(!f.name||!f.phone){showT('Name & phone required','err');return}
     if(editId){
       const updated=await api.patch('/api/customers',{id:editId,...f,openingBalance:+f.openingBalance||0,openingBalanceDate:f.openingBalanceDate||null});
@@ -3132,7 +3146,7 @@ function Customers({C,setC,B,Py,setPy,firm,mob,onRefresh,Ret=[]}){
           <input style={S.inp} type='date' value={f.openingBalanceDate} onChange={e=>setF(x=>({...x,openingBalanceDate:e.target.value}))}/>
         </Fld>
       </div>
-      <div style={{display:'flex',gap:8}}><button style={S.btn('pri')} onClick={save}>Save</button><button style={S.btn()} onClick={()=>{setShow(false);setEditId(null);}}>Cancel</button></div>
+      <div style={{display:'flex',gap:8}}><button style={{...S.btn('pri'),opacity:custSaving?0.6:1}} disabled={custSaving} onClick={save}>{custSaving?'Saving…':'Save'}</button><button style={S.btn()} onClick={()=>{setShow(false);setEditId(null);}}>Cancel</button></div>
     </div>}
     <div style={{position:'relative',marginBottom:14}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,background:'#fff',padding:'8px 12px',borderRadius:8,border:'0.5px solid '+BORD}}>

@@ -96,6 +96,18 @@ export async function POST(req) {
       }
     }
 
+    // Same supplier + same bill number already saved for this firm → refuse (double click / re-scan)
+    const invNo = String(b.invoiceNo || '').trim();
+    if (invNo) {
+      const norm = v => String(v || '').trim().toUpperCase();
+      const { data: dupes } = await c.sb.from('supplier_invoices').select('id, supplier_name, invoice_no')
+        .eq('firm_id', c.firmId).eq('invoice_no', invNo);
+      const dup = (dupes || []).find(d => norm(d.supplier_name) === norm(b.supplierName));
+      if (dup) {
+        return NextResponse.json({ error: `Bill ${invNo} from ${norm(b.supplierName)} is already saved.`, code: 'DUPLICATE', id: dup.id }, { status: 409 });
+      }
+    }
+
     try {
       const { data, error } = await c.sb.from('supplier_invoices').insert([{
         firm_id: c.firmId,

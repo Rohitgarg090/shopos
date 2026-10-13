@@ -30,6 +30,13 @@ export async function POST(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const b = await req.json();
+  // Same phone number already in this firm → refuse (double click / duplicate entry)
+  const digits = String(b.phone || '').replace(/\D/g, '').slice(-10);
+  if (digits.length >= 10 && c.firmId) {
+    const { data: same } = await c.sb.from('customers').select('id, name, phone').eq('firm_id', c.firmId).ilike('phone', `%${digits}`);
+    const dup = (same || []).find(x => String(x.phone || '').replace(/\D/g, '').slice(-10) === digits);
+    if (dup) return NextResponse.json({ error: `A customer with phone ${b.phone} already exists: ${dup.name}`, code: 'DUPLICATE', id: dup.id }, { status: 409 });
+  }
   const { data, error } = await c.sb.from('customers').insert([{
     name: b.name, phone: b.phone, shopname: b.shopname||'', gst: b.gst||'',
     addr: b.addr||'', email: b.email||'', state: b.state||'Madhya Pradesh', pincode: b.pincode||'',
