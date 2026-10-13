@@ -8,6 +8,7 @@ import BillingPopup from '@/components/BillingPopup';
 import SupportTickets from '@/components/SupportTickets';
 import { INDUSTRY_TEMPLATES, getAvailableIndustries, UOM_BY_INDUSTRY } from '@/lib/industry-templates';
 import QRScanner from '@/components/QRScanner';
+import { LABEL_SIZES as LABEL_SIZE_OPTS } from '@/lib/labels';
 import PhotoInvoice from '@/components/PhotoInvoice';
 import InvoicePreview from '@/components/InvoicePreview';
 import StockCheck from '@/components/StockCheck';
@@ -632,7 +633,7 @@ export default function ShopOS(){
         return <>
       {page==='dash'&&<Dashboard P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
       }{page==='analytics'&&<Analytics P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob}/>}
-      {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob}/>}
+      {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob} firm={firm}/>}
       {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={msg=>askUpgrade({feature:'ai',error:msg||'AI scanning is available on Business plans.'})} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
@@ -825,7 +826,7 @@ function Dashboard({P,B,C,Py,Ret,mob,firm,setPage,setShowSupport}){
   </div>;}
 
 /* ── CATALOG ── */
-function Catalog({P,setP,mob}){
+function Catalog({P,setP,mob,firm}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[cat,setCat]=useState('All');const[srch,setSrch]=useState('');const[showF,setShowF]=useState(false);const[eid,setEid]=useState(null);
   const[selected,setSelected]=useState(new Set());
@@ -848,7 +849,9 @@ function Catalog({P,setP,mob}){
   const toggleSelectAll=()=>{if(selected.size===rows.length)setSelected(new Set());else setSelected(new Set(rows.map(p=>p.id)))};
   const bulkDelete=async()=>{if(selected.size===0){showT('Select products to delete','err');return}if(!confirm(`Delete ${selected.size} product${selected.size!==1?'s':''}?`))return;try{for(const id of selected){await api.del('/api/products?id='+id);}setP(ps=>ps.filter(p=>!selected.has(p.id)));setSelected(new Set());showT(`Deleted ${selected.size} product${selected.size!==1?'s':''}!`);}catch(e){showT('Failed: '+e.message,'err')}};
   const[showQR,setShowQR]=useState(false);const[qrQty,setQrQty]=useState({});const[dlQR,setDlQR]=useState(false);
-  const downloadQRLabels=async()=>{console.log('[QR] Download clicked, selected:', selected.size, 'dlQR:', dlQR);if(selected.size===0){showT('Select products','err');return}if(dlQR){console.log('[QR] Already downloading');return}setDlQR(true);try{console.log('[QR] Starting PDF generation...');const{jsPDF}=await import('jspdf');console.log('[QR] jsPDF imported');const pdf=new jsPDF('p','mm',[210,297]);const selectedProds=rows.filter(p=>selected.has(p.id));console.log('[QR] Selected products:', selectedProds.length);let y=12;const labelW=186,labelH=65;let totalLabels=0;for(const p of selectedProds){const qty=parseInt(qrQty[p.id])||p.qty||1;totalLabels+=qty;console.log('[QR] Processing', p.name, 'qty:', qty);for(let i=0;i<qty;i++){if(y+labelH>280){pdf.addPage();y=12;}const x=12;pdf.setDrawColor(100);pdf.setLineWidth(0.5);pdf.rect(x,y,labelW,labelH);const qrSize=45;const qrX=x+labelW-qrSize-4;const infoW=labelW-qrSize-10;pdf.setFontSize(12);pdf.setFont(undefined,'bold');pdf.text('Product: '+(p.name||'Product').substring(0,28),x+4,y+8);pdf.setFontSize(10);pdf.setFont(undefined,'normal');pdf.text('Article Number: '+(p.articleNo||'—'),x+4,y+16);pdf.text('Price: ₹'+(p.price||0),x+4,y+23);if(p.size&&p.size!=='Free Size'){pdf.text('Size: '+p.size,x+4,y+30);}if(p.color){pdf.text('Colour: '+p.color,x+4,y+37);}pdf.text('SKU: '+p.sku,x+4,y+51);const qrUrl=qrU(p.sku||'unknown',200);try{console.log('[QR] Fetching QR from:', qrUrl);const res=await fetch(qrUrl);if(!res.ok){console.error('[QR] QR fetch failed:', res.status);throw new Error('QR fetch failed');}const blob=await res.blob();const reader=new FileReader();await new Promise(res2=>{reader.onload=()=>{try{const imgData=reader.result;pdf.addImage(imgData,'PNG',qrX,y+4,qrSize,qrSize);console.log('[QR] QR image added');}catch(ae){console.error('[QR] Add image error:',ae);}res2();};reader.readAsDataURL(blob);});}catch(e){console.error('[QR] QR error:',e);}y+=labelH+3;}}console.log('[QR] Total labels:', totalLabels);pdf.save('product_qr_labels.pdf');console.log('[QR] PDF saved');showT('QR Labels downloaded!');setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){console.error('[QR] Error:',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false);console.log('[QR] Download complete')}};
+  const[lblSize,setLblSize]=useState(()=>{try{return localStorage.getItem('shopos_label_size')||'50x25'}catch{return'50x25'}});const[lblStyle,setLblStyle]=useState(()=>{try{return localStorage.getItem('shopos_label_style')||'barcode'}catch{return'barcode'}});const[lblPrice,setLblPrice]=useState(true);
+  useEffect(()=>{try{localStorage.setItem('shopos_label_size',lblSize);localStorage.setItem('shopos_label_style',lblStyle)}catch{}},[lblSize,lblStyle]);
+  const downloadQRLabels=async()=>{if(selected.size===0){showT('Select products','err');return}if(dlQR)return;setDlQR(true);try{const{generateLabelsPDF}=await import('@/lib/labels');const labels=[];for(const p of rows.filter(p=>selected.has(p.id))){const n=Math.max(1,parseInt(qrQty[p.id])||p.qty||1);for(let i=0;i<n;i++)labels.push({name:p.name,articleNo:p.articleNo,size:p.size,price:p.price,sku:p.sku});}if(labels.length>2000){showT('Too many labels at once (max 2000). Select fewer products.','err');return}const doc=await generateLabelsPDF({labels,firmName:firm?.name||'',sizeId:lblSize,style:lblStyle,showPrice:lblPrice});doc.save(`labels_${lblSize}mm_${labels.length}.pdf`);showT(`${labels.length} label${labels.length!==1?'s':''} downloaded`);setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){console.error('[labels]',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false)}};
   const dupKey=p=>(p.articleNo||'').trim().toUpperCase()+'|'+(p.size||'').toUpperCase()+'|'+(p.name||'').trim().toUpperCase();
   const dupCount=P.reduce((m,p)=>{if(p.articleNo){const k=dupKey(p);m[k]=(m[k]||0)+1;}return m;},{});
   const isDup=p=>p.articleNo&&dupCount[dupKey(p)]>1;
@@ -955,12 +958,18 @@ function Catalog({P,setP,mob}){
     </div>}
     {showQR&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
       <div style={{...S.card,width:mob?'90%':'500px',maxHeight:'80vh',overflowY:'auto'}}>
-        <div style={S.h2}>QR Label Quantities</div>
-        <div style={{fontSize:12,color:MUT,marginBottom:14}}>Select quantity for each product (default = stock quantity)</div>
+        <div style={S.h2}>Print Labels</div>
+        <div style={{fontSize:12,color:MUT,marginBottom:12}}>One sticker per PDF page — print at 100% / "Actual size" on your thermal printer.</div>
+        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10,marginBottom:10}}>
+          <Fld label='Sticker size'><select style={S.inp} value={lblSize} onChange={e=>setLblSize(e.target.value)}>{LABEL_SIZE_OPTS.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></Fld>
+          <Fld label='Code type'><select style={S.inp} value={lblStyle} onChange={e=>setLblStyle(e.target.value)}><option value='barcode'>Barcode (USB / laser scanner)</option><option value='qr'>QR code (phone camera scan)</option></select></Fld>
+        </div>
+        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:12,cursor:'pointer'}}><input type='checkbox' checked={lblPrice} onChange={e=>setLblPrice(e.target.checked)}/>Show price on label</label>
+        <div style={{fontSize:12,color:MUT,marginBottom:8}}>Number of labels per product (default = stock quantity)</div>
         <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr',gap:12,marginBottom:14,maxHeight:'50vh',overflowY:'auto'}}>
           {rows.filter(p=>selected.has(p.id)).map(p=><div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:8,background:BG,borderRadius:6}}><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{p.name}</div><div style={{fontSize:10,color:MUT}}>{p.sku}</div></div><div style={{display:'flex',alignItems:'center',gap:4}}><input type='number' min='1' value={qrQty[p.id]||p.qty||1} onChange={e=>setQrQty(q=>({...q,[p.id]:parseInt(e.target.value)||1}))} style={{...S.inp,width:60,padding:'6px 8px',fontSize:12}} placeholder='Qty'/><span style={{fontSize:11,color:MUT,minWidth:30}}>labels</span></div></div>)}
         </div>
-        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button style={S.btn()} onClick={()=>{setShowQR(false);setQrQty({})}} disabled={dlQR}>Cancel</button><button style={S.btn('pri')} onClick={downloadQRLabels} disabled={dlQR}>{dlQR?'⏳ Generating...':'⬇️ Download PDF'}</button></div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button style={S.btn()} onClick={()=>{setShowQR(false);setQrQty({})}} disabled={dlQR}>Cancel</button><button style={S.btn('pri')} onClick={downloadQRLabels} disabled={dlQR}>{dlQR?'Generating...':'Download labels PDF'}</button></div>
       </div>
     </div>}
   </div>;}
