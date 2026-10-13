@@ -241,7 +241,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
         </div>
 
         {/* Login Card */}
-        <Card variant="glass" className="border border-white/10 backdrop-blur-xl">
+        <Card variant="glass" className="!bg-white border border-white/10 backdrop-blur-xl">
           <CardHeader className="pb-6">
             <CardTitle className="text-2xl">
               {mode === "up"
@@ -252,7 +252,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                     : "Get Started")
                 : "Welcome"}
             </CardTitle>
-            <p className="text-sm text-slate-400 mt-2">
+            <p className="text-sm text-slate-600 mt-2">
               {mode === "up"
                 ? (registrationStep === "verify"
                   ? "Enter the OTP sent to your email to verify your account"
@@ -268,7 +268,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
           <CardContent>
             {/* Tab Toggle */}
             {mode !== "forgot" && (
-              <div className="flex gap-2 mb-6 bg-slate-800/50 p-1 rounded-lg">
+              <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-lg">
                 {[
                   { id: "in", label: "Sign In" },
                   { id: "up", label: "Register" },
@@ -279,7 +279,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                     className={`flex-1 py-2 px-4 rounded-md font-semibold transition-all text-sm ${
                       mode === id
                         ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
-                        : "text-slate-400 hover:text-slate-300"
+                        : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     {label}
@@ -291,8 +291,8 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
             {/* Forgot Password Header */}
             {mode === "forgot" && (
               <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white mb-2">Reset Password</h3>
-                <p className="text-sm text-slate-400">
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">Reset Password</h3>
+                <p className="text-sm text-slate-600">
                   {forgotStep === "email" && "Enter your email to receive an OTP"}
                   {forgotStep === "otp" && "Enter the OTP sent to your email"}
                   {forgotStep === "reset" && "Enter your new password"}
@@ -303,30 +303,30 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
             {/* Registration Mode Selection — only for Register mode */}
             {mode === "up" && !signupMode && (
               <div className="mb-6 space-y-3">
-                <p className="text-sm text-slate-300 font-medium mb-3">Choose an option:</p>
+                <p className="text-sm text-slate-700 font-medium mb-3">Choose an option:</p>
                 <button
                   onClick={() => setSignupMode("trial")}
                   disabled={loading}
-                  className="w-full p-4 rounded-lg border border-green-500/30 bg-green-500/5 hover:bg-green-500/10 hover:border-green-500/50 transition-all text-left"
+                  className="w-full p-4 rounded-lg border border-green-300 bg-green-50 hover:bg-green-100 hover:border-green-500 transition-all text-left"
                 >
                   <div className="flex items-start gap-3">
                     <div className="text-2xl">🚀</div>
                     <div>
-                      <p className="font-semibold text-white">Start Free Trial</p>
-                      <p className="text-xs text-slate-400 mt-1">14 days full access, no credit card needed</p>
+                      <p className="font-semibold text-slate-900">Start Free Trial</p>
+                      <p className="text-xs text-slate-600 mt-1">14 days full access, no credit card needed</p>
                     </div>
                   </div>
                 </button>
                 <button
                   onClick={() => setSignupMode("join")}
                   disabled={loading}
-                  className="w-full p-4 rounded-lg border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/50 transition-all text-left"
+                  className="w-full p-4 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-500 transition-all text-left"
                 >
                   <div className="flex items-start gap-3">
                     <div className="text-2xl">🏢</div>
                     <div>
-                      <p className="font-semibold text-white">Join Existing Firm</p>
-                      <p className="text-xs text-slate-400 mt-1">Request to join your company's account</p>
+                      <p className="font-semibold text-slate-900">Join Existing Firm</p>
+                      <p className="text-xs text-slate-600 mt-1">Request to join your company's account</p>
                     </div>
                   </div>
                 </button>
@@ -334,16 +334,16 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
             )}
 
             {/* Name + Firm ID — only for Register mode after selecting signup mode */}
-            {mode === "up" && signupMode && (
+            {mode === "up" && signupMode && registrationStep === "details" && (
               <>
-                <div className="mb-4 flex items-center gap-2 pb-2 border-b border-slate-700">
+                <div className="mb-4 flex items-center gap-2 pb-2 border-b border-slate-200">
                   <button
                     onClick={() => setSignupMode(null)}
-                    className="text-slate-400 hover:text-slate-300 text-sm"
+                    className="text-slate-600 hover:text-slate-900 text-sm"
                   >
                     ← Back
                   </button>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-slate-700 font-medium">
                     {signupMode === "trial" ? "Start Free Trial" : "Join Firm"}
                   </p>
                 </div>
@@ -380,7 +380,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
             )}
 
             {/* Email Input - Show for Sign In, Register, and Forgot Email step */}
-            {mode !== "forgot" || forgotStep === "email" ? (
+            {(mode === "in" || (mode === "up" && signupMode) || (mode === "forgot" && forgotStep === "email")) ? (
               <div className="mb-4">
                 <Input
                   type="email"
@@ -429,7 +429,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
             )}
 
             {/* Registration Password - Show in details step */}
-            {mode === "up" && registrationStep === "details" && (
+            {mode === "up" && signupMode && registrationStep === "details" && (
               <div className="mb-6">
                 <Input
                   type="password"
@@ -442,13 +442,16 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                   variant="glass"
                   disabled={loading}
                 />
+                <p className="text-xs text-slate-600 mt-1 pl-1">
+                  At least 12 characters, with a capital letter, a number and a symbol (!@#$%^&*)
+                </p>
               </div>
             )}
 
             {/* Registration Email Verification OTP - Show in verify step */}
             {mode === "up" && registrationStep === "verify" && (
               <div className="mb-6">
-                <div className="mb-4 p-3 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-200 text-sm">
+                <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-sm">
                   We sent an OTP to <strong>{email}</strong>. Enter it below to verify your email.
                 </div>
                 <Input
@@ -501,8 +504,8 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
               <div
                 className={`mb-6 p-3 rounded-lg text-sm font-medium ${
                   error.includes("successful") || error.includes("sent") || error.includes("submitted") || error.includes("created") || error.includes("Request")
-                    ? "bg-green-500/20 text-green-300 border border-green-500/30"
-                    : "bg-red-500/20 text-red-300 border border-red-500/30"
+                    ? "bg-green-50 text-green-800 border border-green-300"
+                    : "bg-red-50 text-red-700 border border-red-300"
                 }`}
               >
                 {error}
@@ -510,7 +513,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
             )}
 
             {/* Submit Button */}
-            <Button
+            {!(mode === "up" && !signupMode) && <Button
               onClick={mode === "forgot" ? handleForgotPassword : handleAuth}
               disabled={loading}
               variant="primary"
@@ -536,7 +539,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
               ) : (
                 "Reset Password"
               )}
-            </Button>
+            </Button>}
 
             {/* Forgot Password Link - Show in Sign In mode */}
             {mode === "in" && (
@@ -548,7 +551,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                     setError("");
                     setEmail("");
                   }}
-                  className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
+                  className="w-full text-center text-sm text-slate-600 hover:text-orange-600 mt-4 transition-colors"
                 >
                   Forgot your password?
                 </button>
@@ -573,7 +576,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                   setNewPassword("");
                   setConfirmPassword("");
                 }}
-                className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
+                className="w-full text-center text-sm text-slate-600 hover:text-orange-600 mt-4 transition-colors"
               >
                 ← Back to Sign In
               </button>
@@ -587,7 +590,7 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
                   setVerificationOtp("");
                   setError("");
                 }}
-                className="w-full text-center text-sm text-slate-400 hover:text-orange-400 mt-4 transition-colors"
+                className="w-full text-center text-sm text-slate-600 hover:text-orange-600 mt-4 transition-colors"
               >
                 ← Back to Details
               </button>
