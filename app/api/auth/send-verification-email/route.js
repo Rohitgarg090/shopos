@@ -17,9 +17,10 @@ async function sendEmailViaResend(email, otp, name) {
   console.log('[sendVerificationEmail] Target email:', email);
 
   if (!process.env.RESEND_API_KEY) {
-    console.log('[sendVerificationEmail] ⚠️ RESEND_API_KEY not configured - dev mode');
-    console.warn('[DEV] RESEND_API_KEY not set — OTP email not sent');
-    return true;
+    // Local / pre-production only: `next dev` runs with NODE_ENV=development; production builds never print codes.
+    if (process.env.NODE_ENV === 'development') console.log(`\n🔑 [DEV ONLY] Verification code for ${email}: ${otp}\n`);
+    else console.warn('RESEND_API_KEY not set — verification email not sent');
+    return process.env.NODE_ENV === 'development';
   }
 
   console.log('[sendVerificationEmail] ✅ RESEND_API_KEY found');
@@ -90,7 +91,9 @@ export async function POST(req) {
     if (limited) return limited;
   console.log('\n🔐 [send-verification-email] POST request received');
   try {
-    const { email, name } = await req.json();
+    const body = await req.json();
+    const email = (body.email || '').toLowerCase().trim();
+    const name = body.name;
     console.log('[send-verification-email] Email:', email, 'Name:', name);
 
     if (!email) {
@@ -101,16 +104,13 @@ export async function POST(req) {
       );
     }
 
-    // Check if email is already registered
-    const { data: users } = await supabase.auth.admin.listUsers({
-      pageSize: 1000,
-    });
-
+    // Check if email is already registered (all pages of users)
     let existingUser = null;
-    if (users && Array.isArray(users)) {
-      existingUser = users.find(u => u.email === email);
-    } else if (users && users.users && Array.isArray(users.users)) {
-      existingUser = users.users.find(u => u.email === email);
+    for (let page = 1; page <= 20 && !existingUser; page++) {
+      const { data } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+      const list = data?.users || [];
+      existingUser = list.find(u => (u.email || '').toLowerCase() === email) || null;
+      if (list.length < 1000) break;
     }
 
     if (existingUser) {
@@ -120,6 +120,10 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+
+    const limitedEmail = await limitOr429([[`send-verify-email:email:${email}`, 3, 900]],
+      'Too many codes requested for this email. Please wait 15 minutes.');
+    if (limitedEmail) return limitedEmail;
 
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
@@ -148,19 +152,22 @@ export async function POST(req) {
 
       if (insertError) {
         console.error('[send-verification-email] ❌ Failed to store OTP in database:', insertError);
-        // Continue to send email anyway
+        return Response.json({ error: 'Could not start email verification. Please try again in a minute.' }, { status: 500 });
       } else {
         console.log(`[send-verification-email] ✅ OTP stored in database for ${email}`);
       }
     } catch (dbError) {
       console.error('[send-verification-email] ❌ Database error:', dbError);
-      // Continue to send email anyway
+      return Response.json({ error: 'Could not start email verification. Please try again in a minute.' }, { status: 500 });
     }
 
     // Send email
     console.log('[send-verification-email] Sending OTP email...');
     const emailSent = await sendEmailViaResend(email, otp, name);
     console.log('[send-verification-email] Email send result:', emailSent);
+    if (!emailSent) {
+      return Response.json({ error: 'Could not send the verification email. Please try again shortly.' }, { status: 500 });
+    }
 
     console.log('[send-verification-email] ✅ Returning success response');
     return Response.json({

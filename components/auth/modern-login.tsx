@@ -188,8 +188,8 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
         setError("Passwords do not match");
         return;
       }
-      if (newPassword.length < 6) {
-        setError("Password must be at least 6 characters");
+      if (newPassword.length < 12 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[!@#$%^&*]/.test(newPassword)) {
+        setError("Password must be at least 12 characters with an uppercase letter, a number and a special character (!@#$%^&*)");
         return;
       }
 

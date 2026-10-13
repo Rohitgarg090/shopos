@@ -12,7 +12,9 @@ export async function POST(req) {
   try {
     const limited = await limitOr429([[`register:ip:${clientIp(req)}`, 10, 3600]]);
     if (limited) return limited;
-    const { email, password, name, firmId } = await req.json();
+    const body = await req.json();
+    const email = (body.email || '').toLowerCase().trim();
+    const { password, name, firmId } = body;
 
     if (!email || !password || !name) {
       return Response.json(
@@ -38,6 +40,21 @@ export async function POST(req) {
         { error: 'Password must contain uppercase letter, number, and special character (!@#$%^&*)' },
         { status: 400 }
       );
+    }
+
+    // The email must have passed /api/auth/verify-email-otp within the last 30 minutes.
+    // Each verification can create one account (the token is deleted below).
+    const { data: verifiedToken } = await supabase
+      .from('email_verification_tokens')
+      .select('id')
+      .eq('email', email)
+      .eq('verified', true)
+      .gte('created_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!verifiedToken) {
+      return Response.json({ error: 'Please verify your email with the code we sent before creating the account.' }, { status: 400 });
     }
 
     // Try to create user
@@ -72,6 +89,8 @@ export async function POST(req) {
     }
 
     userId = newUser.user.id;
+    // One verification = one account
+    await supabase.from('email_verification_tokens').delete().eq('email', email);
 
     // TRIAL FLOW: No firmId provided - create trial account
     if (!firmId) {

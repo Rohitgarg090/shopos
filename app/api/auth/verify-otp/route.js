@@ -35,8 +35,8 @@ export async function POST(req) {
     if (!email || !otp || !newPassword) {
       return Response.json({ error: 'Email, OTP, and new password are required' }, { status: 400 });
     }
-    if (newPassword.length < 6) {
-      return Response.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+    if (newPassword.length < 12 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[!@#$%^&*]/.test(newPassword)) {
+      return Response.json({ error: 'Password must be at least 12 characters with an uppercase letter, a number and a special character (!@#$%^&*)' }, { status: 400 });
     }
 
     // Brute-force protection: 5 tries per email and 30 per IP every 10 minutes
