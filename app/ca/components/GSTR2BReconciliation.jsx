@@ -47,7 +47,7 @@ export default function GSTR2BReconciliation({ firmId }) {
         if (res.ok) {
           const data = await res.json();
           setCredentials(data);
-          if (data.gst_portal_username && data.gst_portal_password) {
+          if (data.gst_portal_username && (data.has_password || data.gst_portal_password)) {
             setStep('fetch');
           } else {
             setStep('credentials');

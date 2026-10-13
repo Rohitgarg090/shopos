@@ -54,7 +54,12 @@ export async function GET(req) {
 
     if (error) throw error;
 
-    return NextResponse.json(settings || {});
+    // the password is write-only: the server uses it, the browser only learns whether it is set
+    return NextResponse.json({
+      gst_portal_username: settings?.gst_portal_username || '',
+      gst_portal_password: '',
+      has_password: !!settings?.gst_portal_password,
+    });
   } catch (error) {
     console.error('[ca/firm-settings-get] Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -94,7 +99,7 @@ export async function POST(req) {
       .from('firm_settings')
       .update({
         gst_portal_username,
-        gst_portal_password,
+        ...(gst_portal_password ? { gst_portal_password } : {}), // blank = keep the saved password
         gst_credentials_updated_at: new Date().toISOString(),
       })
       .eq('firm_id', firmId)
@@ -103,7 +108,7 @@ export async function POST(req) {
 
     if (error) throw error;
 
-    return NextResponse.json(updated);
+    return NextResponse.json({ gst_portal_username: updated?.gst_portal_username || '', gst_portal_password: '', has_password: !!updated?.gst_portal_password });
   } catch (error) {
     console.error('[ca/firm-settings-post] Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

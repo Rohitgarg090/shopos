@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { isFirmMember } from '@/lib/firmAccess';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -17,7 +18,8 @@ async function ctx(req) {
   if (!user) return { error: 'Unauthorized', status: 401 };
 
   let firm = null;
-  if (firmId) {
+  // only use a firm's settings (and its Gemini key) if the caller belongs to that firm
+  if (firmId && await isFirmMember(user.id, firmId)) {
     const { data } = await supabase
       .from('firms')
       .select('*, firm_settings(*)')

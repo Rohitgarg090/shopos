@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { isFirmMember } from '@/lib/firmAccess';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -20,6 +21,9 @@ export async function GET(req) {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!(await isFirmMember(user.id, firmId))) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Check if fetching a single ticket with details
@@ -98,6 +102,9 @@ export async function POST(req) {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!(await isFirmMember(user.id, firmId))) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { title, description, category, priority } = await req.json();

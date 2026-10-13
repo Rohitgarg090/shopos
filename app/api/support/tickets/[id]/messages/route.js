@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { isFirmMember } from '@/lib/firmAccess';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -14,6 +15,8 @@ async function ctx(req) {
   } = await supabase.auth.getUser(token);
 
   if (!user || !orgId) return { error: 'Unauthorized', status: 401 };
+  // the firm id comes from the browser: only members of that firm may read/write its tickets
+  if (!(await isFirmMember(user.id, orgId))) return { error: 'Forbidden', status: 403 };
 
   return { user, orgId, supabase };
 }

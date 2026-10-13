@@ -89,7 +89,10 @@ export async function GET(req) {
     console.error('[settings] GET error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(shape((rows || [])[0] || {}));
+  const out = shape((rows || [])[0] || {});
+  // Messaging-provider key is only needed by the owner (Settings) and the server; hide it from staff
+  if (f.role !== 'owner') out.msg91Key = '';
+  return NextResponse.json(out);
 }
 
 export async function POST(req) {
