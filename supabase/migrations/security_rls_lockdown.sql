@@ -3,6 +3,13 @@
 -- with the public anon key). The server's service-role key bypasses RLS, so admin/CA/payment
 -- routes are unaffected. Safe to run more than once.
 
+-- 0. Firms created at sign-up were saved without owner_id. Take it from the owner membership
+--    (earliest one if there are several) so owner checks, firm and user limits work.
+update firms f set owner_id = m.user_id
+from (select distinct on (firm_id) firm_id, user_id from firm_members
+      where role = 'owner' and user_id is not null order by firm_id, created_at nulls last) m
+where f.owner_id is null and m.firm_id = f.id;
+
 -- 1. Is the logged-in user the owner or an active member of this firm?
 create or replace function public.is_firm_member(fid uuid)
 returns boolean language sql stable security definer set search_path = public as $$
@@ -149,6 +156,9 @@ grant execute on function public.hit_rate_limit(text, integer, integer) to servi
 delete from public.rate_limits where window_start < now() - interval '1 day';
 
 notify pgrst, 'reload schema';
+
+-- Firms still without an owner (should be 0)
+select count(*) as firms_without_owner from firms where owner_id is null;
 
 -- Payments still without a firm (should be 0; these would be hidden)
 select count(*) as payments_without_firm from payments where firm_id is null;

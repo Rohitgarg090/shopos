@@ -100,6 +100,7 @@ export async function POST(req) {
           .from('firms')
           .insert({
             name: `${name}'s Business`,
+            owner_id: userId,
           })
           .select()
           .single();
