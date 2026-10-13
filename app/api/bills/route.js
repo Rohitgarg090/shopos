@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { adminDb } from '@/lib/firmAccess';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
@@ -40,34 +41,57 @@ export async function GET(req) {
   })));
 }
 
+// Firm's invoice prefix from Settings (letters, digits, / and - only; default INV)
+async function invoicePrefix(firmId) {
+  const { data } = await adminDb().from('firm_settings').select('invoice_prefix').eq('firm_id', firmId)
+    .order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+  const p = String(data?.invoice_prefix || 'INV').toUpperCase().replace(/[^A-Z0-9/]/g, '').slice(0, 12);
+  return p || 'INV';
+}
+const missingFn = e => e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function/i.test(e.message || ''));
+
 export async function POST(req) {
   const c = await ctx(req);
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!c.firmId) return NextResponse.json({ error: 'No firm selected' }, { status: 400 });
   const b = await req.json();
-  const { data: bill, error: bErr } = await c.sb.from('bills').insert([{
-    invoice_no: b.invoiceNo, customer_id: b.customerId||null,
-    customer_name: b.customerName, customer_phone: b.customerPhone||'',
-    customer_gst: b.customerGST||'', customer_email: b.customerEmail||'',
-    customer_addr: b.customerAddr||'', is_relative: b.isRelative||false,
-    subtotal: b.subtotal, discount: b.discount||0, gst_total: b.gst,
-    markup: b.markup||0, total: b.total,
-    transport_name: b.transportName||'', lr_number: b.lrNumber||'',
-    firm_id: c.firmId||null,
-  }]).select().single();
-  if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 });
-  const items = b.items.map(i => ({
-    bill_id: bill.id, product_sku: i.sku, name: i.name, cat: i.cat,
-    size: i.size, color: i.color||'', article_no: i.articleNo||'',
-    hsn: i.hsn||'', qty: i.qty, rate: i.rate, gst_rate: i.gstRate,
-    gst_amt: i.gstAmt, total: i.total,
+  if (!Array.isArray(b.items) || b.items.length === 0) return NextResponse.json({ error: 'The bill has no items' }, { status: 400 });
+
+  const billRow = {
+    customer_id: b.customerId || null, customer_name: b.customerName, customer_phone: b.customerPhone || '',
+    customer_gst: b.customerGST || '', customer_email: b.customerEmail || '', customer_addr: b.customerAddr || '',
+    is_relative: !!b.isRelative, subtotal: b.subtotal, discount: b.discount || 0, gst_total: b.gst,
+    markup: b.markup || 0, total: b.total, transport_name: b.transportName || '', lr_number: b.lrNumber || '',
+  };
+  const itemRows = b.items.map(i => ({
+    sku: i.sku || '', name: i.name, cat: i.cat, size: i.size, color: i.color || '', article_no: i.articleNo || '',
+    hsn: i.hsn || '', qty: i.qty, rate: i.rate, gst_rate: i.gstRate, gst_amt: i.gstAmt, total: i.total,
   }));
-  const { error: iErr } = await c.sb.from('bill_items').insert(items);
-  if (iErr) return NextResponse.json({ error: iErr.message }, { status: 500 });
-  for (const i of b.items) {
-    if (!i.sku) continue;
-    await c.sb.rpc('decrement_stock', { p_sku: i.sku, p_qty: i.qty });
+
+  // One database transaction: next invoice number, bill, items and stock — all or nothing
+  const { data, error } = await c.sb.rpc('create_bill', {
+    p_firm_id: c.firmId, p_prefix: await invoicePrefix(c.firmId), p_bill: billRow, p_items: itemRows,
+  });
+  if (!error) {
+    const row = Array.isArray(data) ? data[0] : data;
+    return NextResponse.json({ id: row.id, invoiceNo: row.invoice_no }, { status: 201 });
   }
-  return NextResponse.json({ id: bill.id }, { status: 201 });
+  if (!missingFn(error)) {
+    const status = error.code === 'P0001' ? 409 : error.code === '42501' ? 403 : 500;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+
+  // Fallback until bills_atomic.sql is applied (not atomic)
+  console.warn('[bills] create_bill() missing — run supabase/migrations/bills_atomic.sql');
+  const { data: bill, error: bErr } = await c.sb.from('bills').insert([{ ...billRow, invoice_no: b.invoiceNo, firm_id: c.firmId }]).select().single();
+  if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 });
+  const { error: iErr } = await c.sb.from('bill_items').insert(itemRows.map(({ sku, ...i }) => ({ ...i, bill_id: bill.id, product_sku: sku || null })));
+  if (iErr) {
+    await c.sb.from('bills').delete().eq('id', bill.id);
+    return NextResponse.json({ error: iErr.message }, { status: 500 });
+  }
+  for (const i of b.items) if (i.sku) await c.sb.rpc('decrement_stock', { p_sku: i.sku, p_qty: i.qty });
+  return NextResponse.json({ id: bill.id, invoiceNo: bill.invoice_no }, { status: 201 });
 }
 
 export async function PATCH(req) {
@@ -86,6 +110,11 @@ export async function PATCH(req) {
       return NextResponse.json({ error: 'Bill already cancelled' }, { status: 400 });
     }
 
+    const { data: cancelled, error: cErr } = await c.sb.rpc('cancel_bill', { p_bill_id: id, p_reason: cancelReason || '' });
+    if (!cErr) return NextResponse.json(shape(Array.isArray(cancelled) ? cancelled[0] : cancelled), { status: 200 });
+    if (!missingFn(cErr)) return NextResponse.json({ error: cErr.message }, { status: cErr.code === 'P0001' ? 400 : 500 });
+
+    // Fallback until bills_atomic.sql is applied
     // Restore stock for all bill items
     const stockErrors = [];
     for (const item of (bill.bill_items || [])) {
