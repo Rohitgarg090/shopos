@@ -15,9 +15,8 @@ export async function GET(req) {
     let plan;
     try { await ensurePlanRow(user.id); plan = await getPlan(user.id); }
     catch (e) {
-      // Plan columns missing (migration not run): report full access so nothing is blocked.
       console.error('[trial-status] plan lookup failed:', e.message);
-      plan = { plan: 'trial', name: 'Free Trial', firmLimit: 99, userLimit: 99, external: true, trialDaysLeft: 0, setupPending: true };
+      return Response.json({ error: 'Could not load your plan. Please refresh.' }, { status: 503 });
     }
     const currentFirmCount = await countOwnedFirms(user.id);
     let usersUsed = 1;

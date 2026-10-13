@@ -87,7 +87,7 @@ export async function POST(req) {
         code: 'PLAN_REQUIRED', feature: 'firms', plan: plan.plan, firmLimit: plan.firmLimit, owned,
       }, { status: 402 });
     }
-  } catch (e) { console.error('[firms] plan check failed, allowing:', e.message); }
+  } catch (e) { console.error('[firms] plan check failed:', e.message); return NextResponse.json({ error: 'Could not check your plan right now. Please try again in a moment.' }, { status: 503 }); }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const adminSb = serviceKey
