@@ -15,6 +15,7 @@ import InvoicePreview from '@/components/InvoicePreview';
 import StockCheck from '@/components/StockCheck';
 import FirmSwitcher from '@/components/FirmSwitcher';
 import EInvoiceManager from '@/app/components/EInvoiceManager';
+import { useQrImage } from '@/app/components/EInvoiceButton';
 import InvoiceHelp from '@/components/PageHelpGuides/InvoiceHelp';
 import CustomerHelp from '@/components/PageHelpGuides/CustomerHelp';
 import PaymentHelp from '@/components/PageHelpGuides/PaymentHelp';
@@ -1639,6 +1640,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   },[cart]);const[bc,setBc]=useState('');const[catF,setCatF]=useState('All');const[cSrch,setCS]=useState('');const[gstMode,setGM]=useState('excl');const[custSrch,setCuS]=useState('');const[disc,setDisc]=useState('');
   const[transportName,setTransportName]=useState('');const[lrNumber,setLrNumber]=useState('');
   const SHIP0={name:'',gstin:'',addr:'',city:'',state:'',pincode:''};
+  const[posState,setPosState]=useState('');   // '' = firm's own state
   const[shipDiff,setShipDiff]=useState(false);const[ship,setShip]=useState(SHIP0);const[buyerOrderNo,setBON]=useState('');const[buyerOrderDate,setBOD]=useState('');const[destination,setDest]=useState('');
   const todayLocal=()=>new Date().toLocaleDateString('en-CA');const[billDate,setBillDate]=useState(todayLocal());
   const[showCamera,setShowCamera]=useState(false);
@@ -1711,10 +1713,10 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
     const{sub,gt,mk,disc:discAmt,total}=calc();let inv='';try{inv=await(getNextInvoiceNo||nextInv)();}catch(e){/* server assigns the number */}
     const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
     const extras={shipTo:!isRel&&shipDiff?ship:null,buyerOrderNo:buyerOrderNo.trim(),buyerOrderDate,destination:destination.trim()};
-    try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber,billDate,shipTo:extras.shipTo,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate:extras.buyerOrderDate,destination:extras.destination});
+    try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber,billDate,shipTo:extras.shipTo,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate:extras.buyerOrderDate,destination:extras.destination,placeOfSupply:isRel?'':posState});
     const fp=await api.get('/api/products');setP(Array.isArray(fp)?fp:[]);
-    const bill={id:r.id,invoiceNo:r.invoiceNo||inv,date:billDate<todayLocal()?new Date(billDate+'T12:00:00+05:30').toISOString():new Date().toISOString(),customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items:items.map(i=>({...i,gstAmt:i.gstAmt||0})),subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,biltyNo:'',transportName,lrNumber,shipTo:extras.shipTo?{...ship,gstin:ship.gstin.toUpperCase()}:null,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate,destination:extras.destination};
-    setB(bs=>[bill,...bs]);setCart([]);setSel(null);setStep('cust');setIsRel(false);setRn('');setRi('');setDisc('');setTransportName('');setLrNumber('');setBillDate(todayLocal());setShipDiff(false);setShip(SHIP0);setBON('');setBOD('');setDest('');
+    const bill={id:r.id,invoiceNo:r.invoiceNo||inv,date:billDate<todayLocal()?new Date(billDate+'T12:00:00+05:30').toISOString():new Date().toISOString(),customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items:items.map(i=>({...i,gstAmt:i.gstAmt||0})),subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,biltyNo:'',transportName,lrNumber,shipTo:extras.shipTo?{...ship,gstin:ship.gstin.toUpperCase()}:null,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate,destination:extras.destination,placeOfSupply:r.placeOfSupply||'',gstType:r.gstType||'cgst_sgst'};
+    setB(bs=>[bill,...bs]);setCart([]);setSel(null);setStep('cust');setIsRel(false);setRn('');setRi('');setDisc('');setTransportName('');setLrNumber('');setBillDate(todayLocal());setShipDiff(false);setShip(SHIP0);setBON('');setBOD('');setDest('');setPosState('');
     // Clear POS session storage after bill generated
     if(isBR){['pos_step','pos_sel','pos_isrel','pos_rn','pos_ri','shopos_cart'].forEach(k=>sessionStorage.removeItem(k));}
     onDone(bill);}catch(e){showT('Failed: '+e.message,'err')}finally{setSub(false)}};
@@ -1838,6 +1840,11 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
           {billDate<todayLocal()?<div style={{fontSize:12,color:AMB,fontWeight:600}}>Backdated invoice — dated {new Date(billDate+'T12:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}. <button onClick={()=>setBillDate(todayLocal())} style={{background:'none',border:'none',color:BL,cursor:'pointer',fontWeight:700,padding:0}}>Use today</button></div>
             :<div style={{fontSize:11,color:MUT}}>Today by default. Pick an earlier date for a backdated invoice.</div>}
         </div>
+        {!isRel&&(()=>{const own=firm?.state||'';const cur=posState||own;const custSt=sel?.gst&&/^\d{2}/.test(sel.gst)?Object.keys(GST_STATES).find(k=>GST_STATES[k]===+sel.gst.slice(0,2)):(sel?.state||'');const inter=own&&cur&&cur!==own;return<div style={{marginTop:10,padding:'12px 14px',background:inter?PURL:BG,borderRadius:8,border:'0.5px solid '+(inter?PUR+'50':BORD),display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <div style={{flex:'0 0 auto'}}><label style={S.lbl}>Place of supply</label><select style={{...S.inp,width:220,margin:0}} value={cur} onChange={e=>setPosState(e.target.value===own?'':e.target.value)}>{!own&&<option value=''>Select state…</option>}{Object.keys(GST_STATES).map(n=><option key={n} value={n}>{n}{n===own?' (your state)':''}</option>)}</select></div>
+          <div style={{fontSize:11.5,color:inter?PUR:MUT,flex:1,minWidth:180}}>{inter?<><strong>Inter-state supply — IGST</strong> will be charged instead of CGST + SGST.</>:'Same state — CGST + SGST.'}
+            {custSt&&custSt!==cur&&<div style={{color:AMB,marginTop:3}}>Customer is in <strong>{custSt}</strong>{sel?.gst?' (as per GSTIN)':''}. <button onClick={()=>setPosState(custSt===own?'':custSt)} style={{background:'none',border:'none',color:BL,cursor:'pointer',fontWeight:700,padding:0,fontSize:11.5}}>Use {custSt}</button></div>}</div>
+        </div>})()}
         <div style={{marginTop:14,padding:'12px 14px',background:BG,borderRadius:8,border:'0.5px solid '+BORD}}>
           <div style={S.h3}>Transport Details (Optional)</div>
           <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10}}>
@@ -1931,6 +1938,9 @@ function Invoice({bill,firm,payments=[]}){
   if(!bill)return null;
   const paid=payments.filter(p=>p.billId===bill.id).reduce((s,p)=>s+p.amount,0),bal=bill.total-paid;
   const hasDiscount=(bill.discount||0)>0;
+  const igst=bill.gstType==='igst';   // inter-state supply
+  const pos=bill.placeOfSupply||firm.state||'';const posCode=GST_STATES[pos];
+  const irnQr=useQrImage(bill.eInvoice?.qr);
   const[upiQrUrl,setUpiQrUrl]=useState(null);
   useEffect(()=>{if(firm.upiId&&typeof window!=='undefined'){const QRCode=require('qrcode');const payload=`upi://pay?pa=${firm.upiId}&pn=${encodeURIComponent(firm.name)}&cu=INR`;QRCode.toDataURL(payload,{width:88,margin:0,errorCorrectionLevel:'H'},(err,url)=>{if(err){console.error('QR generation failed:',err);}else{setUpiQrUrl(url);}});}},[firm.upiId,firm.name]);
   return<div id='invoice-print' style={{fontFamily:'Arial,sans-serif',color:'#111',fontSize:12,width:'100%',background:'#fff',padding:22,boxSizing:'border-box'}}>
@@ -1945,7 +1955,8 @@ function Invoice({bill,firm,payments=[]}){
         {firm.gstin&&<div style={{fontSize:11,fontWeight:700,marginTop:3}}>GSTIN: {firm.gstin}</div>}
       </td>
       <td style={{width:'40%',textAlign:'right',verticalAlign:'middle',paddingTop:8}}>
-        {firm.upiQrImage?<div style={{display:'inline-block'}}><img src={firm.upiQrImage} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd',display:'block'}}/><div style={{fontSize:9,color:'#999',marginTop:3,textAlign:'right'}}>Scan to pay</div></div>:upiQrUrl?<div style={{display:'inline-block'}}><img src={upiQrUrl} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd',display:'block'}}/><div style={{fontSize:9,color:'#999',marginTop:3,textAlign:'right'}}>Scan to pay</div></div>:null}
+        {bill.eInvoice?<div style={{display:'inline-flex',gap:8,alignItems:'flex-start',textAlign:'left'}}><div style={{fontSize:8.5,lineHeight:1.5,maxWidth:170,wordBreak:'break-all'}}><div style={{fontWeight:700,fontSize:9}}>e-Invoice</div><div><strong>IRN:</strong> {bill.eInvoice.irn}</div><div><strong>Ack No:</strong> {bill.eInvoice.ackNo||'-'}</div><div><strong>Ack Date:</strong> {bill.eInvoice.ackDate?new Date(bill.eInvoice.ackDate).toLocaleDateString('en-IN'):'-'}</div></div>{irnQr&&<img src={irnQr} width={92} height={92} alt='e-Invoice QR' style={{display:'block'}}/>}</div>:
+        firm.upiQrImage?<div style={{display:'inline-block'}}><img src={firm.upiQrImage} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd',display:'block'}}/><div style={{fontSize:9,color:'#999',marginTop:3,textAlign:'right'}}>Scan to pay</div></div>:upiQrUrl?<div style={{display:'inline-block'}}><img src={upiQrUrl} width={88} height={88} alt='UPI QR' style={{border:'1px solid #ddd',display:'block'}}/><div style={{fontSize:9,color:'#999',marginTop:3,textAlign:'right'}}>Scan to pay</div></div>:null}
       </td>
     </tr></tbody></table>
     <div style={{background:'#1B3A6B',color:'#fff',padding:'5px 14px',borderRadius:4,marginBottom:10,display:'flex',justifyContent:'space-between'}}>
@@ -1971,7 +1982,7 @@ function Invoice({bill,firm,payments=[]}){
       </td>
       <td style={{width:'50%',verticalAlign:'top'}}>
         <div style={{background:'#f8f8f8',padding:'7px 10px',borderRadius:4,border:'0.5px solid #e0e0e0'}}>
-          {[['Invoice No.',bill.invoiceNo||'#'+bill.id],['Date',new Date(bill.date).toLocaleDateString('en-IN')],['Place of Supply',firm.state||'M.P.'],bill.buyerOrderNo?["Buyer's Order No.",bill.buyerOrderNo+(bill.buyerOrderDate?' dt. '+new Date(bill.buyerOrderDate+'T12:00:00').toLocaleDateString('en-IN'):'')]:null,(bill.transportName||bill.lrNumber)?['Dispatched through',bill.transportName||(bill.lrNumber?'-':'')]:null,bill.lrNumber?['LR / Docket No.',bill.lrNumber]:bill.biltyNo?['LR / Bilty No.',bill.biltyNo]:null,bill.destination?['Destination',bill.destination]:null].filter(Boolean).map(([k,v],idx)=><div key={k||idx} style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:11}}><span style={{color:'#666'}}>{k}</span><span style={{fontWeight:700,fontFamily:k.includes('LR')||k.includes('Bilty')?'monospace':'inherit'}}>{v}</span></div>)}
+          {[['Invoice No.',bill.invoiceNo||'#'+bill.id],['Date',new Date(bill.date).toLocaleDateString('en-IN')],['Place of Supply',pos?pos+(posCode?' ('+String(posCode).padStart(2,'0')+')':''):'-'],bill.buyerOrderNo?["Buyer's Order No.",bill.buyerOrderNo+(bill.buyerOrderDate?' dt. '+new Date(bill.buyerOrderDate+'T12:00:00').toLocaleDateString('en-IN'):'')]:null,(bill.transportName||bill.lrNumber)?['Dispatched through',bill.transportName||(bill.lrNumber?'-':'')]:null,bill.lrNumber?['LR / Docket No.',bill.lrNumber]:bill.biltyNo?['LR / Bilty No.',bill.biltyNo]:null,bill.destination?['Destination',bill.destination]:null].filter(Boolean).map(([k,v],idx)=><div key={k||idx} style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:11}}><span style={{color:'#666'}}>{k}</span><span style={{fontWeight:700,fontFamily:k.includes('LR')||k.includes('Bilty')?'monospace':'inherit'}}>{v}</span></div>)}
         </div>
       </td>
     </tr></tbody></table>
@@ -1986,11 +1997,11 @@ function Invoice({bill,firm,payments=[]}){
         <col style={{width:'4%'}}/>
         <col style={{width:'5%'}}/>
         <col style={{width:'6%'}}/>
-        <col style={{width:'5%'}}/>
+        {!igst&&<col style={{width:'5%'}}/>}
         <col style={{width:'6%'}}/>
         <col style={{width:'8%'}}/>
       </colgroup>
-      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','CGST','SGST','Total'].map((h,idx)=><th key={h} style={{padding:'4px 2px',textAlign:['left','left','left','left','left','left','center','right','center','right','right','right'][idx],fontSize:9,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis'}}>{h}</th>)}</tr></thead>
+      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{(igst?['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','IGST','Total']:['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','CGST','SGST','Total']).map((h,idx)=><th key={h} style={{padding:'4px 2px',textAlign:idx<6?'left':h==='Qty'||h==='GST%'?'center':'right',fontSize:9,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis'}}>{h}</th>)}</tr></thead>
       <tbody>{(bill.items||[]).map((item,i)=><tr key={i} style={{background:i%2===0?'#fafafa':'#fff'}}>
         <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'left',overflow:'hidden'}}>{i+1}</td>
         <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',fontWeight:600,overflow:'hidden',wordBreak:'break-word'}}>{item.name}</td>
@@ -2001,21 +2012,23 @@ function Invoice({bill,firm,payments=[]}){
         <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'center',overflow:'hidden'}}>{item.qty||0}</td>
         <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt(item.rate||0)}</td>
         <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'center',overflow:'hidden'}}>{item.gstRate||0}%</td>
+        {igst?<td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt(item.gstAmt||0)}</td>:<>
         <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt((item.gstAmt||0)/2)}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt((item.gstAmt||0)/2)}</td>
+        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt((item.gstAmt||0)/2)}</td></>}
         <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',fontWeight:700,overflow:'hidden'}}>{fmt(item.total||0)}</td>
       </tr>)}</tbody>
     </table>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8}}><tbody><tr>
       <td style={{width:'55%',verticalAlign:'top',paddingRight:14}}>
         {!bill.isRelative&&(bill.items||[]).length>0&&(()=>{const hs=hsnSummary(bill.items),tt=hs.reduce((a,r)=>a+r.tax,0),tx=hs.reduce((a,r)=>a+r.taxable,0),c={padding:'2px 4px',textAlign:'right'};return<><div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',color:'#888',marginBottom:3}}>HSN-wise Tax Summary</div>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:9,border:'0.5px solid #e0e0e0'}}><thead><tr style={{background:'#f0f0f0'}}>{['HSN','Taxable','CGST','SGST','Total Tax'].map((h,k)=><th key={h} style={{...c,textAlign:k?'right':'left',fontWeight:700}}>{h}</th>)}</tr></thead><tbody>{hs.map(r=><tr key={r.hsn+r.rate}><td style={{padding:'2px 4px',fontFamily:'monospace'}}>{r.hsn}</td><td style={c}>{fmt(r.taxable)}</td><td style={c}>{r.rate/2}% · {fmt(r.tax/2)}</td><td style={c}>{r.rate/2}% · {fmt(r.tax/2)}</td><td style={{...c,fontWeight:700}}>{fmt(r.tax)}</td></tr>)}{hs.length>1&&<tr style={{borderTop:'0.5px solid #ccc',fontWeight:700}}><td style={{padding:'2px 4px'}}>Total</td><td style={c}>{fmt(tx)}</td><td style={c}>{fmt(tt/2)}</td><td style={c}>{fmt(tt/2)}</td><td style={c}>{fmt(tt)}</td></tr>}</tbody></table></>})()}
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:9,border:'0.5px solid #e0e0e0'}}><thead><tr style={{background:'#f0f0f0'}}>{(igst?['HSN','Taxable','IGST','Total Tax']:['HSN','Taxable','CGST','SGST','Total Tax']).map((h,k)=><th key={h} style={{...c,textAlign:k?'right':'left',fontWeight:700}}>{h}</th>)}</tr></thead><tbody>{hs.map(r=><tr key={r.hsn+r.rate}><td style={{padding:'2px 4px',fontFamily:'monospace'}}>{r.hsn}</td><td style={c}>{fmt(r.taxable)}</td>{igst?<td style={c}>{r.rate}% · {fmt(r.tax)}</td>:<><td style={c}>{r.rate/2}% · {fmt(r.tax/2)}</td><td style={c}>{r.rate/2}% · {fmt(r.tax/2)}</td></>}<td style={{...c,fontWeight:700}}>{fmt(r.tax)}</td></tr>)}{hs.length>1&&<tr style={{borderTop:'0.5px solid #ccc',fontWeight:700}}><td style={{padding:'2px 4px'}}>Total</td><td style={c}>{fmt(tx)}</td>{igst?<td style={c}>{fmt(tt)}</td>:<><td style={c}>{fmt(tt/2)}</td><td style={c}>{fmt(tt/2)}</td></>}<td style={c}>{fmt(tt)}</td></tr>}</tbody></table></>})()}
         <div style={{marginTop:8,padding:'7px 10px',background:'#f5f5f5',borderRadius:4,fontSize:10,fontStyle:'italic',lineHeight:1.6}}><strong>Amount in Words:</strong><br/>{n2w(bill.total)}</div>
       </td>
       <td style={{width:'45%',verticalAlign:'top'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><tbody>
           <tr><td style={{padding:'3px 7px',color:'#555'}}>Subtotal</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.subtotal)}</td></tr>
-          {!bill.isRelative&&(bill.gst||0)>0&&<><tr><td style={{padding:'3px 7px',color:'#555'}}>CGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr><tr><td style={{padding:'3px 7px',color:'#555'}}>SGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr></>}
+          {!bill.isRelative&&igst&&(bill.gst||0)>0&&<tr><td style={{padding:'3px 7px',color:'#555'}}>IGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.gst||0)}</td></tr>}
+          {!bill.isRelative&&!igst&&(bill.gst||0)>0&&<><tr><td style={{padding:'3px 7px',color:'#555'}}>CGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr><tr><td style={{padding:'3px 7px',color:'#555'}}>SGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr></>}
           {bill.isRelative&&(bill.markup||0)>0&&<tr><td style={{padding:'3px 7px',color:'#555'}}>Other Charges</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.markup)}</td></tr>}
           {hasDiscount&&<tr style={{color:GR}}><td style={{padding:'3px 7px'}}>Discount</td><td style={{padding:'3px 7px',textAlign:'right'}}>- {fmt(bill.discount)}</td></tr>}
           <tr style={{background:'#1B3A6B',color:'#fff'}}><td style={{padding:'6px 7px',fontWeight:700}}>Grand Total</td><td style={{padding:'6px 7px',textAlign:'right',fontWeight:800,fontFamily:'monospace'}}>{fmt(bill.total)}</td></tr>

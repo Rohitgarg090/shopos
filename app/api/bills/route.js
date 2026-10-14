@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firmAccess';
 import { cleanExtras } from '@/lib/invoiceExtras';
+import { stateCodeFromGstin, stateCodeFromName, GST_STATES } from '@/lib/gstStates';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
@@ -25,6 +26,7 @@ const shape = b => ({
   ewbDate: b.ewb_date||null, ewbCancelledNo: b.ewb_cancelled_no||'', ewbCancelledAt: b.ewb_cancelled_at||null, ewbCancelReason: b.ewb_cancel_reason||'',
   status: b.status||'active', cancelledAt: b.cancelled_at||null, cancelReason: b.cancel_reason||'',
   shipTo: b.ship_to||null, buyerOrderNo: b.buyer_order_no||'', buyerOrderDate: b.buyer_order_date||'', destination: b.destination||'',
+  placeOfSupply: b.place_of_supply||'', gstType: b.gst_type==='igst'?'igst':'cgst_sgst',
 });
 
 export async function GET(req) {
@@ -33,8 +35,11 @@ export async function GET(req) {
   if (!c.firmId) return NextResponse.json([]);
   const { data: bills, error } = await c.sb.from('bills').select('*, bill_items(*)').eq('firm_id', c.firmId).order('created_at', { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Live e-Invoice (IRN + signed QR) — must be printed on the invoice
+  const { data: einv } = await c.sb.from('e_invoices').select('bill_id, irn, ack_no, generated_at, qr_code_url').eq('firm_id', c.firmId).eq('status', 'generated');
+  const irnOf = new Map((einv || []).map(e => [e.bill_id, { irn: e.irn, ackNo: e.ack_no || '', ackDate: e.generated_at, qr: e.qr_code_url || '' }]));
   return NextResponse.json(bills.map(b => ({
-    ...shape(b),
+    ...shape(b), eInvoice: irnOf.get(b.id) || null,
     items: (b.bill_items||[]).map(i => ({
       name: i.name, sku: i.product_sku, cat: i.cat, size: i.size,
       color: i.color||'', articleNo: i.article_no||'', hsn: i.hsn||'',
@@ -44,12 +49,13 @@ export async function GET(req) {
 }
 
 // Firm's invoice prefix from Settings (letters, digits, / and - only; default INV)
-async function invoicePrefix(firmId) {
-  const { data } = await adminDb().from('firm_settings').select('invoice_prefix').eq('firm_id', firmId)
+async function firmBillingInfo(firmId) {
+  const { data } = await adminDb().from('firm_settings').select('invoice_prefix, gstin, state').eq('firm_id', firmId)
     .order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
   const p = String(data?.invoice_prefix || 'INV').toUpperCase().replace(/[^A-Z0-9/]/g, '').slice(0, 12);
-  return p || 'INV';
+  return { prefix: p || 'INV', stateCode: stateCodeFromGstin(data?.gstin) || stateCodeFromName(data?.state) || null };
 }
+const stateNameOf = code => Object.keys(GST_STATES).find(k => GST_STATES[k] === code) || '';
 const missingFn = e => e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function/i.test(e.message || ''));
 
 export async function POST(req) {
@@ -60,6 +66,12 @@ export async function POST(req) {
   if (!Array.isArray(b.items) || b.items.length === 0) return NextResponse.json({ error: 'The bill has no items' }, { status: 400 });
   const extras = cleanExtras(b);
   if (extras.error) return NextResponse.json({ error: extras.error }, { status: 400 });
+  // Place of supply (state). Default = seller's state; another state means IGST instead of CGST + SGST.
+  const fb = await firmBillingInfo(c.firmId);
+  const posCode = b.placeOfSupply ? stateCodeFromName(b.placeOfSupply) : fb.stateCode;
+  if (b.placeOfSupply && !posCode) return NextResponse.json({ error: 'Choose a valid place of supply (state)' }, { status: 400 });
+  const placeOfSupply = posCode ? stateNameOf(posCode) : '';
+  const gstType = !b.isRelative && fb.stateCode && posCode && posCode !== fb.stateCode ? 'igst' : 'cgst_sgst';
 
   const billRow = {
     customer_id: b.customerId || null, customer_name: b.customerName, customer_phone: b.customerPhone || '',
@@ -68,6 +80,7 @@ export async function POST(req) {
     markup: b.markup || 0, total: b.total, transport_name: b.transportName || '', lr_number: b.lrNumber || '',
     bill_date: /^\d{4}-\d{2}-\d{2}$/.test(b.billDate || '') ? b.billDate : '',
     ...extras.value,
+    place_of_supply: placeOfSupply, gst_type: gstType,
   };
   const itemRows = b.items.map(i => ({
     sku: i.sku || '', name: i.name, cat: i.cat, size: i.size, color: i.color || '', article_no: i.articleNo || '',
@@ -76,11 +89,11 @@ export async function POST(req) {
 
   // One database transaction: next invoice number, bill, items and stock — all or nothing
   const { data, error } = await c.sb.rpc('create_bill', {
-    p_firm_id: c.firmId, p_prefix: await invoicePrefix(c.firmId), p_bill: billRow, p_items: itemRows,
+    p_firm_id: c.firmId, p_prefix: fb.prefix, p_bill: billRow, p_items: itemRows,
   });
   if (!error) {
     const row = Array.isArray(data) ? data[0] : data;
-    return NextResponse.json({ id: row.id, invoiceNo: row.invoice_no }, { status: 201 });
+    return NextResponse.json({ id: row.id, invoiceNo: row.invoice_no, placeOfSupply, gstType }, { status: 201 });
   }
   if (!missingFn(error)) {
     const status = error.code === 'P0001' ? 409 : error.code === '42501' ? 403 : 500;
@@ -100,7 +113,7 @@ export async function POST(req) {
     return NextResponse.json({ error: iErr.message }, { status: 500 });
   }
   for (const i of b.items) if (i.sku) await c.sb.rpc('decrement_stock', { p_sku: i.sku, p_qty: i.qty });
-  return NextResponse.json({ id: bill.id, invoiceNo: bill.invoice_no }, { status: 201 });
+  return NextResponse.json({ id: bill.id, invoiceNo: bill.invoice_no, placeOfSupply, gstType }, { status: 201 });
 }
 
 export async function PATCH(req) {

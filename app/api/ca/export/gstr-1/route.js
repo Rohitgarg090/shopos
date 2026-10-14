@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { GST_STATES, stateCodeFromName, stateCodeFromGstin } from '@/lib/gstStates';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -15,6 +16,10 @@ async function ctx(req) {
   const { data: { user } } = await sb.auth.getUser();
   return user ? { user, sb } : null;
 }
+
+const stateLabel = code => { const n = Object.keys(GST_STATES).find(k => GST_STATES[k] === code); return n ? String(code).padStart(2, '0') + '-' + n : ''; };
+// Place of supply saved on the bill; older bills fall back to the buyer's GSTIN state, then the seller's state
+const posLabel = (b, firmStateCode) => stateLabel(stateCodeFromName(b.place_of_supply) || (b.gst_type === 'igst' ? stateCodeFromGstin(b.customer_gst) : firmStateCode) || stateCodeFromGstin(b.customer_gst));
 
 // Convert data to CSV format
 function convertToCSV(data) {
@@ -69,11 +74,16 @@ export async function GET(req) {
 
     if (!hasAccess) return NextResponse.json({ error: 'No access to this firm' }, { status: 403 });
 
+    const { data: fs } = await supabase.from('firm_settings').select('gstin, state').eq('firm_id', firmId)
+      .order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    const firmStateCode = stateCodeFromGstin(fs?.gstin) || stateCodeFromName(fs?.state);
+
     // Get bills (sales) for this firm
     const { data: bills, error } = await supabase
       .from('bills')
-      .select('id, invoice_no, created_at, customer_name, customer_gst, subtotal, gst_total, gst_type, total')
+      .select('id, invoice_no, created_at, customer_name, customer_gst, subtotal, gst_total, gst_type, total, place_of_supply, status')
       .eq('firm_id', firmId)
+      .neq('status', 'cancelled')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -92,7 +102,7 @@ export async function GET(req) {
     if (billIds.length > 0) {
       const { data: items, error: itemsError } = await supabase
         .from('bill_items')
-        .select('bill_id, description, hsn_code, quantity, rate, total')
+        .select('bill_id, name, hsn, hsn_code, qty, rate, total')
         .in('bill_id', billIds);
 
       if (!itemsError) billItems = items || [];
@@ -101,7 +111,7 @@ export async function GET(req) {
     // Format for GSTR-1 (Sales Register)
     const gstr1Data = bills.map(bill => {
       const items = billItems.filter(item => item.bill_id === bill.id);
-      const itemDesc = items.map(i => `${i.description || ''} (Qty: ${i.quantity})`).join('; ') || 'N/A';
+      const itemDesc = items.map(i => `${i.name || ''} (Qty: ${i.qty})`).join('; ') || 'N/A';
 
       const subtotal = bill.subtotal || 0;
       const gstTotal = bill.gst_total || 0;
@@ -130,6 +140,7 @@ export async function GET(req) {
         'Invoice Date': bill.created_at ? new Date(bill.created_at).toLocaleDateString('en-IN') : '',
         'Customer Name': bill.customer_name || '',
         'Customer GSTIN': bill.customer_gst || 'URP',
+        'Place of Supply': posLabel(bill, firmStateCode),
         'Subtotal': subtotal.toFixed(2),
         'Invoice Amount': (bill.total || 0).toFixed(2),
         'Taxable Value': subtotal.toFixed(2),
@@ -141,7 +152,7 @@ export async function GET(req) {
         'IGST Amount': igstAmount.toFixed(2),
         'Total Tax': gstTotal.toFixed(2),
         'Item Description': itemDesc,
-        'HSN Code': items.length > 0 ? items[0].hsn_code || '' : '',
+        'HSN Code': [...new Set(items.map(i => i.hsn || i.hsn_code).filter(Boolean))].join(' '),
       };
     });
 

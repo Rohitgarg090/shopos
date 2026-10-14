@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import EInvoiceButton from './EInvoiceButton';
+import EInvoiceButton, { useQrImage } from './EInvoiceButton';
 
 export default function EInvoiceManager({ billId, firmId, billNo, getToken }) {
   const [eInvoice, setEInvoice] = useState(null);
@@ -10,6 +10,7 @@ export default function EInvoiceManager({ billId, firmId, billNo, getToken }) {
   const [showDetails, setShowDetails] = useState(false);
   const [details, setDetails] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const qrSrc = useQrImage(eInvoice?.qr_code_url);
 
 
   const fetchEInvoice = async () => {
@@ -168,7 +169,7 @@ export default function EInvoiceManager({ billId, firmId, billNo, getToken }) {
             <button
               onClick={() => {
                 const link = document.createElement('a');
-                link.href = eInvoice.qr_code_url;
+                link.href = qrSrc;
                 link.download = `qr-${billNo}.png`;
                 link.click();
               }}
@@ -211,7 +212,7 @@ export default function EInvoiceManager({ billId, firmId, billNo, getToken }) {
               <div className="text-center">
                 <p className="text-sm font-semibold text-gray-900 mb-3">QR Code</p>
                 <img
-                  src={details.eInvoice.qr_code_url}
+                  src={qrSrc}
                   alt="e-Invoice QR Code"
                   className="w-40 h-40 mx-auto border-2 border-gray-300 rounded-lg p-2"
                 />

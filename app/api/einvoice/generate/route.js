@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { blockIfFree } from '@/lib/plan';
 import { sandboxConfigured, firmGst, gstCall } from '@/lib/sandbox';
-import { stateCodeFromGstin, stateCodeFromName } from '@/lib/gstStates';
+import { buildEInvoice } from '@/lib/einvoice';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -19,183 +19,6 @@ async function ctx(req) {
   return user ? { user, sb, firmId: req.headers.get('x-firm-id') } : null;
 }
 
-function validateRequiredFields(firm, bill, items, customer) {
-  const errors = [];
-
-  // Firm validation
-  if (!firm?.gstin) errors.push('Firm GSTIN is required');
-  if (!firm?.name) errors.push('Firm name is required');
-  if (!firm?.address) errors.push('Firm address is required');
-  if (!firm?.state) errors.push('Firm state is required');
-  if (!firm?.mobile) errors.push('Firm mobile number is required');
-  if (!firm?.email) errors.push('Firm email is required');
-
-  // Bill validation
-  if (!bill?.invoice_no) errors.push('Invoice number is required');
-  if (!bill?.created_at) errors.push('Invoice date is required');
-  if (!bill?.customer_id && !bill?.customer_name) errors.push('Customer details are required');
-
-  // Customer validation
-  if (!customer?.gst && customer?.gst !== '') errors.push('Customer GSTIN is required');
-  if (!customer?.name) errors.push('Customer name is required');
-  if (!customer?.addr) errors.push('Customer address is required');
-  if (!customer?.phone) errors.push('Customer mobile number is required');
-  if (!customer?.email) errors.push('Customer email is required');
-  if (!customer?.state) errors.push('Customer state is required');
-  if (!customer?.pincode) errors.push('Customer pincode is required');
-
-  // Items validation
-  if (!items || items.length === 0) errors.push('At least one item is required');
-  items?.forEach((item, idx) => {
-    if (!item.name) errors.push(`Item ${idx + 1}: Product description is required`);
-    if (item.hsn_code === undefined || item.hsn_code === '') errors.push(`Item ${idx + 1}: HSN code is required`);
-    if (!item.qty || item.qty <= 0) errors.push(`Item ${idx + 1}: Quantity must be greater than 0`);
-    if (!item.rate || item.rate <= 0) errors.push(`Item ${idx + 1}: Rate must be greater than 0`);
-    if (item.gst_rate === undefined) errors.push(`Item ${idx + 1}: GST rate is required`);
-  });
-
-  return errors;
-}
-
-function formatDate(dateString) {
-  const date = new Date(dateString);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-}
-
-function buildSandboxEInvoiceJSON({ firm, bill, items, customer }) {
-  const firmStateCode = String(stateCodeFromGstin(firm.gstin) || stateCodeFromName(firm.state) || +firm.state_code || 23).padStart(2, '0');
-  const customerStateCode = String(stateCodeFromGstin(customer?.gst) || stateCodeFromName(customer?.state) || +firmStateCode).padStart(2, '0');
-
-  const itemList = (items || []).map((item, idx) => {
-    const qty = parseFloat(item.qty) || 1;
-    const rate = parseFloat(item.rate) || 0;
-    const gstRate = parseFloat(item.gst_rate) || 18;
-    const totalAmt = qty * rate;
-    const discount = parseFloat(item.discount) || 0;
-    const assAmt = totalAmt - discount;
-
-    let cgstAmt = 0, sgstAmt = 0, igstAmt = 0;
-
-    if (firmStateCode === customerStateCode) {
-      // Same state: CGST + SGST
-      cgstAmt = (assAmt * gstRate) / (2 * 100);
-      sgstAmt = (assAmt * gstRate) / (2 * 100);
-    } else {
-      // Different state: IGST
-      igstAmt = (assAmt * gstRate) / 100;
-    }
-
-    return {
-      SlNo: String(idx + 1),
-      PrdDesc: item.name || 'Product',
-      IsServc: item.is_service ? 'Y' : 'N',
-      HsnCd: item.hsn_code || '999999',
-      Qty: qty,
-      Unit: item.unit || 'PCS',
-      UnitPrice: rate,
-      TotAmt: Math.round(totalAmt * 100) / 100,
-      Discount: discount,
-      PreTaxVal: discount,
-      AssAmt: Math.round(assAmt * 100) / 100,
-      GstRt: gstRate,
-      IgstAmt: Math.round(igstAmt * 100) / 100,
-      CgstAmt: Math.round(cgstAmt * 100) / 100,
-      SgstAmt: Math.round(sgstAmt * 100) / 100,
-      TotItemVal: Math.round((assAmt + cgstAmt + sgstAmt + igstAmt) * 100) / 100,
-    };
-  });
-
-  const totals = items?.reduce((acc, item) => {
-    const qty = parseFloat(item.qty) || 1;
-    const rate = parseFloat(item.rate) || 0;
-    const gstRate = parseFloat(item.gst_rate) || 18;
-    const totalAmt = qty * rate;
-    const discount = parseFloat(item.discount) || 0;
-    const assAmt = totalAmt - discount;
-
-    let cgstVal = 0, sgstVal = 0, igstVal = 0;
-    if (firmStateCode === customerStateCode) {
-      cgstVal = (assAmt * gstRate) / (2 * 100);
-      sgstVal = (assAmt * gstRate) / (2 * 100);
-    } else {
-      igstVal = (assAmt * gstRate) / 100;
-    }
-
-    return {
-      assVal: acc.assVal + assAmt,
-      cgstVal: acc.cgstVal + cgstVal,
-      sgstVal: acc.sgstVal + sgstVal,
-      igstVal: acc.igstVal + igstVal,
-      discount: acc.discount + discount,
-      totInvVal: acc.totInvVal + assAmt + cgstVal + sgstVal + igstVal,
-    };
-  }, { assVal: 0, cgstVal: 0, sgstVal: 0, igstVal: 0, discount: 0, totInvVal: 0 });
-
-  return {
-    Version: '1.1',
-    TranDtls: {
-      TaxSch: 'GST',
-      SupTyp: customer.gst ? 'B2B' : 'B2C',
-      RegRev: 'Y',
-      IgstOnIntra: 'N',
-    },
-    DocDtls: {
-      Typ: 'INV',
-      No: bill.invoice_no,
-      Dt: formatDate(bill.created_at),
-    },
-    SellerDtls: {
-      Gstin: firm.gstin,
-      LglNm: firm.name,
-      TrdNm: firm.name,
-      Addr1: firm.address.substring(0, 100),
-      Addr2: firm.address.substring(100, 200) || '',
-      Loc: firm.state || 'Madhya Pradesh',
-      Pin: parseInt(firm.pincode) || 451001,
-      Stcd: firmStateCode,
-      Ph: firm.mobile.replace(/\D/g, ''),
-      Em: firm.email,
-    },
-    BuyerDtls: {
-      Gstin: customer.gst || '',
-      LglNm: customer.name,
-      TrdNm: customer.name,
-      Pos: customer.gst ? customerStateCode : '96',
-      Addr1: (customer.addr || 'N/A').substring(0, 100),
-      Addr2: (customer.addr || '').substring(100, 200) || '',
-      Loc: customer.state || 'Karnataka',
-      Pin: parseInt(customer.pincode) || 560001,
-      Stcd: customerStateCode,
-      Ph: (customer.phone || '').replace(/\D/g, '') || '9000000000',
-      Em: customer.email || 'customer@example.com',
-    },
-    ...(bill.ship_to ? { ShipDtls: {
-      ...(bill.ship_to.gstin ? { Gstin: bill.ship_to.gstin } : {}),
-      LglNm: bill.ship_to.name, TrdNm: bill.ship_to.name,
-      Addr1: String(bill.ship_to.addr || 'N/A').substring(0, 100),
-      Loc: bill.ship_to.city || bill.ship_to.state || '',
-      Pin: parseInt(bill.ship_to.pincode) || parseInt(customer.pincode) || 0,
-      Stcd: String(stateCodeFromGstin(bill.ship_to.gstin) || stateCodeFromName(bill.ship_to.state) || customerStateCode).padStart(2, '0'),
-    } } : {}),
-    ItemList: itemList,
-    ValDtls: {
-      AssVal: Math.round(totals.assVal * 100) / 100,
-      CgstVal: Math.round(totals.cgstVal * 100) / 100,
-      SgstVal: Math.round(totals.sgstVal * 100) / 100,
-      IgstVal: Math.round(totals.igstVal * 100) / 100,
-      CesVal: 0,
-      Discount: totals.discount,
-      OthChrg: 0,
-      RndOffAmt: 0,
-      TotInvVal: Math.round(totals.totInvVal * 100) / 100,
-      TotInvValFc: Math.round(totals.totInvVal * 100) / 100,
-    },
-  };
-}
-
 export async function POST(req) {
   try {
     const c = await ctx(req);
@@ -204,103 +27,60 @@ export async function POST(req) {
     if (blocked) return blocked;
     if (!c.firmId) return NextResponse.json({ error: 'No firm context' }, { status: 400 });
 
-    const { billId } = await req.json();
+    const { billId, fixes = {} } = await req.json();
+    if (!billId) return NextResponse.json({ error: 'billId required' }, { status: 400 });
 
-    if (!billId) {
-      return NextResponse.json({ error: 'billId required' }, { status: 400 });
-    }
+    const { data: bill } = await c.sb.from('bills').select('*').eq('id', billId).eq('firm_id', c.firmId).maybeSingle();
+    if (!bill) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
 
-    // Get bill details
-    const { data: bill } = await c.sb
-      .from('bills')
-      .select('*')
-      .eq('id', billId)
-      .eq('firm_id', c.firmId)
-      .single();
+    // One live IRN per invoice
+    const { data: existing } = await supabase.from('e_invoices').select('id, irn').eq('bill_id', billId).eq('status', 'generated').limit(1).maybeSingle();
+    if (existing) return NextResponse.json({ error: `An e-Invoice (IRN ${existing.irn}) already exists for this invoice` }, { status: 409 });
 
-    if (!bill) {
-      return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
-    }
-
-    // Get firm details using service role (for admin access, not restricted by RLS)
-    console.log('[einvoice-generate] Querying firm_settings for firm_id:', c.firmId);
-
-    const { data: firmList, error: firmError } = await supabase
-      .from('firm_settings')
-      .select('*')
-      .eq('firm_id', c.firmId)
-      .order('updated_at', { ascending: false, nullsFirst: false })
-      .limit(1);
-
-    console.log('[einvoice-generate] Query result:', {
-      count: firmList?.length,
-      error: firmError?.message,
-      firmId: c.user.id
-    });
-
-    if (firmError) {
-      console.error('[einvoice-generate] DB error:', firmError);
-      return NextResponse.json({ error: 'Database error: ' + firmError.message }, { status: 500 });
-    }
-
+    const { data: firmList, error: firmError } = await supabase.from('firm_settings').select('*').eq('firm_id', c.firmId)
+      .order('updated_at', { ascending: false, nullsFirst: false }).limit(1);
+    if (firmError) return NextResponse.json({ error: 'Could not load firm settings' }, { status: 500 });
     const firm = firmList?.[0];
+    if (!firm) return NextResponse.json({ error: 'Firm settings not found — fill Settings → Account & Firm first' }, { status: 404 });
 
-    if (!firm) {
-      console.error('[einvoice-generate] No firm found for user:', c.user.id);
-      return NextResponse.json({
-        error: 'Firm settings not found in database',
-        debug: { userId: c.user.id, found: firmList?.length }
-      }, { status: 404 });
-    }
-
-    console.log('[einvoice-generate] Firm found:', { name: firm.name, gstin: firm.gstin });
-
-    if (!firm.gstin) {
-      return NextResponse.json({
-        error: 'Firm GSTIN is empty',
-        debug: { firmName: firm.name }
-      }, { status: 400 });
-    }
-
-    // Get bill items
-    const { data: items } = await c.sb
-      .from('bill_items')
-      .select('*')
-      .eq('bill_id', billId);
-
-    // Get customer details
     let customer = null;
     if (bill.customer_id) {
-      const { data: cust } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', bill.customer_id)
-        .single();
+      const { data: cust } = await supabase.from('customers').select('*').eq('id', bill.customer_id).eq('firm_id', c.firmId).maybeSingle();
       customer = cust;
     }
 
-    // Validate all required fields
-    const validationErrors = validateRequiredFields(firm, bill, items, customer);
-    if (validationErrors.length > 0) {
-      console.log('[einvoice-generate] Validation errors:', validationErrors);
-      console.log('[einvoice-generate] Data being validated:', {
-        firm: { name: firm?.name, gstin: firm?.gstin },
-        bill: { invoice_no: bill?.invoice_no, customer_id: bill?.customer_id },
-        customer: { name: customer?.name, phone: customer?.phone, addr: customer?.addr, state: customer?.state, pincode: customer?.pincode },
-        items: items?.length
-      });
-      return NextResponse.json({
-        error: 'Validation failed',
-        details: validationErrors,
-      }, { status: 400 });
+    // Details typed in by the user on the "missing information" form are saved first, then used
+    const custUpd = {};
+    if (typeof fixes['customer.gst'] === 'string') custUpd.gst = fixes['customer.gst'].toUpperCase().replace(/\s/g, '').slice(0, 15);
+    if (typeof fixes['customer.addr'] === 'string') custUpd.addr = fixes['customer.addr'].trim().slice(0, 200);
+    if (typeof fixes['customer.pincode'] === 'string') custUpd.pincode = fixes['customer.pincode'].replace(/\D/g, '').slice(0, 6);
+    if (Object.keys(custUpd).length) {
+      if (customer) {
+        const { data: u } = await supabase.from('customers').update(custUpd).eq('id', customer.id).eq('firm_id', c.firmId).select().maybeSingle();
+        if (u) customer = u;
+      } else {
+        customer = { name: bill.customer_name, gst: custUpd.gst, addr: custUpd.addr, pincode: custUpd.pincode };
+      }
+      const billUpd = {};
+      if (custUpd.gst) billUpd.customer_gst = custUpd.gst;
+      if (custUpd.addr) billUpd.customer_addr = custUpd.addr;
+      if (Object.keys(billUpd).length) { await supabase.from('bills').update(billUpd).eq('id', billId).eq('firm_id', c.firmId); Object.assign(bill, billUpd); }
+    }
+    if (typeof fixes['ship.pincode'] === 'string' && bill.ship_to) {
+      const ship_to = { ...bill.ship_to, pincode: fixes['ship.pincode'].replace(/\D/g, '').slice(0, 6) };
+      await supabase.from('bills').update({ ship_to }).eq('id', billId).eq('firm_id', c.firmId);
+      bill.ship_to = ship_to;
+    }
+    const { data: items } = await supabase.from('bill_items').select('*').eq('bill_id', billId).order('id');
+    const hsnFix = fixes['item.hsn'] && typeof fixes['item.hsn'] === 'object' ? fixes['item.hsn'] : {};
+    for (const it of items || []) {
+      const h = String(hsnFix[it.id] ?? '').replace(/\D/g, '').slice(0, 8);
+      if (h.length >= 4) { await supabase.from('bill_items').update({ hsn: h }).eq('id', it.id).eq('bill_id', billId); it.hsn = h; }
     }
 
-    // Build Sandbox API format
-    const eInvoiceJSON = buildSandboxEInvoiceJSON({ firm, bill, items, customer });
-
-    // Get authentication tokens
-    if (!firm.gstin) {
-      return NextResponse.json({ error: 'Firm GSTIN is required for e-Invoice generation' }, { status: 400 });
+    const { payload: eInvoiceJSON, problems } = buildEInvoice({ firm, bill, items, customer });
+    if (problems.length) {
+      return NextResponse.json({ error: 'Some details are missing for the e-Invoice', details: problems.map(p => p.msg), problems }, { status: 422 });
     }
 
     if (!sandboxConfigured()) return NextResponse.json({ error: 'E-Invoice service is not configured on the server' }, { status: 500 });
