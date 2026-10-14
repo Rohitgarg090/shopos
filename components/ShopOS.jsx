@@ -835,9 +835,11 @@ function useLabelOpts(firm){
   const ls=(k,d)=>{try{return localStorage.getItem(k)||d}catch{return d}};
   const[size,setSize]=useState(()=>ls('shopos_label_size','50x25'));const[style,setStyle]=useState(()=>ls('shopos_label_style','barcode'));
   const[price,setPrice]=useState(true);const[name,setName]=useState(firm?.labelName||firm?.name||'');
+  const[pc,setPc]=useState(()=>{try{return JSON.parse(localStorage.getItem('shopos_label_pricecode'))||{on:false,front:2,back:2}}catch{return{on:false,front:2,back:2}}});
+  useEffect(()=>{try{localStorage.setItem('shopos_label_pricecode',JSON.stringify(pc))}catch{}},[pc]);
   useEffect(()=>{setName(firm?.labelName||firm?.name||'')},[firm?.id,firm?.labelName,firm?.name]);
   useEffect(()=>{try{localStorage.setItem('shopos_label_size',size);localStorage.setItem('shopos_label_style',style)}catch{}},[size,style]);
-  return{size,setSize,style,setStyle,price,setPrice,name,setName};
+  return{size,setSize,style,setStyle,price,setPrice,name,setName,pc,setPc};
 }
 function LabelOptions({o,mob,S}){
   return<>
@@ -846,7 +848,15 @@ function LabelOptions({o,mob,S}){
       <Fld label='Code type'><select style={S.inp} value={o.style} onChange={e=>o.setStyle(e.target.value)}><option value='barcode'>Barcode (USB / laser scanner)</option><option value='qr'>QR code (phone camera scan)</option></select></Fld>
       <Fld label='Name on label' span2={!mob}><input style={S.inp} value={o.name} maxLength={40} onChange={e=>o.setName(e.target.value)} placeholder='Shop name printed on every label'/></Fld>
     </div>
-    <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:12,cursor:'pointer'}}><input type='checkbox' checked={o.price} onChange={e=>o.setPrice(e.target.checked)}/>Show price on label</label>
+    <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:o.price?6:12,cursor:'pointer'}}><input type='checkbox' checked={o.price} onChange={e=>o.setPrice(e.target.checked)}/>Show price on label</label>
+    {o.price&&<div style={{padding:'8px 10px',background:BG,border:'0.5px solid '+BORD,borderRadius:8,marginBottom:12}}>
+      <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,cursor:'pointer'}}><input type='checkbox' checked={o.pc.on} onChange={e=>o.setPc(p=>({...p,on:e.target.checked}))}/>Hide price in a code (random digits before and after)</label>
+      {o.pc.on&&<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:8,fontSize:12}}>
+        <span>Digits before</span><select style={{...S.inp,width:58,margin:0,padding:'4px 6px'}} value={o.pc.front} onChange={e=>o.setPc(p=>({...p,front:+e.target.value}))}>{[1,2,3].map(n=><option key={n} value={n}>{n}</option>)}</select>
+        <span>after</span><select style={{...S.inp,width:58,margin:0,padding:'4px 6px'}} value={o.pc.back} onChange={e=>o.setPc(p=>({...p,back:+e.target.value}))}>{[1,2,3].map(n=><option key={n} value={n}>{n}</option>)}</select>
+        <span style={{color:MUT}}>e.g. ₹630 → <strong style={{color:TXT,...S.mono}}>{'42'.slice(0,o.pc.front).padEnd(o.pc.front,'7')}630{'43'.slice(0,o.pc.back).padEnd(o.pc.back,'5')}</strong></span>
+      </div>}
+    </div>}
   </>;
 }
 // Saves the label name to firm settings when it was changed, then downloads the PDF
@@ -854,7 +864,7 @@ async function downloadLabelPdf(labels,o,firm,onSaveLabelName){
   const n=o.name.trim();
   if(onSaveLabelName&&n!==(firm?.labelName||firm?.name||'').trim()){try{await onSaveLabelName(n);}catch(e){console.error('[labels] save name',e)}}
   const{generateLabelsPDF}=await import('@/lib/labels');
-  const doc=await generateLabelsPDF({labels,firmName:n,sizeId:o.size,style:o.style,showPrice:o.price});
+  const doc=await generateLabelsPDF({labels,firmName:n,sizeId:o.size,style:o.style,showPrice:o.price,code:o.price&&o.pc.on?{front:o.pc.front,back:o.pc.back}:null});
   doc.save(`labels_${o.size}mm_${labels.length}.pdf`);
 }
 
