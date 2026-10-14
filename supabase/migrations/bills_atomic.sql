@@ -5,6 +5,12 @@
 --    create its own INV-001. Numbers must be unique per firm instead (next statement).
 alter table public.bills drop constraint if exists bills_invoice_no_key;
 
+-- 0b. Optional invoice details: delivery (ship-to) address, buyer's PO and destination
+alter table public.bills add column if not exists ship_to jsonb;            -- null = same as billing address
+alter table public.bills add column if not exists buyer_order_no text not null default '';
+alter table public.bills add column if not exists buyer_order_date date;
+alter table public.bills add column if not exists destination text not null default '';
+
 -- 1. Final safety net: an invoice number can exist only once per firm
 create unique index if not exists bills_firm_invoice_unique
   on public.bills (firm_id, invoice_no)
@@ -69,13 +75,17 @@ begin
 
   insert into bills (invoice_no, customer_id, customer_name, customer_phone, customer_gst, customer_email,
                      customer_addr, is_relative, subtotal, discount, gst_total, markup, total,
-                     transport_name, lr_number, firm_id, created_at)
+                     transport_name, lr_number, firm_id, created_at,
+                     ship_to, buyer_order_no, buyer_order_date, destination)
   values (v_no, nullif(p_bill->>'customer_id', ''), p_bill->>'customer_name', coalesce(p_bill->>'customer_phone', ''),
           coalesce(p_bill->>'customer_gst', ''), coalesce(p_bill->>'customer_email', ''), coalesce(p_bill->>'customer_addr', ''),
           coalesce((p_bill->>'is_relative')::boolean, false), coalesce((p_bill->>'subtotal')::numeric, 0),
           coalesce((p_bill->>'discount')::numeric, 0), coalesce((p_bill->>'gst_total')::numeric, 0),
           coalesce((p_bill->>'markup')::numeric, 0), coalesce((p_bill->>'total')::numeric, 0),
-          coalesce(p_bill->>'transport_name', ''), coalesce(p_bill->>'lr_number', ''), p_firm_id, v_created)
+          coalesce(p_bill->>'transport_name', ''), coalesce(p_bill->>'lr_number', ''), p_firm_id, v_created,
+          case when jsonb_typeof(p_bill->'ship_to') = 'object' then p_bill->'ship_to' end,
+          coalesce(p_bill->>'buyer_order_no', ''), nullif(p_bill->>'buyer_order_date', '')::date,
+          coalesce(p_bill->>'destination', ''))
   returning bills.id into v_id;
 
   insert into bill_items (bill_id, product_sku, name, cat, size, color, article_no, hsn, qty, rate, gst_rate, gst_amt, total)

@@ -172,6 +172,14 @@ function buildSandboxEInvoiceJSON({ firm, bill, items, customer }) {
       Ph: (customer.phone || '').replace(/\D/g, '') || '9000000000',
       Em: customer.email || 'customer@example.com',
     },
+    ...(bill.ship_to ? { ShipDtls: {
+      ...(bill.ship_to.gstin ? { Gstin: bill.ship_to.gstin } : {}),
+      LglNm: bill.ship_to.name, TrdNm: bill.ship_to.name,
+      Addr1: String(bill.ship_to.addr || 'N/A').substring(0, 100),
+      Loc: bill.ship_to.city || bill.ship_to.state || '',
+      Pin: parseInt(bill.ship_to.pincode) || parseInt(customer.pincode) || 0,
+      Stcd: String(stateCodeFromGstin(bill.ship_to.gstin) || stateCodeFromName(bill.ship_to.state) || customerStateCode).padStart(2, '0'),
+    } } : {}),
     ItemList: itemList,
     ValDtls: {
       AssVal: Math.round(totals.assVal * 100) / 100,

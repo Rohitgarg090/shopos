@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firmAccess';
+import { cleanExtras } from '@/lib/invoiceExtras';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization')||'').replace('Bearer ','').trim();
@@ -23,6 +24,7 @@ const shape = b => ({
   lrNumber: b.lr_number||'', ewbNo: b.ewb_no||'', ewbValidUpto: b.ewb_valid_upto||'',
   ewbDate: b.ewb_date||null, ewbCancelledNo: b.ewb_cancelled_no||'', ewbCancelledAt: b.ewb_cancelled_at||null, ewbCancelReason: b.ewb_cancel_reason||'',
   status: b.status||'active', cancelledAt: b.cancelled_at||null, cancelReason: b.cancel_reason||'',
+  shipTo: b.ship_to||null, buyerOrderNo: b.buyer_order_no||'', buyerOrderDate: b.buyer_order_date||'', destination: b.destination||'',
 });
 
 export async function GET(req) {
@@ -56,6 +58,8 @@ export async function POST(req) {
   if (!c.firmId) return NextResponse.json({ error: 'No firm selected' }, { status: 400 });
   const b = await req.json();
   if (!Array.isArray(b.items) || b.items.length === 0) return NextResponse.json({ error: 'The bill has no items' }, { status: 400 });
+  const extras = cleanExtras(b);
+  if (extras.error) return NextResponse.json({ error: extras.error }, { status: 400 });
 
   const billRow = {
     customer_id: b.customerId || null, customer_name: b.customerName, customer_phone: b.customerPhone || '',
@@ -63,6 +67,7 @@ export async function POST(req) {
     is_relative: !!b.isRelative, subtotal: b.subtotal, discount: b.discount || 0, gst_total: b.gst,
     markup: b.markup || 0, total: b.total, transport_name: b.transportName || '', lr_number: b.lrNumber || '',
     bill_date: /^\d{4}-\d{2}-\d{2}$/.test(b.billDate || '') ? b.billDate : '',
+    ...extras.value,
   };
   const itemRows = b.items.map(i => ({
     sku: i.sku || '', name: i.name, cat: i.cat, size: i.size, color: i.color || '', article_no: i.articleNo || '',
@@ -85,6 +90,7 @@ export async function POST(req) {
   // Fallback until bills_atomic.sql is applied (not atomic)
   console.warn('[bills] create_bill() missing — run supabase/migrations/bills_atomic.sql');
   const { bill_date, ...plainRow } = billRow;
+  plainRow.buyer_order_date = plainRow.buyer_order_date || null;
   const { data: bill, error: bErr } = await c.sb.from('bills').insert([{ ...plainRow, invoice_no: b.invoiceNo, firm_id: c.firmId,
     ...(bill_date && bill_date < new Date().toISOString().slice(0, 10) ? { created_at: bill_date + 'T12:00:00+05:30' } : {}) }]).select().single();
   if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 });
@@ -156,6 +162,11 @@ export async function PATCH(req) {
 
   // Handle shipment details update (existing logic)
   const updates = {};
+  if (['shipTo', 'buyerOrderNo', 'buyerOrderDate', 'destination'].some(k => body[k] !== undefined)) {
+    const ex = cleanExtras({ shipTo: bill.ship_to, buyerOrderNo: bill.buyer_order_no, buyerOrderDate: bill.buyer_order_date, destination: bill.destination, ...body });
+    if (ex.error) return NextResponse.json({ error: ex.error }, { status: 400 });
+    Object.assign(updates, ex.value, { buyer_order_date: ex.value.buyer_order_date || null });
+  }
   if (biltyNo       !== undefined) updates.bilty_no        = biltyNo;
   if (transportName !== undefined) updates.transport_name  = transportName;
   if (lrNumber      !== undefined) updates.lr_number       = lrNumber;
@@ -163,8 +174,9 @@ export async function PATCH(req) {
   if (ewbValidUpto  !== undefined) updates.ewb_valid_upto  = ewbValidUpto;
   const { data, error } = await c.sb.from('bills').update(updates).eq('id', id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const sh = shape(data);
   return NextResponse.json({
-    biltyNo: data.bilty_no||'', transportName: data.transport_name||'',
-    lrNumber: data.lr_number||'', ewbNo: data.ewb_no||'', ewbValidUpto: data.ewb_valid_upto||'',
+    biltyNo: sh.biltyNo, transportName: sh.transportName, lrNumber: sh.lrNumber, ewbNo: sh.ewbNo, ewbValidUpto: sh.ewbValidUpto,
+    shipTo: sh.shipTo, buyerOrderNo: sh.buyerOrderNo, buyerOrderDate: sh.buyerOrderDate, destination: sh.destination,
   });
 }
