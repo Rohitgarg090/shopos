@@ -13,6 +13,7 @@ export default function RequestDemo() {
     city: '',
     company_name: '',
     message: '',
+    website: '',   // hidden trap field: people leave it empty, bots fill it
   });
 
   const handleChange = (e) => {
@@ -42,7 +43,7 @@ export default function RequestDemo() {
       }
 
       setSubmitted(true);
-      setFormData({ name: '', email: '', contact_number: '', city: '', company_name: '', message: '' });
+      setFormData({ name: '', email: '', contact_number: '', city: '', company_name: '', message: '', website: '' });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -66,6 +67,9 @@ export default function RequestDemo() {
               )}
 
               <form onSubmit={handleSubmit} style={styles.form}>
+                <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+                  <label>Website<input type="text" name="website" tabIndex={-1} autoComplete="off" value={formData.website} onChange={handleChange} /></label>
+                </div>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Full Name *</label>
                   <input

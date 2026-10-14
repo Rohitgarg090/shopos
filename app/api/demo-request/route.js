@@ -2,6 +2,10 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { clientIp, limitOr429 } from '@/lib/rateLimit';
+
+// Everything a visitor types is escaped before it goes into an email
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -62,7 +66,20 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const { name, email, contact_number, city, company_name, message } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    // Bots fill every field; people never see this one (see request-demo page)
+    if (String(body.website || '').trim()) return NextResponse.json({ success: true });
+    const limited = await limitOr429([
+      [`demo:ip:${clientIp(req)}`, 5, 3600],
+      [`demo:email:${String(body.email || '').toLowerCase().trim()}`, 2, 86400],
+    ], 'Too many requests. Please try again later or email info@shopos.co.in.');
+    if (limited) return limited;
+    const cut = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+    const name = cut(body.name, 80), email = cut(body.email, 120), contact_number = cut(body.contact_number, 20),
+      city = cut(body.city, 60), company_name = cut(body.company_name, 120), message = String(body.message ?? '').trim().slice(0, 1000);
+    if (/https?:\/\/|www\./i.test(name + ' ' + city + ' ' + company_name)) {
+      return NextResponse.json({ error: 'Please remove links from your name, city and company' }, { status: 400 });
+    }
 
     // Validate required fields
     if (!name || !email || !contact_number || !city) {
@@ -134,16 +151,16 @@ export async function POST(req) {
             </div>
 
             <div style="padding: 30px;">
-              <h2 style="color: #0a0a0f; margin: 0 0 10px 0;">Hello ${name},</h2>
+              <h2 style="color: #0a0a0f; margin: 0 0 10px 0;">Hello ${esc(name)},</h2>
             <p>Thank you for your interest in Shopos! We've received your demo request.</p>
 
             <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3>Your Details:</h3>
-              <p><strong>Name:</strong> ${name}</p>
-              <p><strong>Email:</strong> ${email}</p>
-              <p><strong>Contact Number:</strong> ${contact_number}</p>
-              <p><strong>City:</strong> ${city}</p>
-              ${company_name ? `<p><strong>Company:</strong> ${company_name}</p>` : ''}
+              <p><strong>Name:</strong> ${esc(name)}</p>
+              <p><strong>Email:</strong> ${esc(email)}</p>
+              <p><strong>Contact Number:</strong> ${esc(contact_number)}</p>
+              <p><strong>City:</strong> ${esc(city)}</p>
+              ${company_name ? `<p><strong>Company:</strong> ${esc(company_name)}</p>` : ''}
             </div>
 
             <p>Our team will reach out to you within 24 hours to schedule your personalized demo.</p>
@@ -181,12 +198,12 @@ export async function POST(req) {
 
             <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3>Customer Details:</h3>
-              <p><strong>Name:</strong> ${name}</p>
-              <p><strong>Email:</strong> ${email}</p>
-              <p><strong>Contact Number:</strong> ${contact_number}</p>
-              <p><strong>City:</strong> ${city}</p>
-              ${company_name ? `<p><strong>Company:</strong> ${company_name}</p>` : ''}
-              ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
+              <p><strong>Name:</strong> ${esc(name)}</p>
+              <p><strong>Email:</strong> ${esc(email)}</p>
+              <p><strong>Contact Number:</strong> ${esc(contact_number)}</p>
+              <p><strong>City:</strong> ${esc(city)}</p>
+              ${company_name ? `<p><strong>Company:</strong> ${esc(company_name)}</p>` : ''}
+              ${message ? `<p><strong>Message:</strong> ${esc(message)}</p>` : ''}
             </div>
 
             <p><strong>Status:</strong> Pending - Follow up required</p>

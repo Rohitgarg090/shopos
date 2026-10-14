@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, Check, Zap, BarChart3, Users, Lock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { loadRazorpay } from '@/lib/razorpay';
 
 export default function BillingDashboard() {
   const [org, setOrg] = useState(null);
@@ -141,8 +142,8 @@ export default function BillingDashboard() {
       }
 
       // Step 2: Open Razorpay checkout
-      if (!window.Razorpay) {
-        setError('Razorpay script not loaded');
+      if (!(await loadRazorpay())) {
+        setError('Payment window could not load — check your internet and retry');
         setLoading(false);
         return;
       }

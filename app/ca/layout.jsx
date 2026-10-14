@@ -1,4 +1,4 @@
-'use client';
+export const metadata = { title: 'CA Partner', robots: { index: false, follow: false } };
 
 export default function CALayout({ children }) {
   return (

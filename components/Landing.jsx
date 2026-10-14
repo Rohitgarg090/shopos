@@ -2,41 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 
-export default function ShoposLanding() {
-  const [activeSendChannel, setActiveSendChannel] = useState(0);
-  const containerRef = useRef(null);
-
-
-  useEffect(() => {
-    const root = containerRef.current;
-    if (!root) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-          }
-        });
-      },
-      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
-    );
-
-    const fadeEls = root.querySelectorAll('.fade-in');
-    fadeEls.forEach((el) => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div ref={containerRef} className="shopos-landing">
-      <style>{`
+// Raw CSS (inserted as-is so server and browser HTML match)
+const LANDING_CSS = `
 .shopos-landing {
   --ink: #0a0a0f;
   --ink-2: #1c1c28;
   --ink-3: #2e2e3a;
   --muted: #6b6b80;
-  --muted-2: #9898a8;
+  --muted-2: #6f6f82;
   --surface: #f5f4f1;
   --surface-2: #eeecea;
   --white: #ffffff;
@@ -62,7 +35,7 @@ export default function ShoposLanding() {
 .shopos-landing *, .shopos-landing *::before, .shopos-landing *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .shopos-landing { scroll-behavior: smooth; }
 .shopos-landing {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-dm), 'DM Sans', sans-serif;
   background: var(--white);
   color: var(--ink);
   font-size: 16px;
@@ -84,7 +57,7 @@ export default function ShoposLanding() {
   border-bottom: 1px solid var(--border);
 }
 .shopos-landing .logo {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-weight: 800;
   font-size: 22px;
   color: var(--ink);
@@ -119,7 +92,7 @@ export default function ShoposLanding() {
   border-radius: var(--radius);
   font-size: 14px;
   font-weight: 500;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-dm), 'DM Sans', sans-serif;
   cursor: pointer;
   text-decoration: none;
   transition: all 0.2s;
@@ -220,7 +193,7 @@ export default function ShoposLanding() {
   background: var(--emerald);
 }
 .shopos-landing .hero h1 {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: clamp(42px, 7vw, 82px);
   font-weight: 800;
   line-height: 1.05;
@@ -275,7 +248,7 @@ export default function ShoposLanding() {
   align-items: center;
 }
 .shopos-landing .hero-stat-num {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 28px;
   font-weight: 800;
   color: var(--ink);
@@ -336,7 +309,7 @@ export default function ShoposLanding() {
   border-right: 1px solid rgba(255,255,255,0.05);
 }
 .shopos-landing .dash-logo {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-weight: 800;
   font-size: 16px;
   color: #fff;
@@ -352,7 +325,7 @@ export default function ShoposLanding() {
   gap: 10px;
   padding: 8px 20px;
   font-size: 12px;
-  color: rgba(255,255,255,0.45);
+  color: rgba(255,255,255,0.7);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -379,7 +352,7 @@ export default function ShoposLanding() {
   margin-bottom: 16px;
 }
 .shopos-landing .dash-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: #fff;
@@ -387,7 +360,7 @@ export default function ShoposLanding() {
 .shopos-landing .dash-period {
   font-size: 11px;
   background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.7);
   padding: 4px 10px;
   border-radius: 6px;
 }
@@ -402,8 +375,8 @@ export default function ShoposLanding() {
   border-radius: 10px;
   padding: 12px;
 }
-.shopos-landing .dm-label { font-size: 10px; color: rgba(255,255,255,0.4); margin-bottom: 4px; }
-.shopos-landing .dm-value { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: #fff; line-height: 1; }
+.shopos-landing .dm-label { font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px; }
+.shopos-landing .dm-value { font-family: var(--font-syne), 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: #fff; line-height: 1; }
 .shopos-landing .dm-change { font-size: 10px; margin-top: 3px; }
 .shopos-landing .dm-up { color: #34d399; }
 .shopos-landing .dm-down { color: #f87171; }
@@ -415,7 +388,7 @@ export default function ShoposLanding() {
   position: relative;
   overflow: hidden;
 }
-.shopos-landing .chart-label { font-size: 10px; color: rgba(255,255,255,0.35); margin-bottom: 8px; }
+.shopos-landing .chart-label { font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 8px; }
 .shopos-landing .chart-bars {
   display: flex;
   align-items: flex-end;
@@ -443,9 +416,9 @@ export default function ShoposLanding() {
   justify-content: space-between;
   gap: 8px;
 }
-.shopos-landing .dir-num { font-size: 10px; color: rgba(255,255,255,0.4); }
+.shopos-landing .dir-num { font-size: 10px; color: rgba(255,255,255,0.7); }
 .shopos-landing .dir-name { font-size: 11px; color: rgba(255,255,255,0.8); font-weight: 500; }
-.shopos-landing .dir-amt { font-size: 11px; color: #34d399; font-family: 'Syne', sans-serif; font-weight: 600; }
+.shopos-landing .dir-amt { font-size: 11px; color: #34d399; font-family: var(--font-syne), 'Syne', sans-serif; font-weight: 600; }
 .shopos-landing .status-pill {
   font-size: 9px;
   padding: 2px 6px;
@@ -475,7 +448,7 @@ export default function ShoposLanding() {
   border-radius: 2px;
 }
 .shopos-landing h2.section-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: clamp(30px, 4vw, 48px);
   font-weight: 800;
   letter-spacing: -1.5px;
@@ -561,7 +534,7 @@ export default function ShoposLanding() {
   color: rgba(255,255,255,0.8);
 }
 .shopos-landing .feature-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.5px;
@@ -648,7 +621,7 @@ export default function ShoposLanding() {
 }
 .shopos-landing .ai-card-sub {
   font-size: 11px;
-  color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.7);
 }
 .shopos-landing .ai-scanning {
   background: rgba(255,255,255,0.04);
@@ -679,7 +652,7 @@ export default function ShoposLanding() {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 10px;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.7);
 }
 .shopos-landing .scan-field-value {
   font-size: 12px;
@@ -776,7 +749,7 @@ export default function ShoposLanding() {
   margin-top: 2px;
 }
 .shopos-landing .fli-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
@@ -825,7 +798,7 @@ export default function ShoposLanding() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-weight: 800;
   font-size: 18px;
   color: var(--accent);
@@ -841,7 +814,7 @@ export default function ShoposLanding() {
 }
 .shopos-landing .ws-icon { font-size: 22px; }
 .shopos-landing .ws-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
@@ -900,7 +873,7 @@ export default function ShoposLanding() {
 .shopos-landing .sc-blue { background: rgba(37,99,235,0.1); }
 .shopos-landing .sc-gray { background: rgba(107,107,128,0.1); }
 .shopos-landing .sc-name {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
@@ -1053,7 +1026,7 @@ export default function ShoposLanding() {
   margin-bottom: 24px;
 }
 .shopos-landing .inv-dash-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: var(--ink);
@@ -1229,7 +1202,7 @@ export default function ShoposLanding() {
   letter-spacing: 0.5px;
 }
 .shopos-landing .plan-name {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1237,7 +1210,7 @@ export default function ShoposLanding() {
   color: var(--muted);
   margin-bottom: 8px;
 }
-.shopos-landing .pricing-card.featured .plan-name { color: rgba(255,255,255,0.5); }
+.shopos-landing .pricing-card.featured .plan-name { color: rgba(255,255,255,0.7); }
 .shopos-landing .plan-firms {
   display: inline-flex;
   align-items: center;
@@ -1265,9 +1238,9 @@ export default function ShoposLanding() {
   font-weight: 600;
   color: var(--muted);
 }
-.shopos-landing .pricing-card.featured .price-currency { color: rgba(255,255,255,0.5); }
+.shopos-landing .pricing-card.featured .price-currency { color: rgba(255,255,255,0.7); }
 .shopos-landing .price-amount {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 52px;
   font-weight: 800;
   letter-spacing: -2px;
@@ -1279,14 +1252,14 @@ export default function ShoposLanding() {
   font-size: 14px;
   color: var(--muted);
 }
-.shopos-landing .pricing-card.featured .price-period { color: rgba(255,255,255,0.4); }
+.shopos-landing .pricing-card.featured .price-period { color: rgba(255,255,255,0.7); }
 .shopos-landing .plan-desc {
   font-size: 13px;
   color: var(--muted);
   margin-bottom: 28px;
   line-height: 1.6;
 }
-.shopos-landing .pricing-card.featured .plan-desc { color: rgba(255,255,255,0.5); }
+.shopos-landing .pricing-card.featured .plan-desc { color: rgba(255,255,255,0.7); }
 .shopos-landing .plan-divider {
   height: 1px;
   background: var(--border);
@@ -1402,7 +1375,7 @@ export default function ShoposLanding() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-weight: 800;
   font-size: 14px;
   color: white;
@@ -1428,7 +1401,7 @@ export default function ShoposLanding() {
 .shopos-landing .compare-table th {
   padding: 16px 20px;
   text-align: center;
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-weight: 700;
   font-size: 14px;
   color: var(--ink);
@@ -1497,7 +1470,7 @@ export default function ShoposLanding() {
   margin: 0 auto;
 }
 .shopos-landing .cta-section h2.section-title { color: var(--white); }
-.shopos-landing .cta-sub { color: rgba(255,255,255,0.5); font-size: 17px; margin-bottom: 40px; font-weight: 300; }
+.shopos-landing .cta-sub { color: rgba(255,255,255,0.7); font-size: 17px; margin-bottom: 40px; font-weight: 300; }
 .shopos-landing .cta-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .shopos-landing .btn-white {
   background: var(--white);
@@ -1524,7 +1497,7 @@ export default function ShoposLanding() {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: rgba(255,255,255,0.45);
+  color: rgba(255,255,255,0.7);
 }
 /* FOOTER */
 .shopos-landing footer {
@@ -1543,17 +1516,17 @@ export default function ShoposLanding() {
 }
 .shopos-landing .footer-desc {
   font-size: 13px;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.72);
   line-height: 1.7;
   max-width: 280px;
 }
 .shopos-landing .footer-col-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-syne), 'Syne', sans-serif;
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.72);
   margin-bottom: 16px;
 }
 .shopos-landing .footer-links {
@@ -1564,7 +1537,7 @@ export default function ShoposLanding() {
 }
 .shopos-landing .footer-links a {
   font-size: 13px;
-  color: rgba(255,255,255,0.6);
+  color: rgba(255,255,255,0.8);
   text-decoration: none;
   transition: color 0.2s;
 }
@@ -1578,8 +1551,10 @@ export default function ShoposLanding() {
 }
 .shopos-landing .footer-copy {
   font-size: 13px;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.66);
 }
+.shopos-landing .footer-mail { font-size: 13px; color: rgba(255,255,255,0.8); text-decoration: none; }
+.shopos-landing .footer-mail:hover { color: var(--white); }
 .shopos-landing .footer-socials {
   display: flex;
   gap: 12px;
@@ -1593,7 +1568,7 @@ export default function ShoposLanding() {
   justify-content: center;
   font-size: 14px;
   text-decoration: none;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.7);
   transition: all 0.2s;
 }
 .shopos-landing .footer-social:hover {
@@ -1605,12 +1580,13 @@ export default function ShoposLanding() {
 to{ opacity: 1; transform: translateY(0); }
 
 }
-.shopos-landing .fade-in {
+.shopos-landing.anim .fade-in {
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
-.shopos-landing .fade-in.visible {
+@media (prefers-reduced-motion: reduce) { .shopos-landing.anim .fade-in { opacity: 1; transform: none; transition: none; } }
+.shopos-landing.anim .fade-in.visible {
   opacity: 1;
   transform: translateY(0);
 }
@@ -1630,17 +1606,75 @@ to{ opacity: 1; transform: translateY(0); }
 .shopos-landing .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
 .shopos-landing section { padding: 60px 20px; }
 .shopos-landing .fb-1, .shopos-landing .fb-2 { display: none; }
-
+/* phones: nothing may be wider than the screen */
+.shopos-landing .nav-demo { display: none; }
+.shopos-landing .nav-cta { gap: 6px; }
+.shopos-landing .nav-cta .btn { padding: 8px 12px; font-size: 13px; }
+.shopos-landing .hero h1 { font-size: 36px; line-height: 1.12; }
+.shopos-landing .hero-sub { font-size: 16px; }
+.shopos-landing .hero-actions { margin-bottom: 40px; }
+.shopos-landing .hero-actions .btn { width: 100%; max-width: 340px; justify-content: center; }
+.shopos-landing .hero-stats { gap: 18px 28px; }
+.shopos-landing .hero-stat-divider { display: none; }
+.shopos-landing .dashboard-preview { margin-top: 48px; }
+.shopos-landing .dashboard-inner { grid-template-columns: 1fr; }
+.shopos-landing .dash-sidebar { display: none; }
+.shopos-landing .dash-metrics { grid-template-columns: 1fr 1fr; }
+.shopos-landing .dash-recent { grid-template-columns: 1fr; }
+.shopos-landing .scan-doc { grid-template-columns: 1fr; }
+.shopos-landing .feature-card, .shopos-landing .pricing-card { padding: 28px 22px; }
+.shopos-landing .inv-dashboard { overflow-x: auto; }
+.shopos-landing .compare-table { min-width: 560px; font-size: 13px; }
+.shopos-landing .compare-table th, .shopos-landing .compare-table td { padding: 10px 12px; }
+.shopos-landing .cta-section { padding: 72px 20px; }
+.shopos-landing .footer-bottom { flex-wrap: wrap; gap: 12px; }
+}
+@media (max-width: 480px) {
+.shopos-landing .hero h1 { font-size: 31px; }
+.shopos-landing .workflow-steps { grid-template-columns: 1fr; }
+.shopos-landing .erp-grid { grid-template-columns: repeat(2, 1fr); }
+.shopos-landing .footer-grid { grid-template-columns: 1fr; }
 }
 
 
-      `}</style>
+      `;
+
+export default function ShoposLanding() {
+  const [activeSendChannel, setActiveSendChannel] = useState(0);
+  const containerRef = useRef(null);
+
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    root.classList.add('anim');   // sections fade in only once JS runs; without JS everything stays visible
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    );
+
+    const fadeEls = root.querySelectorAll('.fade-in');
+    fadeEls.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} className="shopos-landing">
+      <style dangerouslySetInnerHTML={{ __html: LANDING_CSS }} />
 
 
 
       {/* NAV */}
       <nav>
-        <a href="#" className="logo">shop<span>os</span></a>
+        <a href="/" className="logo" aria-label="ShopOS home">shop<span>os</span></a>
         <ul className="nav-links">
           <li><a href="#features">Features</a></li>
           <li><a href="#ai">AI Engine</a></li>
@@ -1650,7 +1684,7 @@ to{ opacity: 1; transform: translateY(0); }
         </ul>
         <div className="nav-cta">
           <a href="/auth?mode=login" className="btn btn-ghost">Login</a>
-          <a href="/request-demo" className="btn btn-ghost">📅 Demo</a>
+          <a href="/request-demo" className="btn btn-ghost nav-demo">📅 Demo</a>
           <a href="/auth?mode=signup" className="btn btn-primary">Start Free Trial</a>
         </div>
       </nav>
@@ -2260,9 +2294,9 @@ to{ opacity: 1; transform: translateY(0); }
       {/* ERP FEATURES */}
       <section className="erp-section">
         <div style={{textAlign: 'center'}} className="fade-in">
-          <div className="section-label" style={{justifyContent: 'center', color: 'rgba(255,255,255,0.5)'}}>Complete ERP</div>
+          <div className="section-label" style={{justifyContent: 'center', color: 'rgba(255,255,255,0.75)'}}>Complete ERP</div>
           <h2 className="section-title" style={{color: '#fff'}}>Every feature you need.<br />Nothing you don't.</h2>
-          <p className="section-sub mx-auto" style={{color: 'rgba(255,255,255,0.45)'}}>Shopos covers the full spectrum of wholesale business operations — GST to payroll, CRM to e-commerce.</p>
+          <p className="section-sub mx-auto" style={{color: 'rgba(255,255,255,0.75)'}}>Shopos covers the full spectrum of wholesale business operations — GST to payroll, CRM to e-commerce.</p>
         </div>
         <div className="erp-grid fade-in">
           <div className="erp-item"><div className="erp-icon">📄</div><div className="erp-name">Sales Invoice</div></div>
@@ -2498,12 +2532,12 @@ to{ opacity: 1; transform: translateY(0); }
       {/* CTA */}
       <section className="cta-section">
         <div className="cta-content fade-in">
-          <div className="section-label" style={{justifyContent: 'center', color: 'rgba(255,255,255,0.4)'}}>Get Started Today</div>
+          <div className="section-label" style={{justifyContent: 'center', color: 'rgba(255,255,255,0.75)'}}>Get Started Today</div>
           <h2 className="section-title">Ready to modernize<br />your wholesale business?</h2>
           <p className="cta-sub">Join thousands of wholesale traders who've switched to Shopos. 14-day full trial, no card needed — then free forever.</p>
           <div className="cta-btns">
             <a href="/auth?mode=signup" className="btn btn-white btn-lg">Start Free Trial — 14 Days →</a>
-            <a href="#" className="btn btn-outline-white btn-lg">Schedule a Demo</a>
+            <a href="/request-demo" className="btn btn-outline-white btn-lg">Book a Demo</a>
           </div>
           <div className="cta-trust">
             <div className="ct-item">🔒 256-bit SSL encryption</div>
@@ -2518,48 +2552,39 @@ to{ opacity: 1; transform: translateY(0); }
       <footer>
         <div className="footer-grid">
           <div className="footer-brand">
-            <a href="#" className="logo" style={{color: 'white'}}>shop<span>os</span></a>
-            <p className="footer-desc">The complete wholesale ERP for Indian businesses. AI-powered invoicing, inventory, GST compliance and more — all in one platform.</p>
+            <a href="/" className="logo" style={{color: 'white'}}>shop<span>os</span></a>
+            <p className="footer-desc">GST billing, inventory and accounts for Indian wholesale traders — invoices, AI bill scanning, barcode labels, E-Way Bill and E-Invoice in one place.</p>
           </div>
           <div>
             <div className="footer-col-title">Product</div>
             <ul className="footer-links">
-              <li><a href="#">Features</a></li>
-              <li><a href="#">AI Scanner</a></li>
-              <li><a href="#">Pricing</a></li>
-              <li><a href="#">Changelog</a></li>
-              <li><a href="#">Roadmap</a></li>
+              <li><a href="#features">Features</a></li>
+              <li><a href="#ai">AI Scanner</a></li>
+              <li><a href="#pricing">Pricing</a></li>
+              <li><a href="#compare">Compare</a></li>
             </ul>
           </div>
           <div>
-            <div className="footer-col-title">Resources</div>
+            <div className="footer-col-title">Get started</div>
             <ul className="footer-links">
-              <li><a href="#">Documentation</a></li>
-              <li><a href="#">Blog</a></li>
-              <li><a href="#">GST Guides</a></li>
-              <li><a href="#">Tally Migration</a></li>
-              <li><a href="#">API Docs</a></li>
+              <li><a href="/auth?mode=signup">Start free trial</a></li>
+              <li><a href="/request-demo">Book a demo</a></li>
+              <li><a href="/auth?mode=login">Sign in</a></li>
             </ul>
           </div>
           <div>
             <div className="footer-col-title">Company</div>
             <ul className="footer-links">
-              <li><a href="#">About Us</a></li>
-              <li><a href="#">Contact</a></li>
-              <li><a href="#">Privacy Policy</a></li>
-              <li><a href="#">Terms of Service</a></li>
-              <li><a href="#">Careers</a></li>
+              <li><a href="/contact">Contact</a></li>
+              <li><a href="/privacy">Privacy Policy</a></li>
+              <li><a href="/terms">Terms of Service</a></li>
+              <li><a href="/refund-policy">Refund Policy</a></li>
             </ul>
           </div>
         </div>
         <div className="footer-bottom">
-          <div className="footer-copy">© 2026 Shopos. All rights reserved. Made with ❤️ for Indian businesses.</div>
-          <div className="footer-socials">
-            <a href="#" className="footer-social">𝕏</a>
-            <a href="#" className="footer-social">in</a>
-            <a href="#" className="footer-social">▶</a>
-            <a href="#" className="footer-social">📘</a>
-          </div>
+          <div className="footer-copy">© {new Date().getFullYear()} ShopOS. Made in India for Indian businesses.</div>
+          <a href="mailto:info@shopos.co.in" className="footer-mail">info@shopos.co.in</a>
         </div>
       </footer>
 

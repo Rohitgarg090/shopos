@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { loadRazorpay } from '@/lib/razorpay';
 
 const PLANS = [
   { id: 'business4', name: 'Business 4', price: 1499, firms: 4, users: 4, tag: '' },
@@ -39,7 +40,7 @@ export default function BillingPopup({ isOpen, onClose, reason, planInfo, onPaid
       });
       const order = await res.json().catch(() => ({}));
       if (!res.ok || !order.orderId) throw new Error((typeof order.error === 'string' ? order.error : order.error?.description) || 'Could not start payment');
-      if (!window.Razorpay) throw new Error('Payment window could not load — check your internet and retry');
+      if (!(await loadRazorpay())) throw new Error('Payment window could not load — check your internet and retry');
 
       const rzp = new window.Razorpay({
         key: order.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,

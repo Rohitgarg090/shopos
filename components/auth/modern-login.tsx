@@ -596,9 +596,17 @@ export default function ModernLogin({ onLogin }: ModernLoginProps) {
               </button>
             )}
 
+            {mode === "up" && signupMode && (
+              <p className="text-center text-xs text-slate-600 mt-4">
+                By creating an account you agree to our{" "}
+                <a href="/terms" target="_blank" className="text-blue-700 underline">Terms of Service</a> and{" "}
+                <a href="/privacy" target="_blank" className="text-blue-700 underline">Privacy Policy</a>.
+              </p>
+            )}
+
             {/* Footer */}
-            <p className="text-center text-xs text-slate-500 mt-6">
-              Secure authentication powered by Supabase
+            <p className="text-center text-xs text-slate-600 mt-6">
+              <a href="/privacy" className="hover:underline">Privacy</a> · <a href="/terms" className="hover:underline">Terms</a> · <a href="/contact" className="hover:underline">Contact</a>
             </p>
           </CardContent>
         </Card>
