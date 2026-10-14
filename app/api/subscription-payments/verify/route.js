@@ -132,7 +132,7 @@ export async function POST(req) {
 
     // Activate the plan (single source of truth used for all feature/firm limits)
     const { error: planErr } = await sb.from('trial_limits').upsert(
-      { user_id: user.id, paid_plan: payment.plan, paid_until: endDate.toISOString(), updated_at: now.toISOString() },
+      { user_id: user.id, paid_plan: payment.plan, paid_until: endDate.toISOString(), is_trial: false, subscription_plan: payment.plan, updated_at: now.toISOString() },
       { onConflict: 'user_id' }
     );
     if (planErr) {

@@ -414,6 +414,8 @@ export default function ShopOS(){
   // Subscription plan (Trial / Free / Business 4 / Business 10)
   const loadPlan=useCallback(async()=>{try{const p=await api.get('/api/trial/status');_plan=p;setPlanInfo(p);}catch(e){console.error('Failed to load plan:',e);}},[]);
   useEffect(()=>{if(ses)loadPlan();},[ses,loadPlan]);
+  // Pick up plan changes made elsewhere (payment, another tab) when the user comes back to this tab
+  useEffect(()=>{if(!ses)return;let last=0;const on=()=>{if(document.visibilityState==='visible'&&Date.now()-last>30000){last=Date.now();loadPlan();}};document.addEventListener('visibilitychange',on);return()=>document.removeEventListener('visibilitychange',on);},[ses,loadPlan]);
   useEffect(()=>{const h=e=>{setUpgradeReason(e.detail?.error||'');setShowBillingPopup(true);};window.addEventListener('shopos:upgrade',h);return()=>window.removeEventListener('shopos:upgrade',h);},[]);
 
   // Fetch announcements
@@ -652,7 +654,7 @@ export default function ShopOS(){
     {/* Billing Popup */}
     <BillingPopup
       isOpen={showBillingPopup}
-      onClose={()=>{setShowBillingPopup(false);setUpgradeReason('');}}
+      onClose={()=>{setShowBillingPopup(false);setUpgradeReason('');loadPlan();}}
       reason={upgradeReason}
       planInfo={planInfo}
       onPaid={loadPlan}

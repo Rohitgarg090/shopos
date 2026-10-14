@@ -77,12 +77,12 @@ export default function BillingPopup({ isOpen, onClose, reason, planInfo, onPaid
   const box = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', fontFamily: "'Inter',system-ui,sans-serif", color: '#1A1A18' };
 
   if (done) return (
-    <div style={wrap} onClick={onClose}>
+    <div style={wrap} onClick={() => { setDone(null); onClose(); }}>
       <div style={{ ...box, maxWidth: 420, padding: 28, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
         <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#EBF5E4', color: '#2E6B1F', fontSize: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>✓</div>
         <div style={{ fontSize: 19, fontWeight: 800 }}>You're on {done}</div>
         <div style={{ fontSize: 13, color: '#666', margin: '6px 0 18px' }}>All features are unlocked for 1 year. Thank you!</div>
-        <button onClick={onClose} style={{ background: '#1B5E8A', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 22px', fontWeight: 700, cursor: 'pointer' }}>Continue</button>
+        <button onClick={() => { setDone(null); onClose(); }} style={{ background: '#1B5E8A', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 22px', fontWeight: 700, cursor: 'pointer' }}>Continue</button>
       </div>
     </div>
   );
