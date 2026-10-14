@@ -18,6 +18,7 @@ export const metadata = {
   },
   twitter: { card: 'summary_large_image', title: `${SITE.name} — ${SITE.tagline}`, description: SITE.description },
   formatDetection: { telephone: false },
+  verification: { google: 'Sq-fxdYZYezQBJrepFQA0_vlO36BW-nz_1a9ONHYeEM' },   // Google Search Console
 };
 
 export const viewport = { themeColor: '#0a0a0f', width: 'device-width', initialScale: 1 };
