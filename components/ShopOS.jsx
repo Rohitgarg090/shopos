@@ -637,8 +637,8 @@ export default function ShopOS(){
         return <>
       {page==='dash'&&<Dashboard P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob} firm={firm} setPage={setPage} setShowSupport={setShowSupport}/>
       }{page==='analytics'&&<Analytics P={P} B={Bactive} C={C} Py={Py} Ret={Ret} mob={mob}/>}
-      {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob} firm={firm}/>}
-      {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onLabels={()=>setPage('labels')} onUpgrade={msg=>askUpgrade({feature:'ai',error:msg||'AI scanning is available on Business plans.'})} mob={mob}/>}
+      {page==='catalog'&&<Catalog P={P} setP={setP} mob={mob} firm={firm} onSaveLabelName={n=>saveFirm({...firm,labelName:n})}/>}
+      {page==='scan'&&<ScanBill P={P} setP={setP} firm={firm} activeFirm={activeFirm} SI={SI} setSI={setSI} onDone={()=>setPage('catalog')} onSaveLabelName={n=>saveFirm({...firm,labelName:n})} onUpgrade={msg=>askUpgrade({feature:'ai',error:msg||'AI scanning is available on Business plans.'})} mob={mob}/>}
       {page==='labels'&&<QRLabels P={P} mob={mob}/>}
       {page==='pos'&&<POS P={P} setP={setP} C={C} setC={setC} B={B} setB={setB} firm={firm} nextInv={nextInv} getNextInvoiceNo={async()=>{const firmId=firm?.id||_activeFirmId;if(!firmId){throw new Error('Firm not loaded. Please refresh.');}const token=await getToken();const res=await fetch('/api/next-invoice',{method:'POST',headers:{Authorization:`Bearer ${token}`,'x-firm-id':firmId,'Content-Type':'application/json'},body:JSON.stringify({})});if(!res.ok){const err=await res.json();throw new Error(err.error||'Failed to get invoice number');}const data=await res.json();return data.invoiceNo||'';}} mob={mob} onDone={b=>{setVBill(b);setPage('bills');}}/>}
       {page==='cust'&&<Customers C={C} setC={setC} B={Bactive} Py={Py} Ret={Ret} setPy={setPy} firm={firm} mob={mob} onRefresh={refreshCustomers}/>}
@@ -830,7 +830,35 @@ function Dashboard({P,B,C,Py,Ret,mob,firm,setPage,setShowSupport}){
   </div>;}
 
 /* ── CATALOG ── */
-function Catalog({P,setP,mob,firm}){
+/* ── LABEL OPTIONS (shared by Catalog and Scan) ── */
+function useLabelOpts(firm){
+  const ls=(k,d)=>{try{return localStorage.getItem(k)||d}catch{return d}};
+  const[size,setSize]=useState(()=>ls('shopos_label_size','50x25'));const[style,setStyle]=useState(()=>ls('shopos_label_style','barcode'));
+  const[price,setPrice]=useState(true);const[name,setName]=useState(firm?.labelName||firm?.name||'');
+  useEffect(()=>{setName(firm?.labelName||firm?.name||'')},[firm?.id,firm?.labelName,firm?.name]);
+  useEffect(()=>{try{localStorage.setItem('shopos_label_size',size);localStorage.setItem('shopos_label_style',style)}catch{}},[size,style]);
+  return{size,setSize,style,setStyle,price,setPrice,name,setName};
+}
+function LabelOptions({o,mob,S}){
+  return<>
+    <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10,marginBottom:10}}>
+      <Fld label='Sticker size'><select style={S.inp} value={o.size} onChange={e=>o.setSize(e.target.value)}>{LABEL_SIZE_OPTS.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Fld>
+      <Fld label='Code type'><select style={S.inp} value={o.style} onChange={e=>o.setStyle(e.target.value)}><option value='barcode'>Barcode (USB / laser scanner)</option><option value='qr'>QR code (phone camera scan)</option></select></Fld>
+      <Fld label='Name on label' span2={!mob}><input style={S.inp} value={o.name} maxLength={40} onChange={e=>o.setName(e.target.value)} placeholder='Shop name printed on every label'/></Fld>
+    </div>
+    <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:12,cursor:'pointer'}}><input type='checkbox' checked={o.price} onChange={e=>o.setPrice(e.target.checked)}/>Show price on label</label>
+  </>;
+}
+// Saves the label name to firm settings when it was changed, then downloads the PDF
+async function downloadLabelPdf(labels,o,firm,onSaveLabelName){
+  const n=o.name.trim();
+  if(onSaveLabelName&&n!==(firm?.labelName||firm?.name||'').trim()){try{await onSaveLabelName(n);}catch(e){console.error('[labels] save name',e)}}
+  const{generateLabelsPDF}=await import('@/lib/labels');
+  const doc=await generateLabelsPDF({labels,firmName:n,sizeId:o.size,style:o.style,showPrice:o.price});
+  doc.save(`labels_${o.size}mm_${labels.length}.pdf`);
+}
+
+function Catalog({P,setP,mob,firm,onSaveLabelName}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[cat,setCat]=useState('All');const[srch,setSrch]=useState('');const[showF,setShowF]=useState(false);const[eid,setEid]=useState(null);
   const[selected,setSelected]=useState(new Set());
@@ -854,9 +882,8 @@ function Catalog({P,setP,mob,firm}){
   const toggleSelectAll=()=>{if(selected.size===rows.length)setSelected(new Set());else setSelected(new Set(rows.map(p=>p.id)))};
   const bulkDelete=async()=>{if(selected.size===0){showT('Select products to delete','err');return}if(!confirm(`Delete ${selected.size} product${selected.size!==1?'s':''}?`))return;try{for(const id of selected){await api.del('/api/products?id='+id);}setP(ps=>ps.filter(p=>!selected.has(p.id)));setSelected(new Set());showT(`Deleted ${selected.size} product${selected.size!==1?'s':''}!`);}catch(e){showT('Failed: '+e.message,'err')}};
   const[showQR,setShowQR]=useState(false);const[qrQty,setQrQty]=useState({});const[dlQR,setDlQR]=useState(false);
-  const[lblSize,setLblSize]=useState(()=>{try{return localStorage.getItem('shopos_label_size')||'50x25'}catch{return'50x25'}});const[lblStyle,setLblStyle]=useState(()=>{try{return localStorage.getItem('shopos_label_style')||'barcode'}catch{return'barcode'}});const[lblPrice,setLblPrice]=useState(true);
-  useEffect(()=>{try{localStorage.setItem('shopos_label_size',lblSize);localStorage.setItem('shopos_label_style',lblStyle)}catch{}},[lblSize,lblStyle]);
-  const downloadQRLabels=async()=>{if(selected.size===0){showT('Select products','err');return}if(dlQR)return;setDlQR(true);try{const{generateLabelsPDF}=await import('@/lib/labels');const labels=[];for(const p of rows.filter(p=>selected.has(p.id))){const n=Math.max(1,parseInt(qrQty[p.id])||p.qty||1);for(let i=0;i<n;i++)labels.push({name:p.name,articleNo:p.articleNo,size:p.size,price:p.price,sku:p.sku});}if(labels.length>2000){showT('Too many labels at once (max 2000). Select fewer products.','err');return}const doc=await generateLabelsPDF({labels,firmName:firm?.name||'',sizeId:lblSize,style:lblStyle,showPrice:lblPrice});doc.save(`labels_${lblSize}mm_${labels.length}.pdf`);showT(`${labels.length} label${labels.length!==1?'s':''} downloaded`);setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){console.error('[labels]',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false)}};
+  const lo=useLabelOpts(firm);
+  const downloadQRLabels=async()=>{if(selected.size===0){showT('Select products','err');return}if(dlQR)return;setDlQR(true);try{const labels=[];for(const p of rows.filter(p=>selected.has(p.id))){const n=Math.max(1,parseInt(qrQty[p.id])||p.qty||1);for(let i=0;i<n;i++)labels.push({name:p.name,articleNo:p.articleNo,size:p.size,color:p.color,price:p.price,sku:p.sku});}if(labels.length>2000){showT('Too many labels at once (max 2000). Select fewer products.','err');return}await downloadLabelPdf(labels,lo,firm,onSaveLabelName);showT(`${labels.length} label${labels.length!==1?'s':''} downloaded`);setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){console.error('[labels]',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false)}};
   const dupKey=p=>(p.articleNo||'').trim().toUpperCase()+'|'+(p.size||'').toUpperCase()+'|'+(p.name||'').trim().toUpperCase();
   const dupCount=P.reduce((m,p)=>{if(p.articleNo){const k=dupKey(p);m[k]=(m[k]||0)+1;}return m;},{});
   const isDup=p=>p.articleNo&&dupCount[dupKey(p)]>1;
@@ -965,11 +992,7 @@ function Catalog({P,setP,mob,firm}){
       <div style={{...S.card,width:mob?'90%':'500px',maxHeight:'80vh',overflowY:'auto'}}>
         <div style={S.h2}>Print Labels</div>
         <div style={{fontSize:12,color:MUT,marginBottom:12}}>One sticker per PDF page — print at 100% / "Actual size" on your thermal printer.</div>
-        <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10,marginBottom:10}}>
-          <Fld label='Sticker size'><select style={S.inp} value={lblSize} onChange={e=>setLblSize(e.target.value)}>{LABEL_SIZE_OPTS.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></Fld>
-          <Fld label='Code type'><select style={S.inp} value={lblStyle} onChange={e=>setLblStyle(e.target.value)}><option value='barcode'>Barcode (USB / laser scanner)</option><option value='qr'>QR code (phone camera scan)</option></select></Fld>
-        </div>
-        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:12,cursor:'pointer'}}><input type='checkbox' checked={lblPrice} onChange={e=>setLblPrice(e.target.checked)}/>Show price on label</label>
+        <LabelOptions o={lo} mob={mob} S={S}/>
         <div style={{fontSize:12,color:MUT,marginBottom:8}}>Number of labels per product (default = stock quantity)</div>
         <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr',gap:12,marginBottom:14,maxHeight:'50vh',overflowY:'auto'}}>
           {rows.filter(p=>selected.has(p.id)).map(p=><div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:8,background:BG,borderRadius:6}}><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{p.name}</div><div style={{fontSize:10,color:MUT}}>{p.sku}</div></div><div style={{display:'flex',alignItems:'center',gap:4}}><input type='number' min='1' value={qrQty[p.id]||p.qty||1} onChange={e=>setQrQty(q=>({...q,[p.id]:parseInt(e.target.value)||1}))} style={{...S.inp,width:60,padding:'6px 8px',fontSize:12}} placeholder='Qty'/><span style={{fontSize:11,color:MUT,minWidth:30}}>labels</span></div></div>)}
@@ -980,7 +1003,7 @@ function Catalog({P,setP,mob,firm}){
   </div>;}
 
 /* ── SCAN BILL (with markup) ── */
-function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob}){
+function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgrade,mob}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const[items,setItems]=useState([]);
   const[scanning,setScanning]=useState(false);
@@ -1111,6 +1134,13 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
   const upd=(i,k,v)=>setItems(it=>it.map((x,ix)=>ix===i?{...x,[k]:v,...(k==='price'&&!markupPct?{_costPrice:v}:{})}:x));
   const rem=i=>setItems(it=>it.filter((_,ix)=>ix!==i));
   const addMan=()=>{if(!man.name)return;setItems(it=>[...it,{...man,qty:+man.qty,price:+man.price,_costPrice:+man.price,gst:+man.gst,qrCount:+man.qty}]);setMan({articleNo:'',name:'',cat:'',sizes:'Free Size',qty:1,price:'',gst:5,color:'',hsn:''});};
+  // Labels straight from the scanned bill — no catalog entry needed. Count per article is split across its sizes.
+  const lo=useLabelOpts(firm);const[showLbl,setShowLbl]=useState(false);const[lblBusy,setLblBusy]=useState(false);
+  const scanLabels=()=>items.flatMap(it=>{const sizes=String(it.sizes||'').split(',').map(x=>x.trim()).filter(Boolean);const sz=sizes.length?sizes:[''];const n=Math.max(0,Math.round(+(it.qrCount??it.qty)||0));const base=Math.floor(n/sz.length),extra=n%sz.length;
+    return sz.flatMap((z,k)=>Array.from({length:base+(k<extra?1:0)},()=>({name:it.name,articleNo:String(it.articleNo||'').trim(),size:z,color:it.color||'',price:+it.price||0,sku:''})));});
+  const downloadScanLabels=async()=>{const noArt=items.filter(it=>!String(it.articleNo||'').trim());if(noArt.length){showT('Add an article no. for: '+noArt.slice(0,3).map(x=>x.name).join(', ')+(noArt.length>3?'…':'')+' — the label code is built from it','err');return}
+    const labels=scanLabels();if(!labels.length){showT('Set the number of labels','err');return}if(labels.length>2000){showT('Too many labels at once (max 2000)','err');return}
+    setLblBusy(true);try{await downloadLabelPdf(labels,lo,firm,onSaveLabelName);showT(labels.length+' labels downloaded');setShowLbl(false);}catch(e){showT('Failed: '+e.message,'err')}finally{setLblBusy(false)}};
   const[scanSaving,onceScan]=useOnce();
   const addToCatalog=async()=>{
     const invNo=String(supplierBanner?.invoiceNo||'').trim();
@@ -1360,7 +1390,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
             {items.length>0&&<span style={{fontSize:11,color:MUT}}>({items.reduce((s,i)=>s+i.qty,0)} pcs)</span>}
           </div>
           {items.length>0&&<div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
-            <button style={S.btn('pur')} onClick={onLabels}>QR Labels</button>
+            <button style={S.btn('pur')} onClick={()=>setShowLbl(true)}>QR Labels</button>
             <button style={{...S.btn('suc'),opacity:scanSaving?0.6:1}} disabled={scanSaving} onClick={addToCatalogOnce}>{scanSaving?'Saving…':'Add to Catalog'}</button>
             <button style={{...S.btn('dan',true),fontSize:11}} onClick={()=>{setItems([]);setSupplierBanner(null);setMarkupPct('');}}>Clear</button>
           </div>}
@@ -1424,6 +1454,24 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onLabels,onUpgrade,mob
         </>}
       </div>
     </div>
+    {showLbl&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,padding:16}} onClick={()=>!lblBusy&&setShowLbl(false)}>
+      <div style={{...S.card,width:mob?'100%':520,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={S.h2}>Print Labels</div>
+        <div style={{fontSize:12,color:MUT,marginBottom:12}}>From this bill — no need to add to the catalog first. One sticker per PDF page; print at 100% / "Actual size".</div>
+        <LabelOptions o={lo} mob={mob} S={S}/>
+        <div style={{fontSize:12,color:MUT,marginBottom:6}}>Labels per article (split across its sizes)</div>
+        <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:12,maxHeight:'34vh',overflowY:'auto'}}>
+          {items.map((it,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 9px',background:BG,borderRadius:6}}>
+            <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12.5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{it.name}</div><div style={{fontSize:10.5,color:it.articleNo?MUT:RD}}>{it.articleNo?'Art '+it.articleNo:'No article no. — add it in the list'} · {it.sizes||'Free Size'} · {fmt(+it.price||0)}</div></div>
+            <input type='number' min='0' value={it.qrCount??it.qty} onChange={e=>upd(i,'qrCount',Math.max(0,parseInt(e.target.value)||0))} style={{...S.inp,width:64,padding:'5px 7px',fontSize:12,margin:0}}/>
+          </div>)}
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+          <span style={{fontSize:12,color:MUT}}>{scanLabels().length} labels</span>
+          <div style={{display:'flex',gap:8}}><button style={S.btn()} onClick={()=>setShowLbl(false)} disabled={lblBusy}>Cancel</button><button style={S.btn('pri')} onClick={downloadScanLabels} disabled={lblBusy}>{lblBusy?'Generating...':'Download labels PDF'}</button></div>
+        </div>
+      </div>
+    </div>}
   </div>;}
 
 /* ── QR LABELS ── */
@@ -1545,12 +1593,14 @@ function CameraScanner({products,onAddItems,onClose}){
           lastCodeRef.current=code;lastTimeRef.current=now;
           // Parse ShopOS QR format: ART:articleNo|SIZE:size|BC:sku
           let searchSku=code,searchArt=code,searchSize=null;
-          if(code.includes('ART:')&&code.includes('BC:')){
+          if(code.startsWith('ART:')){
             const parts=Object.fromEntries(code.split('|').map(p=>{const[k,...v]=p.split(':');return[k,v.join(':')];}));
             searchSku=parts.BC||code;searchArt=parts.ART||code;searchSize=parts.SIZE||null;
-          }
-          const P=productsRef.current;
-          const p=P.find(x=>x.sku===searchSku)||(searchArt?P.find(x=>x.articleNo===searchArt&&(!searchSize||x.size===searchSize)):null)||P.find(x=>x.sku===code||x.articleNo===code);
+          }else if(code.includes('|')){const[a,z]=code.split('|');searchArt=a;searchSize=z||null;}
+          const P=productsRef.current;const nrm=v=>String(v||'').trim().toUpperCase();const pick=l=>l.find(x=>x.qty>0)||l[0];
+          const p=P.find(x=>x.sku===searchSku)||P.find(x=>x.sku===code)
+            ||pick(P.filter(x=>searchArt&&nrm(x.articleNo)===nrm(searchArt)&&(!searchSize||nrm(x.size)===nrm(searchSize))))
+            ||pick(P.filter(x=>nrm(x.articleNo)===nrm(code)));
           if(!p){setErr('Not found: '+code);setTimeout(()=>setErr(null),2000);return;}
           beep();
           setFlash(true);setTimeout(()=>setFlash(false),200);
@@ -1685,10 +1735,10 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
     const s=code.trim();if(!s)return;
     // Parse ShopOS QR format: ART:articleNo|SIZE:size|BC:sku
     let searchSku=s,searchArt=s,searchSize=null;
-    if(s.includes('ART:')&&s.includes('BC:')){
+    if(s.startsWith('ART:')){
       const parts=Object.fromEntries(s.split('|').map(p=>{const[k,...v]=p.split(':');return[k,v.join(':')];}));
       searchSku=parts.BC||s;searchArt=parts.ART||s;searchSize=parts.SIZE||null;
-    }
+    }else if(s.includes('|')){const[a,z]=s.split('|');searchArt=a;searchSize=z||null;}   // barcode printed before the item was in the catalog: article|size
     // Find product by BC (sku), articleNo, or raw input
     // Exact barcode first; otherwise article (+size from QR) ignoring case — and if the catalog has several
     // entries for it (duplicates or sizes), pick one that still has stock.

@@ -55,6 +55,7 @@ const shape = r => ({
   upiId: r.upi_id || '',
   upiQrImage: r.upi_qr_image || '',
   pricesIncludeGst: !!r.prices_include_gst,
+  labelName: r.label_name || '',
 });
 
 // Settings belong to a firm, not a user. Rows may have been created by the firm
@@ -134,6 +135,7 @@ export async function POST(req) {
     upiId: 'upi_id',
     upiQrImage: 'upi_qr_image',
     pricesIncludeGst: 'prices_include_gst',
+    labelName: 'label_name',
     // Note: Exclude these fields if they don't exist in schema:
     // msg91Key, msg91SmsTemplate, msg91WaTemplate, interestEnabled,
     // interestOnOpeningBalance, notifEnabled
@@ -158,14 +160,14 @@ export async function POST(req) {
   let data, error;
   const row = (rows || [])[0];
   // Until the prices_include_gst column exists (bills_atomic.sql not run yet), save everything else
-  const noCol = e => e && /prices_include_gst/.test(e.message || '');
+  const noCol = e => e && /prices_include_gst|label_name/.test(e.message || '');
   if (row?.id) {
     const result = await f.db.from('firm_settings')
       .update({ ...fields, updated_at: new Date().toISOString() })
       .eq('id', row.id).select();
     error = result.error; data = result.data?.[0];
     if (noCol(error)) {
-      delete fields.prices_include_gst;
+      delete fields.prices_include_gst; delete fields.label_name;
       const r2 = await f.db.from('firm_settings').update({ ...fields, updated_at: new Date().toISOString() }).eq('id', row.id).select();
       error = r2.error; data = r2.data?.[0];
     }
@@ -173,6 +175,11 @@ export async function POST(req) {
     const result = await f.db.from('firm_settings')
       .insert([{ user_id: c.user.id, firm_id: c.firmId, ...fields }]).select();
     error = result.error; data = result.data?.[0];
+    if (noCol(error)) {
+      delete fields.prices_include_gst; delete fields.label_name;
+      const r2 = await f.db.from('firm_settings').insert([{ user_id: c.user.id, firm_id: c.firmId, ...fields }]).select();
+      error = r2.error; data = r2.data?.[0];
+    }
   }
 
   if (error) {

@@ -18,6 +18,8 @@ alter table public.bills add column if not exists discount_before_tax boolean no
 alter table public.bill_items add column if not exists discount numeric not null default 0;
 -- Firm setting: catalog prices already include GST (default: no, GST is added on top)
 alter table public.firm_settings add column if not exists prices_include_gst boolean not null default false;
+-- Firm setting: name printed on product labels instead of the firm name ('' = firm name)
+alter table public.firm_settings add column if not exists label_name text not null default '';
 
 -- 1. Final safety net: an invoice number can exist only once per firm
 create unique index if not exists bills_firm_invoice_unique
