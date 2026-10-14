@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { adminDb, isFirmMember } from '@/lib/firmAccess';
+import { INDUSTRY_TEMPLATES } from '@/lib/industry-templates';
 
 async function ctx(req) {
   const token = (req.headers.get('authorization') || '').replace('Bearer ', '').trim();
@@ -27,7 +28,7 @@ export async function GET(req) {
       .from('firm_settings')
       .select('industry_type, custom_product_fields, product_categories')
       .eq('firm_id', c.firmId)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -52,8 +53,11 @@ export async function PUT(req) {
     const { industryType, customFields, categories } = await req.json();
     console.log('[firm-industry] PUT received:', { industryType, customFields, categories, firmId: c.firmId });
 
-    if (!industryType) {
-      return NextResponse.json({ error: 'Industry type required' }, { status: 400 });
+    if (!industryType || !INDUSTRY_TEMPLATES[industryType]) {
+      return NextResponse.json({ error: 'Unknown business type' }, { status: 400 });
+    }
+    if (categories != null && (!Array.isArray(categories) || categories.length > 100 || categories.some(c => typeof c !== 'string' || !c.trim() || c.length > 60))) {
+      return NextResponse.json({ error: 'Categories must be up to 100 names of 60 characters or less' }, { status: 400 });
     }
 
     // Ensure customFields is properly formatted
@@ -66,7 +70,7 @@ export async function PUT(req) {
       .from('firm_settings')
       .select('id')
       .eq('firm_id', c.firmId)
-      .single();
+      .maybeSingle();
 
     let data, error;
 

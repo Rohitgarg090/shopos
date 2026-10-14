@@ -841,7 +841,8 @@ function Catalog({P,setP,mob,firm}){
   useEffect(()=>{const loadInd=async()=>{try{const res=await api.get('/api/firm-industry');const indType=res.industryType||'general';setIndustry(indType);const template=INDUSTRY_TEMPLATES[indType];const fields=res.customFields&&res.customFields.length>0?res.customFields:(template?.customFields||[]);setCustomFields(fields);setUserCategories(res.categories||[]);console.log('[Catalog] Loaded industry:',indType,'with',fields.length,'custom fields, categories:',res.categories?.length||0);}catch(e){console.error('[Catalog] Failed to load industry:',e);}};loadInd();},[]);
   const ff=k=>v=>setF(f=>({...f,[k]:v}));
   const curTemplate=INDUSTRY_TEMPLATES[industry];
-  const cts=(userCategories.length>0?userCategories:curTemplate?.categories||[]).reduce((a,c)=>{a[c]=P.filter(p=>p.cat===c).length;return a},{});
+  // listed categories + any category already used by a product, so no product is hidden from the tabs
+  const cts=[...new Set([...(userCategories.length>0?userCategories:curTemplate?.categories||[]),...P.map(p=>p.cat||'Others')])].reduce((a,c)=>{a[c]=P.filter(p=>(p.cat||'Others')===c).length;return a},{});
   const rows=P.filter(p=>(cat==='All'||(p.cat||'Others')===cat)&&((p.name||'').toLowerCase().includes(srch.toLowerCase())||(p.sku||'').includes(srch)||(p.articleNo||'').toLowerCase().includes(srch.toLowerCase())));
   const openNew=()=>{setF(BLK);setEid(null);setShowF(true)};
   const openEdit=p=>{setF({name:p.name,cat:p.cat,sub:p.sub||'',size:p.size,color:p.color||'',price:p.price,gst:p.gst,qty:p.qty,hsn:p.hsn||'',articleNo:p.articleNo||'',hsnCustom:'',customAttrs:p.customAttrs||{}});setEid(p.id);setShowF(true)};
@@ -3711,47 +3712,58 @@ function SecurityTab({ses}){
 }
 
 /* ── INDUSTRY SETUP ── */
-function IndustrySetup({firm,saveFirm,S,mob}){
-  const[ind,setInd]=useState(firm?.industryType||'general');
-  const[cats,setCats]=useState(firm?.categories||[]);
+// Business type drives: catalog categories + HSN suggestions, extra product fields, and what AI scan extracts (e.g. sizes).
+function IndustrySetup({firm,S,mob}){
+  const indList=getAvailableIndustries().filter(it=>it.id!=='custom');
+  const[saved,setSaved]=useState(null);            // what's stored for this firm
+  const[ind,setInd]=useState('general');
+  const[cats,setCats]=useState([]);                // [] = use the business type's default list
   const[newCat,setNewCat]=useState('');
-  const[saving,setSaving]=useState(false);
+  const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[err,setErr]=useState('');
   const[toast,showT]=useToast();
-  const indList=getAvailableIndustries();
-  const curTemplate=INDUSTRY_TEMPLATES[ind];
-  const save=async()=>{setSaving(true);try{const customFlds=curTemplate?.customFields||[];await api.put('/api/firm-industry',{industryType:ind,customFields:customFlds,categories:cats});saveFirm({...firm,industryType:ind,customFields:customFlds,categories:cats});showT('Business type updated! Custom fields loaded.');}catch(e){showT('Failed: '+e.message,'err')}finally{setSaving(false)}};
-  const addCat=()=>{if(!newCat.trim()){showT('Category name required','err');return}if(cats.includes(newCat)){showT('Category already exists','err');return}setCats([...cats,newCat]);setNewCat('')};
-  const removeCat=c=>{setCats(cats.filter(x=>x!==c))};
+  useEffect(()=>{let live=true;setLoading(true);setErr('');api.get('/api/firm-industry').then(r=>{if(!live)return;const t=INDUSTRY_TEMPLATES[r.industryType]?r.industryType:'general';setInd(t);setCats(r.categories||[]);setSaved({ind:t,cats:r.categories||[]});}).catch(e=>live&&setErr(e.message||'Could not load')).finally(()=>live&&setLoading(false));return()=>{live=false};},[firm?.id]);
+  const tpl=INDUSTRY_TEMPLATES[ind]||INDUSTRY_TEMPLATES.general;
+  const custom=cats.length>0, shownCats=custom?cats:tpl.categories;
+  const dirty=saved&&(saved.ind!==ind||JSON.stringify(saved.cats)!==JSON.stringify(cats));
+  const pick=id=>{if(id===ind)return;setInd(id);if(custom&&!confirm('Keep your own category list?\n\nOK = keep my categories\nCancel = use the default categories for this business type'))setCats([]);};
+  const addCat=()=>{const c=newCat.trim();if(!c)return;if(shownCats.some(x=>x.toLowerCase()===c.toLowerCase())){showT('Category already in the list','err');return}setCats([...shownCats,c]);setNewCat('')};
+  const removeCat=c=>{const next=shownCats.filter(x=>x!==c);if(!next.length){showT('Keep at least one category','err');return}setCats(next)};
+  const save=async()=>{setSaving(true);try{await api.put('/api/firm-industry',{industryType:ind,customFields:tpl.customFields||[],categories:cats});setSaved({ind,cats});showT('Saved. Catalog and AI scan now use '+tpl.name+'.');}catch(e){showT('Failed: '+e.message,'err')}finally{setSaving(false)}};
+  const chip={display:'inline-flex',alignItems:'center',gap:6,padding:'5px 10px',background:BG,border:'0.5px solid '+BORD,borderRadius:20,fontSize:12};
+  const row=(label,val)=><div style={{display:'flex',gap:10,padding:'9px 0',borderTop:'0.5px solid '+BORD,fontSize:12.5}}><div style={{width:mob?96:130,flexShrink:0,color:MUT}}>{label}</div><div style={{flex:1,minWidth:0}}>{val}</div></div>;
+  if(loading)return<div style={{...S.card,fontSize:13,color:MUT}}>Loading business setup…</div>;
+  if(err)return<div style={{...S.card,fontSize:13,color:RD}}>Could not load business setup: {err}</div>;
   return<div>{toast}
     <div style={{...S.card,marginBottom:14}}>
-      <div style={S.h3}>Select Your Business Type</div>
-      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:12,marginBottom:16}}>
-        {indList.map(it=><div key={it.id} onClick={()=>setInd(it.id)} style={{padding:14,border:ind===it.id?'2px solid '+BL:'1px solid '+BORD,background:ind===it.id?BLL:'#fff',borderRadius:8,cursor:'pointer',transition:'all 0.2s'}}>
-          <div style={{fontSize:20,marginBottom:4}}>{it.icon}</div>
-          <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{it.name}</div>
-          <div style={{fontSize:10,color:MUT,lineHeight:1.4}}>{it.description}</div>
-          {ind===it.id&&<div style={{fontSize:10,color:BL,fontWeight:700,marginTop:6}}>✓ Selected</div>}
-        </div>)}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap',marginBottom:4}}>
+        <div style={S.h3}>Business type</div>
+        <div style={{fontSize:11.5,color:MUT}}>Saved for <strong style={{color:TXT}}>{firm?.name||'this firm'}</strong> only</div>
+      </div>
+      <div style={{fontSize:12,color:MUT,marginBottom:12}}>Sets your catalog categories, HSN suggestions, product fields and what AI scan reads from supplier invoices.</div>
+      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'repeat(auto-fill,minmax(210px,1fr))',gap:8}}>
+        {indList.map(it=>{const on=ind===it.id,isSaved=saved?.ind===it.id;return<button key={it.id} onClick={()=>pick(it.id)} style={{display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'10px 12px',border:on?'1.5px solid '+BL:'0.5px solid '+BORD,background:on?BLL:'#fff',borderRadius:10,cursor:'pointer',font:'inherit',color:TXT}}>
+          <span style={{fontSize:20,width:28,textAlign:'center'}}>{it.icon}</span>
+          <span style={{flex:1,minWidth:0}}><span style={{display:'block',fontWeight:700,fontSize:13}}>{it.name}</span><span style={{display:'block',fontSize:11,color:MUT,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{it.description}</span></span>
+          {isSaved&&<span style={{fontSize:10,fontWeight:700,color:GR,background:GRL,padding:'2px 7px',borderRadius:10}}>Current</span>}
+        </button>})}
       </div>
     </div>
-    {curTemplate&&<div style={{...S.card,marginBottom:14}}>
-      <div style={S.h3}>Default Fields for {curTemplate.name}</div>
-      <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:8,marginBottom:12}}>
-        {curTemplate.customFields.map((f,i)=><div key={i} style={{padding:8,background:BG,borderRadius:6,fontSize:11}}>
-          <div style={{fontWeight:600,color:BL}}>{f.label}</div>
-          <div style={{fontSize:10,color:MUT}}>{f.type}</div>
-        </div>)}
-      </div>
-    </div>}
     <div style={{...S.card,marginBottom:14}}>
-      <div style={S.h3}>Product Categories</div>
-      <div style={{display:'flex',gap:6,marginBottom:10}}>
-        <input style={{...S.inp,flex:1}} value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder='Enter category name' onKeyPress={e=>e.key==='Enter'&&addCat()}/>
-        <button style={S.btn('pri')} onClick={addCat}>Add</button>
-      </div>
-      {cats.length===0?<div style={{fontSize:11,color:MUT}}>No categories yet</div>:<div style={{display:'flex',flexWrap:'wrap',gap:6}}>{cats.map((c,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',background:BG,borderRadius:6,fontSize:11}}>{c}<button style={{background:'none',border:'none',color:RD,cursor:'pointer',fontSize:12,fontWeight:700}} onClick={()=>removeCat(c)}>×</button></div>)}</div>}
+      <div style={{...S.h3,marginBottom:6}}>{tpl.icon} What {tpl.name} sets up</div>
+      {row('Product fields',(tpl.customFields||[]).map(f=>f.label).join(', ')||'—')}
+      {row('AI invoice scan',ind==='clothing'?'Reads article no., sizes (S, M, L…), quantity, rate, HSN and GST':'Reads item name, quantity, rate, HSN and GST (no sizes)')}
+      {row('Units',(UOM_BY_INDUSTRY[ind]||['Piece']).join(', '))}
+      {row('Categories',<div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>{shownCats.map(c=><span key={c} style={chip}>{c}<button onClick={()=>removeCat(c)} aria-label={'Remove '+c} style={{background:'none',border:'none',color:MUT,cursor:'pointer',fontSize:14,lineHeight:1,padding:0}}>×</button></span>)}</div>
+        <div style={{display:'flex',gap:6,maxWidth:380}}><input style={{...S.inp,flex:1}} value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder='Add a category' onKeyDown={e=>e.key==='Enter'&&addCat()}/><button style={S.btn('def')} onClick={addCat}>Add</button></div>
+        <div style={{fontSize:11,color:MUT,marginTop:6}}>{custom?<>Your own list. <button onClick={()=>setCats([])} style={{background:'none',border:'none',color:BL,cursor:'pointer',padding:0,fontSize:11,fontWeight:600}}>Reset to defaults</button></>:'Default list for this business type. Add or remove to make it your own.'}</div>
+      </div>)}
     </div>
-    <button style={{...S.btn('pri'),width:'100%'}} onClick={save} disabled={saving}>{saving?'Saving...':'Save Business Setup'}</button>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:10,flexWrap:'wrap'}}>
+      {dirty&&<span style={{fontSize:12,color:AMB}}>Unsaved changes</span>}
+      {dirty&&<button style={S.btn('def')} onClick={()=>{setInd(saved.ind);setCats(saved.cats)}} disabled={saving}>Discard</button>}
+      <button style={{...S.btn('pri'),opacity:dirty?1:0.5}} onClick={save} disabled={!dirty||saving}>{saving?'Saving…':'Save business setup'}</button>
+    </div>
   </div>;
 }
 
@@ -3825,7 +3837,7 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,planInfo,onUpgrade,activ
             <div style={{fontSize:11,color:'#3B82F6',marginTop:4}}>Staff enter this ID when registering on the login page</div>
           </div>}
           <Fld label='Firm Name *'><input style={S.inp} value={f.name} onChange={e=>up('name')(e.target.value)} placeholder='Your Firm Name'/></Fld>
-          <Fld label='Business Type'><input style={S.inp} value={f.shoptype||''} onChange={e=>up('shoptype')(e.target.value)} placeholder='Wholesale Clothing'/></Fld>
+          <Fld label='Tagline on invoice'><input style={S.inp} value={f.shoptype||''} onChange={e=>up('shoptype')(e.target.value)} placeholder='Wholesale Clothing'/></Fld>
           <Fld label='GSTIN'><input style={S.inp} value={f.gstin||''} onChange={e=>up('gstin')(e.target.value)} placeholder='23AAAAA0000A1Z5'/></Fld>
           <Fld label='Mobile Number'><input style={S.inp} value={f.mobile||''} onChange={e=>up('mobile')(e.target.value)} placeholder='Mobile'/></Fld>
           <Fld label='Email (shown on invoice)'><input style={S.inp} value={f.email||''} onChange={e=>up('email')(e.target.value)} placeholder='firm@email.com'/></Fld>
@@ -3953,7 +3965,7 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,planInfo,onUpgrade,activ
     </div>
     </div>}
 
-    {settingsTab==='industry'&&<IndustrySetup firm={firm} saveFirm={saveFirm} S={S} mob={mob}/>}
+    {settingsTab==='industry'&&<IndustrySetup key={firm?.id} firm={firm} S={S} mob={mob}/>}
     {settingsTab==='security'&&<SecurityTab ses={ses}/>}
   </div>;}
 
