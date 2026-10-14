@@ -53,7 +53,7 @@ export async function POST(req) {
     const bill = {
       invoiceNo: b.invoice_no, date: b.created_at, customerName: b.customer_name, customerGST: b.customer_gst,
       customerAddr: b.customer_addr, total: +b.total, shipTo: b.ship_to || null, placeOfSupply: b.place_of_supply || '',
-      items: (b.bill_items || []).map(i => ({ name: i.name, articleNo: i.article_no, size: i.size, hsn: i.hsn, qty: +i.qty, rate: +i.rate, gstRate: +i.gst_rate, gstAmt: +i.gst_amt })),
+      items: (b.bill_items || []).map(i => ({ name: i.name, articleNo: i.article_no, size: i.size, hsn: i.hsn, qty: +i.qty, rate: +i.rate, gstRate: +i.gst_rate, gstAmt: +i.gst_amt, discount: +i.discount || 0 })),
     };
     const firm = { name: fs.name, gstin: fs.gstin, address: fs.address, pincode: fs.pincode, state: fs.state, stateCode: fs.state_code };
     const { payload, problems } = buildEwbPayload({ bill, firm, customer, transport });

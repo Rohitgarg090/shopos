@@ -1706,16 +1706,21 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   addBCRef.current=addBC; // keep ref in sync for keydown handler
   const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}if((cart.find(x=>x.id===p.id)?.qty||0)>=p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});};
   const uQty=(id,d)=>{const p=P.find(x=>x.id===id);const cur=cart.find(x=>x.id===id)?.qty||0;if(d>0&&p&&cur+d>p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');return;}setCart(c=>c.map(x=>x.id===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));};
-  const calc=()=>{let sub=0,gt=0;cart.forEach(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;sub+=base*c.qty;gt+=base*(c.gstRate/100)*c.qty;});const discAmt=+disc||0;if(isRel){const mk=sub*0.1;return{sub,gt:0,mk,disc:0,total:sub+mk};}return{sub,gt,mk:0,disc:discAmt,total:sub+gt-discAmt};};
+  // Discount is given before GST (GST Act s.15(3)): it is shared across lines by value and lowers each line's taxable value
+  const calc=()=>{const r2=n=>Math.round(n*100)/100;const lines=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;return{c,base,gross:base*c.qty};});const sub=lines.reduce((s,l)=>s+l.gross,0);
+    if(isRel){const mk=sub*0.1;return{sub,gt:0,mk,disc:0,taxable:sub,total:sub+mk,lines:lines.map(l=>({...l,disc:0,gst:0}))};}
+    const discAmt=r2(Math.min(Math.max(+disc||0,0),sub));let left=discAmt;
+    const out=lines.map((l,i)=>{const d=i===lines.length-1?left:r2(sub?discAmt*l.gross/sub:0);left=r2(left-d);return{...l,disc:d,gst:(l.gross-d)*(l.c.gstRate/100)};});
+    const gt=out.reduce((s,l)=>s+l.gst,0);return{sub,gt,mk:0,disc:discAmt,taxable:sub-discAmt,total:sub-discAmt+gt,lines:out};};
   const saveCust=async()=>{if(!cForm.name||!cForm.phone){showT('Name & phone required','err');return}const nc=await api.post('/api/customers',{...cForm,name:normalizeSupplierName(cForm.name)});setC(cs=>[nc,...cs]);setSel(nc);setCF({name:'',phone:'',shopname:'',gst:'',addr:'',email:''});setStep('items');setTimeout(()=>bcRef.current?.focus(),200);};
   const overStock=()=>{const o=cart.find(c=>{const p=P.find(x=>x.id===c.id);return p&&c.qty>p.qty;});if(o){const p=P.find(x=>x.id===o.id);showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock — reduce qty','err');return true;}return false;};
   const genBill=async()=>{const cName=normalizeSupplierName(isRel?rn||'Walk-in':sel?.name);if(!cName){showT('Enter name','err');return}if(cart.length===0){showT('Cart empty','err');return}if(!isRel&&shipDiff&&(!ship.name.trim()||!ship.addr.trim())){showT('Enter the delivery name and address, or choose "Ship to billing address"','err');return}if(overStock())return;setSub(true);
     const{sub,gt,mk,disc:discAmt,total}=calc();let inv='';try{inv=await(getNextInvoiceNo||nextInv)();}catch(e){/* server assigns the number */}
-    const items=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;const ga=isRel?0:base*(c.gstRate/100)*c.qty;return{name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?base*c.qty:base*(1+c.gstRate/100)*c.qty};});
+    const items=calc().lines.map(({c,base,gross,disc:ld,gst:ga})=>{return{discount:ld,name:c.name,sku:c.sku,cat:c.cat,size:c.size,color:c.color||'',articleNo:c.articleNo||'',hsn:c.hsn||'',qty:c.qty,rate:base,gstRate:isRel?0:c.gstRate,gstAmt:ga,total:isRel?gross:gross-ld+ga};});
     const extras={shipTo:!isRel&&shipDiff?ship:null,buyerOrderNo:buyerOrderNo.trim(),buyerOrderDate,destination:destination.trim()};
-    try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber,billDate,shipTo:extras.shipTo,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate:extras.buyerOrderDate,destination:extras.destination,placeOfSupply:isRel?'':posState});
+    try{const r=await api.post('/api/bills',{invoiceNo:inv,customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items,subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,transportName,lrNumber,billDate,shipTo:extras.shipTo,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate:extras.buyerOrderDate,destination:extras.destination,placeOfSupply:isRel?'':posState,discountBeforeTax:true});
     const fp=await api.get('/api/products');setP(Array.isArray(fp)?fp:[]);
-    const bill={id:r.id,invoiceNo:r.invoiceNo||inv,date:billDate<todayLocal()?new Date(billDate+'T12:00:00+05:30').toISOString():new Date().toISOString(),customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items:items.map(i=>({...i,gstAmt:i.gstAmt||0})),subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,biltyNo:'',transportName,lrNumber,shipTo:extras.shipTo?{...ship,gstin:ship.gstin.toUpperCase()}:null,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate,destination:extras.destination,placeOfSupply:r.placeOfSupply||'',gstType:r.gstType||'cgst_sgst'};
+    const bill={id:r.id,invoiceNo:r.invoiceNo||inv,date:billDate<todayLocal()?new Date(billDate+'T12:00:00+05:30').toISOString():new Date().toISOString(),customerId:sel?.id||null,customerName:cName,customerPhone:isRel?'':sel?.phone||'',customerGST:isRel?'':sel?.gst||'',customerEmail:sel?.email||'',customerAddr:sel?.addr||ri,isRelative:isRel,items:items.map(i=>({...i,gstAmt:i.gstAmt||0})),subtotal:sub,discount:discAmt,gst:gt,markup:mk,total,biltyNo:'',transportName,lrNumber,shipTo:extras.shipTo?{...ship,gstin:ship.gstin.toUpperCase()}:null,buyerOrderNo:extras.buyerOrderNo,buyerOrderDate,destination:extras.destination,placeOfSupply:r.placeOfSupply||'',gstType:r.gstType||'cgst_sgst',discountBeforeTax:true};
     setB(bs=>[bill,...bs]);setCart([]);setSel(null);setStep('cust');setIsRel(false);setRn('');setRi('');setDisc('');setTransportName('');setLrNumber('');setBillDate(todayLocal());setShipDiff(false);setShip(SHIP0);setBON('');setBOD('');setDest('');setPosState('');
     // Clear POS session storage after bill generated
     if(isBR){['pos_step','pos_sel','pos_isrel','pos_rn','pos_ri','shopos_cart'].forEach(k=>sessionStorage.removeItem(k));}
@@ -1743,9 +1748,10 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
     </div>
     <div style={{padding:'10px 14px',borderTop:'0.5px solid '+BORD}}>
       <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:MUT,marginBottom:2}}><span>Subtotal</span><span style={S.mono}>{fmt(sub)}</span></div>
-      {isRel?<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:AMB,marginBottom:2}}><span>Misc. Charges</span><span style={S.mono}>{fmt(mk)}</span></div>:<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:BL,marginBottom:2}}><span>GST</span><span style={S.mono}>{fmt(gt)}</span></div>}
-      {!isRel&&<div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}><span style={{fontSize:11,color:MUT,whiteSpace:'nowrap'}}>Discount Rs.</span><input style={{...S.inp,padding:'3px 7px',fontSize:12,flex:1}} type='number' value={disc} onChange={e=>setDisc(e.target.value)} placeholder='0'/></div>}
-      {discAmt>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:GR,marginBottom:2}}><span>- Discount</span><span style={S.mono}>-{fmt(discAmt)}</span></div>}
+      {!isRel&&<div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}><span style={{fontSize:11,color:MUT,whiteSpace:'nowrap'}}>Discount Rs.</span><input style={{...S.inp,padding:'3px 7px',fontSize:12,flex:1}} type='number' min='0' value={disc} onChange={e=>setDisc(e.target.value)} placeholder='0'/></div>}
+      {discAmt>0&&<><div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:GR,marginBottom:2}}><span>- Discount</span><span style={S.mono}>-{fmt(discAmt)}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:MUT,marginBottom:2}}><span>Taxable value</span><span style={S.mono}>{fmt(sub-discAmt)}</span></div></>}
+      {isRel?<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:AMB,marginBottom:2}}><span>Misc. Charges</span><span style={S.mono}>{fmt(mk)}</span></div>:<div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:BL,marginBottom:2}}><span>GST{discAmt>0?' (on taxable value)':''}</span><span style={S.mono}>{fmt(gt)}</span></div>}
       <div style={{display:'flex',justifyContent:'space-between',fontSize:15,fontWeight:800,paddingTop:6,borderTop:'0.5px solid '+BORD}}><span>Grand Total</span><span style={{...S.mono,color:GR,fontSize:16}}>{fmt(total)}</span></div>
       {step==='items'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'9px'}} onClick={()=>cart.length&&!overStock()?setStep('checkout'):null}>Proceed to Checkout</button>}
       {step==='checkout'&&<button style={{...S.btn('pri'),width:'100%',justifyContent:'center',marginTop:10,padding:'10px',fontSize:14}} onClick={genBillOnce} disabled={submitting||posBusy}>{submitting||posBusy?'Generating...':'Generate Bill'}</button>}
@@ -2027,10 +2033,11 @@ function Invoice({bill,firm,payments=[]}){
       <td style={{width:'45%',verticalAlign:'top'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><tbody>
           <tr><td style={{padding:'3px 7px',color:'#555'}}>Subtotal</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.subtotal)}</td></tr>
+          {bill.discountBeforeTax&&hasDiscount&&<><tr style={{color:GR}}><td style={{padding:'3px 7px'}}>Discount</td><td style={{padding:'3px 7px',textAlign:'right'}}>- {fmt(bill.discount)}</td></tr><tr><td style={{padding:'3px 7px',color:'#555',fontWeight:600}}>Taxable Value</td><td style={{padding:'3px 7px',textAlign:'right',fontWeight:600}}>{fmt(bill.subtotal-bill.discount)}</td></tr></>}
           {!bill.isRelative&&igst&&(bill.gst||0)>0&&<tr><td style={{padding:'3px 7px',color:'#555'}}>IGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.gst||0)}</td></tr>}
           {!bill.isRelative&&!igst&&(bill.gst||0)>0&&<><tr><td style={{padding:'3px 7px',color:'#555'}}>CGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr><tr><td style={{padding:'3px 7px',color:'#555'}}>SGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr></>}
           {bill.isRelative&&(bill.markup||0)>0&&<tr><td style={{padding:'3px 7px',color:'#555'}}>Other Charges</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.markup)}</td></tr>}
-          {hasDiscount&&<tr style={{color:GR}}><td style={{padding:'3px 7px'}}>Discount</td><td style={{padding:'3px 7px',textAlign:'right'}}>- {fmt(bill.discount)}</td></tr>}
+          {hasDiscount&&!bill.discountBeforeTax&&<tr style={{color:GR}}><td style={{padding:'3px 7px'}}>Discount</td><td style={{padding:'3px 7px',textAlign:'right'}}>- {fmt(bill.discount)}</td></tr>}
           <tr style={{background:'#1B3A6B',color:'#fff'}}><td style={{padding:'6px 7px',fontWeight:700}}>Grand Total</td><td style={{padding:'6px 7px',textAlign:'right',fontWeight:800,fontFamily:'monospace'}}>{fmt(bill.total)}</td></tr>
           <tr><td colSpan={2} style={{padding:'2px 7px',textAlign:'right',fontSize:9,fontStyle:'italic',color:'#888'}}>E. &amp; O.E.</td></tr>
           {paid>0&&<><tr><td style={{padding:'3px 7px',color:GR}}>Amount Paid</td><td style={{padding:'3px 7px',textAlign:'right',color:GR,fontWeight:600}}>{fmt(paid)}</td></tr><tr style={{background:'#FDF0F0'}}><td style={{padding:'4px 7px',color:RD,fontWeight:700}}>Balance Due</td><td style={{padding:'4px 7px',textAlign:'right',color:RD,fontWeight:800}}>{fmt(bal)}</td></tr></>}
@@ -2511,14 +2518,15 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
   const[toast,showT]=useToast();const[saving,setSaving]=useState(false);
 
   /* customer return: pick items from a bill */
-  const selectBill=b=>{setSelBill(b);setRetItems((b.items||[]).map(i=>({...i,retQty:0})));};
+  // Credit = what the customer paid per piece (after discount, incl. GST), not the bare rate
+  const selectBill=b=>{setSelBill(b);setRetItems((b.items||[]).map(i=>({...i,retQty:0,unitPaid:i.qty?Math.round((+i.total||0)/i.qty*100)/100:+i.rate||0})));};
   const updRetQty=(idx,qty)=>setRetItems(it=>it.map((x,i)=>i===idx?{...x,retQty:Math.min(+qty||0,x.qty)}:x));
   const doCustomerReturn=async()=>{
     const toReturn=retItems.filter(i=>i.retQty>0);
     if(toReturn.length===0){showT('Select at least one item to return','err');return}
     setSaving(true);
     try{
-      const items=toReturn.map(i=>({sku:i.sku,name:i.name,size:i.size||'',qty:i.retQty,rate:i.rate,total:i.retQty*i.rate}));
+      const items=toReturn.map(i=>({sku:i.sku,name:i.name,size:i.size||'',qty:i.retQty,rate:i.unitPaid,total:i.retQty*i.unitPaid}));
       const ret=await api.post('/api/returns',{type:'customer',billId:selBill.id,customerId:selBill.customerId,customerName:selBill.customerName,date:retDate,reason:retReason,items});
       setRet(rs=>[ret,...rs]);
       // Refresh products
@@ -2606,7 +2614,7 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
               return<div key={idx} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'0.5px solid #f0ede8'}}>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:12}}>{item.name}{prod?.articleNo&&<span style={{fontSize:10,color:MUT,marginLeft:6}}>({prod.articleNo})</span>}</div>
-                  <div style={{fontSize:10,color:MUT}}>{item.cat} · Size: {item.size} · Qty: {item.qty} pcs · Sold: {fmt(item.rate)} each{prod?.price&&prod.price!==item.rate?` · Cost: ${fmt(prod.price)}`:''}</div>
+                  <div style={{fontSize:10,color:MUT}}>{item.cat} · Size: {item.size} · Qty: {item.qty} pcs · Sold: {fmt(item.unitPaid??item.rate)} each{(item.gstRate||0)>0?' incl. GST':''}{prod?.price&&prod.price!==item.rate?` · Cost: ${fmt(prod.price)}`:''}</div>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                   <span style={{fontSize:11,color:MUT}}>Return qty:</span>
@@ -2616,7 +2624,7 @@ function Returns({P,setP,B,C,Ret,setRet,SI,mob}){
               </div>;
             })}
             {retItems.some(i=>i.retQty>0)&&<div style={{marginTop:12,padding:'8px 12px',background:GRL,borderRadius:7,fontSize:12,color:GR,fontWeight:600}}>
-              Returning: {retItems.filter(i=>i.retQty>0).reduce((s,i)=>s+i.retQty,0)} pcs · Credit: {fmt(retItems.reduce((s,i)=>s+i.retQty*i.rate,0))}
+              Returning: {retItems.filter(i=>i.retQty>0).reduce((s,i)=>s+i.retQty,0)} pcs · Credit: {fmt(retItems.reduce((s,i)=>s+i.retQty*(i.unitPaid||0),0))}
             </div>}
             <button style={{...S.btn('suc'),marginTop:12,width:'100%',justifyContent:'center'}} onClick={doCustomerReturn} disabled={saving}>{saving?'Processing...':'Confirm Customer Return'}</button>
           </div>}

@@ -12,6 +12,10 @@ alter table public.bills add column if not exists buyer_order_date date;
 alter table public.bills add column if not exists destination text not null default '';
 alter table public.bills add column if not exists place_of_supply text not null default '';  -- state name; '' = seller's state
 alter table public.bills add column if not exists gst_type text default 'cgst_sgst';           -- 'igst' when supplied to another state
+-- Discount before GST: each line stores its share; taxable value = rate x qty - discount.
+-- Older bills (false) took the discount off the final total after tax.
+alter table public.bills add column if not exists discount_before_tax boolean not null default false;
+alter table public.bill_items add column if not exists discount numeric not null default 0;
 
 -- 1. Final safety net: an invoice number can exist only once per firm
 create unique index if not exists bills_firm_invoice_unique
@@ -78,7 +82,7 @@ begin
   insert into bills (invoice_no, customer_id, customer_name, customer_phone, customer_gst, customer_email,
                      customer_addr, is_relative, subtotal, discount, gst_total, markup, total,
                      transport_name, lr_number, firm_id, created_at,
-                     ship_to, buyer_order_no, buyer_order_date, destination, place_of_supply, gst_type)
+                     ship_to, buyer_order_no, buyer_order_date, destination, place_of_supply, gst_type, discount_before_tax)
   values (v_no, nullif(p_bill->>'customer_id', ''), p_bill->>'customer_name', coalesce(p_bill->>'customer_phone', ''),
           coalesce(p_bill->>'customer_gst', ''), coalesce(p_bill->>'customer_email', ''), coalesce(p_bill->>'customer_addr', ''),
           coalesce((p_bill->>'is_relative')::boolean, false), coalesce((p_bill->>'subtotal')::numeric, 0),
@@ -88,14 +92,15 @@ begin
           case when jsonb_typeof(p_bill->'ship_to') = 'object' then p_bill->'ship_to' end,
           coalesce(p_bill->>'buyer_order_no', ''), nullif(p_bill->>'buyer_order_date', '')::date,
           coalesce(p_bill->>'destination', ''), coalesce(p_bill->>'place_of_supply', ''),
-          case when p_bill->>'gst_type' = 'igst' then 'igst' else 'cgst_sgst' end)
+          case when p_bill->>'gst_type' = 'igst' then 'igst' else 'cgst_sgst' end,
+          coalesce((p_bill->>'discount_before_tax')::boolean, false))
   returning bills.id into v_id;
 
-  insert into bill_items (bill_id, product_sku, name, cat, size, color, article_no, hsn, qty, rate, gst_rate, gst_amt, total)
+  insert into bill_items (bill_id, product_sku, name, cat, size, color, article_no, hsn, qty, rate, gst_rate, gst_amt, total, discount)
   select v_id, nullif(e->>'sku', ''), e->>'name', e->>'cat', e->>'size', coalesce(e->>'color', ''),
          coalesce(e->>'article_no', ''), coalesce(e->>'hsn', ''), (e->>'qty')::numeric::integer,
          coalesce((e->>'rate')::numeric, 0), coalesce((e->>'gst_rate')::numeric, 0)::integer,
-         coalesce((e->>'gst_amt')::numeric, 0), coalesce((e->>'total')::numeric, 0)
+         coalesce((e->>'gst_amt')::numeric, 0), coalesce((e->>'total')::numeric, 0), coalesce((e->>'discount')::numeric, 0)
   from jsonb_array_elements(p_items) e;
 
   update products p set qty = p.qty - x.need

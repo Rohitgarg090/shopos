@@ -81,7 +81,7 @@ export async function GET(req) {
     // Get bills (sales) for this firm
     const { data: bills, error } = await supabase
       .from('bills')
-      .select('id, invoice_no, created_at, customer_name, customer_gst, subtotal, gst_total, gst_type, total, place_of_supply, status')
+      .select('id, invoice_no, created_at, customer_name, customer_gst, subtotal, discount, discount_before_tax, gst_total, gst_type, total, place_of_supply, status')
       .eq('firm_id', firmId)
       .neq('status', 'cancelled')
       .order('created_at', { ascending: false });
@@ -113,7 +113,8 @@ export async function GET(req) {
       const items = billItems.filter(item => item.bill_id === bill.id);
       const itemDesc = items.map(i => `${i.name || ''} (Qty: ${i.qty})`).join('; ') || 'N/A';
 
-      const subtotal = bill.subtotal || 0;
+      // Taxable value: before-GST discounts reduce it; older bills took the discount after tax
+      const subtotal = (bill.subtotal || 0) - (bill.discount_before_tax ? (bill.discount || 0) : 0);
       const gstTotal = bill.gst_total || 0;
       const gstType = bill.gst_type || 'cgst_sgst';
 

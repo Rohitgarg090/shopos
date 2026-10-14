@@ -26,7 +26,7 @@ const shape = b => ({
   ewbDate: b.ewb_date||null, ewbCancelledNo: b.ewb_cancelled_no||'', ewbCancelledAt: b.ewb_cancelled_at||null, ewbCancelReason: b.ewb_cancel_reason||'',
   status: b.status||'active', cancelledAt: b.cancelled_at||null, cancelReason: b.cancel_reason||'',
   shipTo: b.ship_to||null, buyerOrderNo: b.buyer_order_no||'', buyerOrderDate: b.buyer_order_date||'', destination: b.destination||'',
-  placeOfSupply: b.place_of_supply||'', gstType: b.gst_type==='igst'?'igst':'cgst_sgst',
+  placeOfSupply: b.place_of_supply||'', gstType: b.gst_type==='igst'?'igst':'cgst_sgst', discountBeforeTax: !!b.discount_before_tax,
 });
 
 export async function GET(req) {
@@ -43,7 +43,7 @@ export async function GET(req) {
     items: (b.bill_items||[]).map(i => ({
       name: i.name, sku: i.product_sku, cat: i.cat, size: i.size,
       color: i.color||'', articleNo: i.article_no||'', hsn: i.hsn||'',
-      qty: i.qty, rate: +i.rate, gstRate: i.gst_rate, gstAmt: +i.gst_amt, total: +i.total,
+      qty: i.qty, rate: +i.rate, gstRate: i.gst_rate, gstAmt: +i.gst_amt, total: +i.total, discount: +i.discount||0,
     })),
   })));
 }
@@ -80,11 +80,12 @@ export async function POST(req) {
     markup: b.markup || 0, total: b.total, transport_name: b.transportName || '', lr_number: b.lrNumber || '',
     bill_date: /^\d{4}-\d{2}-\d{2}$/.test(b.billDate || '') ? b.billDate : '',
     ...extras.value,
-    place_of_supply: placeOfSupply, gst_type: gstType,
+    place_of_supply: placeOfSupply, gst_type: gstType, discount_before_tax: !!b.discountBeforeTax,
   };
   const itemRows = b.items.map(i => ({
     sku: i.sku || '', name: i.name, cat: i.cat, size: i.size, color: i.color || '', article_no: i.articleNo || '',
     hsn: i.hsn || '', qty: i.qty, rate: i.rate, gst_rate: i.gstRate, gst_amt: i.gstAmt, total: i.total,
+    discount: b.discountBeforeTax ? Math.max(0, +i.discount || 0) : 0,
   }));
 
   // One database transaction: next invoice number, bill, items and stock — all or nothing
@@ -107,7 +108,7 @@ export async function POST(req) {
   const { data: bill, error: bErr } = await c.sb.from('bills').insert([{ ...plainRow, invoice_no: b.invoiceNo, firm_id: c.firmId,
     ...(bill_date && bill_date < new Date().toISOString().slice(0, 10) ? { created_at: bill_date + 'T12:00:00+05:30' } : {}) }]).select().single();
   if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 });
-  const { error: iErr } = await c.sb.from('bill_items').insert(itemRows.map(({ sku, ...i }) => ({ ...i, bill_id: bill.id, product_sku: sku || null })));
+  const { error: iErr } = await c.sb.from('bill_items').insert(itemRows.map(({ sku, discount, ...i }) => ({ ...i, bill_id: bill.id, product_sku: sku || null })));
   if (iErr) {
     await c.sb.from('bills').delete().eq('id', bill.id);
     return NextResponse.json({ error: iErr.message }, { status: 500 });
