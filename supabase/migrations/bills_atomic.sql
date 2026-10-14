@@ -16,6 +16,8 @@ alter table public.bills add column if not exists gst_type text default 'cgst_sg
 -- Older bills (false) took the discount off the final total after tax.
 alter table public.bills add column if not exists discount_before_tax boolean not null default false;
 alter table public.bill_items add column if not exists discount numeric not null default 0;
+-- Firm setting: catalog prices already include GST (default: no, GST is added on top)
+alter table public.firm_settings add column if not exists prices_include_gst boolean not null default false;
 
 -- 1. Final safety net: an invoice number can exist only once per firm
 create unique index if not exists bills_firm_invoice_unique

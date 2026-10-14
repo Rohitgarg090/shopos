@@ -1637,7 +1637,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
       if(cart.length>0){sessionStorage.setItem('shopos_cart',JSON.stringify(cart));sessionStorage.setItem('shopos_cart_active','1');}
       else{sessionStorage.removeItem('shopos_cart');sessionStorage.removeItem('shopos_cart_active');}
     }
-  },[cart]);const[bc,setBc]=useState('');const[catF,setCatF]=useState('All');const[cSrch,setCS]=useState('');const[gstMode,setGM]=useState('excl');const[custSrch,setCuS]=useState('');const[disc,setDisc]=useState('');
+  },[cart]);const[bc,setBc]=useState('');const[catF,setCatF]=useState('All');const[cSrch,setCS]=useState('');const gstMode=firm?.pricesIncludeGst?'incl':'excl';/* firm setting: catalog prices GST-inclusive? */const[custSrch,setCuS]=useState('');const[disc,setDisc]=useState('');
   const[transportName,setTransportName]=useState('');const[lrNumber,setLrNumber]=useState('');
   const SHIP0={name:'',gstin:'',addr:'',city:'',state:'',pincode:''};
   const[posState,setPosState]=useState('');   // '' = firm's own state
@@ -1735,7 +1735,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   const Cart=()=><div style={{...S.card,display:'flex',flexDirection:'column',padding:0,...(!mob?{position:'sticky',top:65,alignSelf:'start'}:{})}}>
     <div style={{padding:'10px 14px',borderBottom:'0.5px solid '+BORD,fontWeight:700,fontSize:13,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <span>Cart ({cart.reduce((s,c)=>s+c.qty,0)} pcs)</span>
-      <select style={{...S.inp,width:130,fontSize:11,padding:'3px 8px'}} value={gstMode} onChange={e=>setGM(e.target.value)}><option value='excl'>Price excl. GST</option><option value='incl'>Price incl. GST</option></select>
+      {!isRel&&<span title='Change in Settings → Account & Firm' style={{fontSize:10.5,fontWeight:600,color:gstMode==='incl'?PUR:BL,background:gstMode==='incl'?PURL:BLL,padding:'3px 8px',borderRadius:10}}>{gstMode==='incl'?'Prices incl. GST':'Prices + GST'}</span>}
     </div>
     <div style={{overflowY:'auto',maxHeight:mob?200:300}}>
       {cart.length===0?<MT msg='Scan barcode or tap product'/>:cart.map(c=>{const p=P.find(x=>x.id===c.id);if(!p)return null;const base=gstMode==='incl'?p.price/(1+p.gst/100):p.price;const line=isRel?base*c.qty:base*(1+p.gst/100)*c.qty;return<div key={c.id} style={{padding:'7px 12px',borderBottom:'0.5px solid #f0ede8',fontSize:12}}>
@@ -3958,6 +3958,7 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,planInfo,onUpgrade,activ
         <div style={S.card}>
           <div style={S.h3}>Invoice Settings</div>
           <Fld label='Invoice Prefix'><input style={S.inp} value={f.invoicePrefix||'INV'} onChange={e=>up('invoicePrefix')(e.target.value)} placeholder='INV'/></Fld>
+          <Fld label='Catalog prices'><select style={S.inp} value={f.pricesIncludeGst?'incl':'excl'} onChange={e=>up('pricesIncludeGst')(e.target.value==='incl')}><option value='excl'>Before GST — GST is added on the bill (wholesale)</option><option value='incl'>Include GST — GST is inside the price (retail MRP)</option></select></Fld>
           <div style={{fontSize:11,color:MUT,marginTop:2,marginBottom:12}}>Format: INV/2025/0001, INV/2025/0002...</div>
           <div style={S.h3}>Bank Details (printed on invoice)</div>
           <Fld label='Bank Name'><input style={S.inp} value={f.bankName||''} onChange={e=>up('bankName')(e.target.value)} placeholder='SBI, HDFC...'/></Fld>
