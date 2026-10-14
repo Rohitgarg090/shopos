@@ -35,7 +35,7 @@ const LANDING_CSS = `
 .shopos-landing *, .shopos-landing *::before, .shopos-landing *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .shopos-landing { scroll-behavior: smooth; }
 .shopos-landing {
-  font-family: var(--font-dm), 'DM Sans', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   background: var(--white);
   color: var(--ink);
   font-size: 16px;
@@ -57,7 +57,7 @@ const LANDING_CSS = `
   border-bottom: 1px solid var(--border);
 }
 .shopos-landing .logo {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-weight: 800;
   font-size: 22px;
   color: var(--ink);
@@ -92,7 +92,7 @@ const LANDING_CSS = `
   border-radius: var(--radius);
   font-size: 14px;
   font-weight: 500;
-  font-family: var(--font-dm), 'DM Sans', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   cursor: pointer;
   text-decoration: none;
   transition: all 0.2s;
@@ -193,7 +193,7 @@ const LANDING_CSS = `
   background: var(--emerald);
 }
 .shopos-landing .hero h1 {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: clamp(42px, 7vw, 82px);
   font-weight: 800;
   line-height: 1.05;
@@ -248,7 +248,7 @@ const LANDING_CSS = `
   align-items: center;
 }
 .shopos-landing .hero-stat-num {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 28px;
   font-weight: 800;
   color: var(--ink);
@@ -309,7 +309,7 @@ const LANDING_CSS = `
   border-right: 1px solid rgba(255,255,255,0.05);
 }
 .shopos-landing .dash-logo {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-weight: 800;
   font-size: 16px;
   color: #fff;
@@ -352,7 +352,7 @@ const LANDING_CSS = `
   margin-bottom: 16px;
 }
 .shopos-landing .dash-title {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: #fff;
@@ -376,7 +376,7 @@ const LANDING_CSS = `
   padding: 12px;
 }
 .shopos-landing .dm-label { font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px; }
-.shopos-landing .dm-value { font-family: var(--font-syne), 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: #fff; line-height: 1; }
+.shopos-landing .dm-value { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 18px; font-weight: 700; color: #fff; line-height: 1; }
 .shopos-landing .dm-change { font-size: 10px; margin-top: 3px; }
 .shopos-landing .dm-up { color: #34d399; }
 .shopos-landing .dm-down { color: #f87171; }
@@ -418,7 +418,7 @@ const LANDING_CSS = `
 }
 .shopos-landing .dir-num { font-size: 10px; color: rgba(255,255,255,0.7); }
 .shopos-landing .dir-name { font-size: 11px; color: rgba(255,255,255,0.8); font-weight: 500; }
-.shopos-landing .dir-amt { font-size: 11px; color: #34d399; font-family: var(--font-syne), 'Syne', sans-serif; font-weight: 600; }
+.shopos-landing .dir-amt { font-size: 11px; color: #34d399; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 600; }
 .shopos-landing .status-pill {
   font-size: 9px;
   padding: 2px 6px;
@@ -448,7 +448,7 @@ const LANDING_CSS = `
   border-radius: 2px;
 }
 .shopos-landing h2.section-title {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: clamp(30px, 4vw, 48px);
   font-weight: 800;
   letter-spacing: -1.5px;
@@ -534,7 +534,7 @@ const LANDING_CSS = `
   color: rgba(255,255,255,0.8);
 }
 .shopos-landing .feature-title {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.5px;
@@ -749,7 +749,7 @@ const LANDING_CSS = `
   margin-top: 2px;
 }
 .shopos-landing .fli-title {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
@@ -798,7 +798,7 @@ const LANDING_CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-weight: 800;
   font-size: 18px;
   color: var(--accent);
@@ -814,7 +814,7 @@ const LANDING_CSS = `
 }
 .shopos-landing .ws-icon { font-size: 22px; }
 .shopos-landing .ws-title {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
@@ -873,7 +873,7 @@ const LANDING_CSS = `
 .shopos-landing .sc-blue { background: rgba(37,99,235,0.1); }
 .shopos-landing .sc-gray { background: rgba(107,107,128,0.1); }
 .shopos-landing .sc-name {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
@@ -1026,7 +1026,7 @@ const LANDING_CSS = `
   margin-bottom: 24px;
 }
 .shopos-landing .inv-dash-title {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: var(--ink);
@@ -1202,7 +1202,7 @@ const LANDING_CSS = `
   letter-spacing: 0.5px;
 }
 .shopos-landing .plan-name {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1240,7 +1240,7 @@ const LANDING_CSS = `
 }
 .shopos-landing .pricing-card.featured .price-currency { color: rgba(255,255,255,0.7); }
 .shopos-landing .price-amount {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 52px;
   font-weight: 800;
   letter-spacing: -2px;
@@ -1375,7 +1375,7 @@ const LANDING_CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-weight: 800;
   font-size: 14px;
   color: white;
@@ -1401,7 +1401,7 @@ const LANDING_CSS = `
 .shopos-landing .compare-table th {
   padding: 16px 20px;
   text-align: center;
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-weight: 700;
   font-size: 14px;
   color: var(--ink);
@@ -1521,7 +1521,7 @@ const LANDING_CSS = `
   max-width: 280px;
 }
 .shopos-landing .footer-col-title {
-  font-family: var(--font-syne), 'Syne', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;

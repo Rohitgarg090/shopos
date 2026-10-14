@@ -1,6 +1,5 @@
 import Landing from '@/components/Landing';
 import HomeGate from './home-gate';
-import { syne, dmSans } from './fonts';
 import { SITE } from '@/lib/site';
 
 export const metadata = {
@@ -36,9 +35,7 @@ export default function Page() {
         <div className="auth-wait flex items-center justify-center h-screen bg-gradient-to-br from-slate-950 to-slate-900">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500" />
         </div>
-        <div className={`${syne.variable} ${dmSans.variable}`}>
-          <Landing />
-        </div>
+        <Landing />
       </HomeGate>
     </>
   );
