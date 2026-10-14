@@ -127,7 +127,7 @@ export default function BillingDashboard() {
 
       if (!createOrderRes.ok) {
         const errData = await createOrderRes.json();
-        setError(errData.error || 'Failed to create order');
+        setError((typeof errData.error === 'string' ? errData.error : errData.error?.description) || 'Failed to create order');
         setLoading(false);
         return;
       }

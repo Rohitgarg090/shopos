@@ -141,6 +141,11 @@ export async function POST(req) {
     const timestamp = Date.now().toString().slice(-8);
     const receipt = `${orgRow.id.slice(0, 20)}_${timestamp}`.slice(0, 40);
 
+    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+      console.error('[create-order] RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set');
+      return Response.json({ error: 'Payments are not configured yet. Please contact support.' }, { status: 503 });
+    }
+
     console.log('[create-order] Creating Razorpay order...');
     console.log('[create-order] Receipt:', receipt, '| KeyID check:', RAZORPAY_KEY_ID ? '✓ SET' : '✗ MISSING');
 
@@ -166,7 +171,12 @@ export async function POST(req) {
 
     if (!response.ok) {
       console.log('[create-order] ✗ Razorpay error:', response.status, razorpayOrder.error || razorpayOrder);
-      return Response.json({ error: razorpayOrder.error || 'Failed to create order' }, { status: 400 });
+      // Razorpay sends { error: { code, description } } — pass a readable message, not the object
+      const rz = razorpayOrder?.error || {};
+      const msg = response.status === 401
+        ? 'Payment gateway rejected our keys (Razorpay: ' + (rz.description || 'authentication failed') + '). Please contact support.'
+        : 'Could not start payment: ' + (rz.description || rz.code || 'Razorpay error ' + response.status);
+      return Response.json({ error: msg }, { status: 502 });
     }
 
     console.log('[create-order] ✓ Razorpay order created:', razorpayOrder.id);

@@ -38,7 +38,7 @@ export default function BillingPopup({ isOpen, onClose, reason, planInfo, onPaid
         body: JSON.stringify({ plan: plan.id, billingPeriod: 'annual', couponCode: couponCode.trim() || null }),
       });
       const order = await res.json().catch(() => ({}));
-      if (!res.ok || !order.orderId) throw new Error(order.error || 'Could not start payment');
+      if (!res.ok || !order.orderId) throw new Error((typeof order.error === 'string' ? order.error : order.error?.description) || 'Could not start payment');
       if (!window.Razorpay) throw new Error('Payment window could not load — check your internet and retry');
 
       const rzp = new window.Razorpay({
