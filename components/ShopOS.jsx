@@ -837,18 +837,31 @@ function useLabelOpts(firm){
   const[price,setPrice]=useState(true);const[name,setName]=useState(firm?.labelName||firm?.name||'');
   const[pc,setPc]=useState(()=>{try{return JSON.parse(localStorage.getItem('shopos_label_pricecode'))||{on:false,front:2,back:2}}catch{return{on:false,front:2,back:2}}});
   useEffect(()=>{try{localStorage.setItem('shopos_label_pricecode',JSON.stringify(pc))}catch{}},[pc]);
+  const[custom,setCustom]=useState(()=>{try{return JSON.parse(localStorage.getItem('shopos_label_custom'))||{w:75,h:38}}catch{return{w:75,h:38}}});
+  const[rotate,setRotate]=useState(()=>ls('shopos_label_rotate','0')==='1');
+  useEffect(()=>{try{localStorage.setItem('shopos_label_custom',JSON.stringify(custom));localStorage.setItem('shopos_label_rotate',rotate?'1':'0')}catch{}},[custom,rotate]);
   useEffect(()=>{setName(firm?.labelName||firm?.name||'')},[firm?.id,firm?.labelName,firm?.name]);
   useEffect(()=>{try{localStorage.setItem('shopos_label_size',size);localStorage.setItem('shopos_label_style',style)}catch{}},[size,style]);
-  return{size,setSize,style,setStyle,price,setPrice,name,setName,pc,setPc};
+  return{size,setSize,style,setStyle,price,setPrice,name,setName,pc,setPc,custom,setCustom,rotate,setRotate};
 }
 function LabelOptions({o,mob,S}){
   return<>
     <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr 1fr',gap:10,marginBottom:10}}>
-      <Fld label='Sticker size'><select style={S.inp} value={o.size} onChange={e=>o.setSize(e.target.value)}>{LABEL_SIZE_OPTS.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></Fld>
+      <Fld label='Sticker size'><select style={S.inp} value={o.size} onChange={e=>o.setSize(e.target.value)}>{LABEL_SIZE_OPTS.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value='custom'>Custom size…</option></select>
+        {o.size==='custom'&&<div style={{display:'flex',alignItems:'center',gap:6,marginTop:6,fontSize:12}}><input type='number' min='20' max='150' value={o.custom.w} onChange={e=>o.setCustom(c=>({...c,w:e.target.value}))} style={{...S.inp,width:64,margin:0,padding:'5px 7px'}}/>×<input type='number' min='20' max='150' value={o.custom.h} onChange={e=>o.setCustom(c=>({...c,h:e.target.value}))} style={{...S.inp,width:64,margin:0,padding:'5px 7px'}}/><span style={{color:MUT}}>mm (width × height)</span></div>}</Fld>
       <Fld label='Code type'><select style={S.inp} value={o.style} onChange={e=>o.setStyle(e.target.value)}><option value='barcode'>Barcode (USB / laser scanner)</option><option value='qr'>QR code (phone camera scan)</option></select></Fld>
       <Fld label='Name on label' span2={!mob}><input style={S.inp} value={o.name} maxLength={40} onChange={e=>o.setName(e.target.value)} placeholder='Shop name printed on every label'/></Fld>
     </div>
+    <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:6,cursor:'pointer'}}><input type='checkbox' checked={o.rotate} onChange={e=>o.setRotate(e.target.checked)}/>Rotate 90° — tick only if your printer prints the label sideways</label>
     <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:o.price?6:12,cursor:'pointer'}}><input type='checkbox' checked={o.price} onChange={e=>o.setPrice(e.target.checked)}/>Show price on label</label>
+    <details style={{fontSize:11.5,color:MUT,marginBottom:10}}><summary style={{cursor:'pointer',fontWeight:600,color:BL}}>Printing tips (avoid wasted stickers)</summary>
+      <ol style={{margin:'6px 0 0',paddingLeft:18,lineHeight:1.6}}>
+        <li>Pick the same size as your sticker roll above (e.g. 75 × 38).</li>
+        <li>In the print window: <strong>Paper size</strong> = your label size, <strong>Margins</strong> = None, <strong>Scale</strong> = 100% / Actual size (not "Fit").</li>
+        <li>If that label size isn't listed, add it once in your printer settings (Windows: Printing Preferences → Page Setup → New; Mac: Paper Size → Manage Custom Sizes).</li>
+        <li>Still printing sideways or across two stickers? Tick <strong>Rotate 90°</strong> and print again.</li>
+      </ol>
+    </details>
     {o.price&&<div style={{padding:'8px 10px',background:BG,border:'0.5px solid '+BORD,borderRadius:8,marginBottom:12}}>
       <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,cursor:'pointer'}}><input type='checkbox' checked={o.pc.on} onChange={e=>o.setPc(p=>({...p,on:e.target.checked}))}/>Hide price in a code (random digits before and after)</label>
       {o.pc.on&&<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:8,fontSize:12}}>
@@ -864,8 +877,9 @@ async function downloadLabelPdf(labels,o,firm,onSaveLabelName){
   const n=o.name.trim();
   if(onSaveLabelName&&n!==(firm?.labelName||firm?.name||'').trim()){try{await onSaveLabelName(n);}catch(e){console.error('[labels] save name',e)}}
   const{generateLabelsPDF}=await import('@/lib/labels');
-  const doc=await generateLabelsPDF({labels,firmName:n,sizeId:o.size,style:o.style,showPrice:o.price,code:o.price&&o.pc.on?{front:o.pc.front,back:o.pc.back}:null});
-  doc.save(`labels_${o.size}mm_${labels.length}.pdf`);
+  const cw=Math.min(150,Math.max(20,+o.custom.w||0)),ch=Math.min(150,Math.max(20,+o.custom.h||0));
+  const doc=await generateLabelsPDF({labels,firmName:n,sizeId:o.size,style:o.style,showPrice:o.price,code:o.price&&o.pc.on?{front:o.pc.front,back:o.pc.back}:null,custom:{w:cw,h:ch},rotate:o.rotate});
+  doc.save(`labels_${o.size==='custom'?cw+'x'+ch:o.size}mm${o.rotate?'_rotated':''}_${labels.length}.pdf`);
 }
 
 function Catalog({P,setP,mob,firm,onSaveLabelName}){
