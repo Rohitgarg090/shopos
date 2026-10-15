@@ -11,8 +11,10 @@ export const LEGAL_LINKS = [
 ];
 
 // Business identity line used in the legal text: "ShopOS (operated by X, address)" when the details are filled in lib/site.js
+export const owner = () =>
+  SITE.legalName ? SITE.legalName + (SITE.proprietor ? `, a sole proprietorship of ${SITE.proprietor}` : '') : SITE.proprietor || SITE.name;
 export const operator = () =>
-  SITE.legalName ? `${SITE.name}, operated by ${SITE.legalName}${SITE.address ? `, ${SITE.address}` : ''}` : SITE.name;
+  SITE.legalName || SITE.proprietor ? `${SITE.name}, operated by ${owner()}${SITE.address ? ` (${SITE.address})` : ''}` : SITE.name;
 
 export function H2({ children }) {
   return <h2 style={{ fontSize: 19, fontWeight: 700, color: C.ink, margin: '34px 0 10px', letterSpacing: -0.2 }}>{children}</h2>;

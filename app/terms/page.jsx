@@ -56,7 +56,7 @@ export default function Terms() {
       <P>You can stop using {SITE.name} at any time and ask us to delete your account. Please export your records first. We may end the service for an account that breaks these terms, or if we stop offering the service, with at least 30 days’ notice and a chance to export your data.</P>
 
       <H2>10. Governing law</H2>
-      <P>These terms are governed by the laws of India. Disputes will be handled by the courts having jurisdiction over our registered office{SITE.address ? ` (${SITE.address})` : ''}.</P>
+      <P>These terms are governed by the laws of India. Any dispute will be handled by the courts at {SITE.jurisdiction || 'the place of our business address'}.</P>
 
       <H2>11. Changes and contact</H2>
       <P>We may update these terms; the “Last updated” date shows the current version, and we will tell you about important changes. Questions: <Mail />.</P>

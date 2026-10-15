@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import LegalPage, { H2, P, Mail } from '@/components/LegalPage';
+import LegalPage, { H2, P, Mail, owner } from '@/components/LegalPage';
 import { SITE } from '@/lib/site';
 
 export const metadata = {
@@ -19,7 +19,7 @@ export default function Contact() {
     <LegalPage title="Contact us" intro="Questions about ShopOS, your plan or your account? We’re happy to help.">
       {row('Email', <Mail />)}
       {SITE.phone ? row('Phone', <a href={`tel:${SITE.phone.replace(/\s/g, '')}`} style={{ color: '#1d4ed8' }}>{SITE.phone}</a>) : null}
-      {SITE.legalName ? row('Business name', SITE.legalName) : null}
+      {SITE.legalName || SITE.proprietor ? row('Business', owner()) : null}
       {SITE.address ? row('Address', SITE.address) : null}
       {SITE.grievanceOfficer ? row('Grievance Officer', SITE.grievanceOfficer) : null}
       <H2>See it in action</H2>
