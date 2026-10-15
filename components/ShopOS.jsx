@@ -853,6 +853,10 @@ function LabelOptions({o,mob,S}){
       <Fld label='Name on label' span2={!mob}><input style={S.inp} value={o.name} maxLength={40} onChange={e=>o.setName(e.target.value)} placeholder='Shop name printed on every label'/></Fld>
     </div>
     <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:6,cursor:'pointer'}}><input type='checkbox' checked={o.rotate} onChange={e=>o.setRotate(e.target.checked)}/>Rotate 90° — tick only if your printer prints the label sideways</label>
+    {(()=>{const L=o.size==='custom'?{w:+o.custom.w||0,h:+o.custom.h||0}:(LABEL_SIZE_OPTS.find(x=>x.id===o.size)||LABEL_SIZE_OPTS[0]);const pw=o.rotate?L.h:L.w,ph=o.rotate?L.w:L.h;
+      return<div style={{fontSize:11.5,marginBottom:8,padding:'6px 9px',borderRadius:7,background:o.rotate?AMBL:BG,color:o.rotate?AMB:MUT,border:'0.5px solid '+(o.rotate?AMB+'60':BORD)}}>
+        PDF page: <strong>{pw} × {ph} mm</strong>{o.rotate?' — rotated (tall). If your printer feeds labels normally, this uses extra stickers: untick Rotate.':' — same shape as your sticker.'}
+      </div>;})()}
     <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:o.price?6:12,cursor:'pointer'}}><input type='checkbox' checked={o.price} onChange={e=>o.setPrice(e.target.checked)}/>Show price on label</label>
     <details style={{fontSize:11.5,color:MUT,marginBottom:10}}><summary style={{cursor:'pointer',fontWeight:600,color:BL}}>Printing tips (avoid wasted stickers)</summary>
       <ol style={{margin:'6px 0 0',paddingLeft:18,lineHeight:1.6}}>
