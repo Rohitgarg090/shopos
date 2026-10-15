@@ -860,7 +860,7 @@ function LabelOptions({o,mob,S}){
     <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,marginBottom:o.price?6:12,cursor:'pointer'}}><input type='checkbox' checked={o.price} onChange={e=>o.setPrice(e.target.checked)}/>Show price on label</label>
     <details style={{fontSize:11.5,color:MUT,marginBottom:10}}><summary style={{cursor:'pointer',fontWeight:600,color:BL}}>Printing tips (avoid wasted stickers)</summary>
       <ol style={{margin:'6px 0 0',paddingLeft:18,lineHeight:1.6}}>
-        <li>Pick the same size as your sticker roll above (e.g. 75 × 38).</li>
+        <li>Pick the same size as your sticker roll above (e.g. 75 × 38) and use <strong>Print labels</strong> — it opens in the browser's PDF viewer. Avoid Mac Preview: its rotate button turns the page and it prints it that way.</li>
         <li>In the print window: <strong>Paper size</strong> = your label size, <strong>Margins</strong> = None, <strong>Scale</strong> = 100% / Actual size (not "Fit").</li>
         <li>If that label size isn't listed, add it once in your printer settings (Windows: Printing Preferences → Page Setup → New; Mac: Paper Size → Manage Custom Sizes).</li>
         <li>Still printing sideways or across two stickers? Tick <strong>Rotate 90°</strong> and print again.</li>
@@ -877,14 +877,19 @@ function LabelOptions({o,mob,S}){
   </>;
 }
 // Saves the label name to firm settings when it was changed, then downloads the PDF
-async function downloadLabelPdf(labels,o,firm,onSaveLabelName){
+// win: a tab opened synchronously on the Print click (browsers block pop-ups opened after an await).
+// Printing from the browser's own PDF viewer avoids desktop viewers that rotate or scale the page.
+async function downloadLabelPdf(labels,o,firm,onSaveLabelName,win=null){
   const n=o.name.trim();
   if(onSaveLabelName&&n!==(firm?.labelName||firm?.name||'').trim()){try{await onSaveLabelName(n);}catch(e){console.error('[labels] save name',e)}}
   const{generateLabelsPDF}=await import('@/lib/labels');
   const cw=Math.min(150,Math.max(20,+o.custom.w||0)),ch=Math.min(150,Math.max(20,+o.custom.h||0));
   const doc=await generateLabelsPDF({labels,firmName:n,sizeId:o.size,style:o.style,showPrice:o.price,code:o.price&&o.pc.on?{front:o.pc.front,back:o.pc.back}:null,custom:{w:cw,h:ch},rotate:o.rotate});
-  doc.save(`labels_${o.size==='custom'?cw+'x'+ch:o.size}mm${o.rotate?'_rotated':''}_${labels.length}.pdf`);
+  const file=`labels_${o.size==='custom'?cw+'x'+ch:o.size}mm${o.rotate?'_rotated':''}_${labels.length}.pdf`;
+  if(win&&!win.closed){doc.autoPrint();win.location.href=doc.output('bloburl',{filename:file});return 'printed';}
+  doc.save(file);return 'saved';
 }
+const openPrintTab=()=>{const w=window.open('','_blank');if(w){try{w.document.write('<p style="font:16px system-ui;padding:24px;color:#444">Preparing labels…</p>');}catch{}}return w;};
 
 function Catalog({P,setP,mob,firm,onSaveLabelName}){
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
@@ -911,7 +916,7 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
   const bulkDelete=async()=>{if(selected.size===0){showT('Select products to delete','err');return}if(!confirm(`Delete ${selected.size} product${selected.size!==1?'s':''}?`))return;try{for(const id of selected){await api.del('/api/products?id='+id);}setP(ps=>ps.filter(p=>!selected.has(p.id)));setSelected(new Set());showT(`Deleted ${selected.size} product${selected.size!==1?'s':''}!`);}catch(e){showT('Failed: '+e.message,'err')}};
   const[showQR,setShowQR]=useState(false);const[qrQty,setQrQty]=useState({});const[dlQR,setDlQR]=useState(false);
   const lo=useLabelOpts(firm);
-  const downloadQRLabels=async()=>{if(selected.size===0){showT('Select products','err');return}if(dlQR)return;setDlQR(true);try{const labels=[];for(const p of rows.filter(p=>selected.has(p.id))){const n=Math.max(1,parseInt(qrQty[p.id])||p.qty||1);for(let i=0;i<n;i++)labels.push({name:p.name,articleNo:p.articleNo,size:p.size,color:p.color,price:p.price,sku:p.sku});}if(labels.length>2000){showT('Too many labels at once (max 2000). Select fewer products.','err');return}await downloadLabelPdf(labels,lo,firm,onSaveLabelName);showT(`${labels.length} label${labels.length!==1?'s':''} downloaded`);setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){console.error('[labels]',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false)}};
+  const downloadQRLabels=async(print)=>{if(selected.size===0){showT('Select products','err');return}if(dlQR)return;const win=print?openPrintTab():null;setDlQR(true);try{const labels=[];for(const p of rows.filter(p=>selected.has(p.id))){const n=Math.max(1,parseInt(qrQty[p.id])||p.qty||1);for(let i=0;i<n;i++)labels.push({name:p.name,articleNo:p.articleNo,size:p.size,color:p.color,price:p.price,sku:p.sku});}if(labels.length>2000){win&&win.close();showT('Too many labels at once (max 2000). Select fewer products.','err');return}const r=await downloadLabelPdf(labels,lo,firm,onSaveLabelName,win);showT(r==='printed'?'Labels opened for printing in a new tab':print?'Pop-up blocked — labels downloaded instead':`${labels.length} label${labels.length!==1?'s':''} downloaded`);setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){win&&win.close();console.error('[labels]',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false)}};
   const dupKey=p=>(p.articleNo||'').trim().toUpperCase()+'|'+(p.size||'').toUpperCase()+'|'+(p.name||'').trim().toUpperCase();
   const dupCount=P.reduce((m,p)=>{if(p.articleNo){const k=dupKey(p);m[k]=(m[k]||0)+1;}return m;},{});
   const isDup=p=>p.articleNo&&dupCount[dupKey(p)]>1;
@@ -1025,7 +1030,7 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
         <div style={{display:'grid',gridTemplateColumns:mob?'1fr':'1fr',gap:12,marginBottom:14,maxHeight:'50vh',overflowY:'auto'}}>
           {rows.filter(p=>selected.has(p.id)).map(p=><div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:8,background:BG,borderRadius:6}}><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{p.name}</div><div style={{fontSize:10,color:MUT}}>{p.sku}</div></div><div style={{display:'flex',alignItems:'center',gap:4}}><input type='number' min='1' value={qrQty[p.id]||p.qty||1} onChange={e=>setQrQty(q=>({...q,[p.id]:parseInt(e.target.value)||1}))} style={{...S.inp,width:60,padding:'6px 8px',fontSize:12}} placeholder='Qty'/><span style={{fontSize:11,color:MUT,minWidth:30}}>labels</span></div></div>)}
         </div>
-        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button style={S.btn()} onClick={()=>{setShowQR(false);setQrQty({})}} disabled={dlQR}>Cancel</button><button style={S.btn('pri')} onClick={downloadQRLabels} disabled={dlQR}>{dlQR?'Generating...':'Download labels PDF'}</button></div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button style={S.btn()} onClick={()=>{setShowQR(false);setQrQty({})}} disabled={dlQR}>Cancel</button><button style={S.btn()} onClick={()=>downloadQRLabels(false)} disabled={dlQR}>Download PDF</button><button style={S.btn('pri')} onClick={()=>downloadQRLabels(true)} disabled={dlQR}>{dlQR?'Generating...':'Print labels'}</button></div>
       </div>
     </div>}
   </div>;}
@@ -1166,9 +1171,9 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
   const lo=useLabelOpts(firm);const[showLbl,setShowLbl]=useState(false);const[lblBusy,setLblBusy]=useState(false);
   const scanLabels=()=>items.flatMap(it=>{const sizes=String(it.sizes||'').split(',').map(x=>x.trim()).filter(Boolean);const sz=sizes.length?sizes:[''];const n=Math.max(0,Math.round(+(it.qrCount??it.qty)||0));const base=Math.floor(n/sz.length),extra=n%sz.length;
     return sz.flatMap((z,k)=>Array.from({length:base+(k<extra?1:0)},()=>({name:it.name,articleNo:String(it.articleNo||'').trim(),size:z,color:it.color||'',price:+it.price||0,sku:''})));});
-  const downloadScanLabels=async()=>{const noArt=items.filter(it=>!String(it.articleNo||'').trim());if(noArt.length){showT('Add an article no. for: '+noArt.slice(0,3).map(x=>x.name).join(', ')+(noArt.length>3?'…':'')+' — the label code is built from it','err');return}
+  const downloadScanLabels=async(print)=>{const noArt=items.filter(it=>!String(it.articleNo||'').trim());if(noArt.length){showT('Add an article no. for: '+noArt.slice(0,3).map(x=>x.name).join(', ')+(noArt.length>3?'…':'')+' — the label code is built from it','err');return}
     const labels=scanLabels();if(!labels.length){showT('Set the number of labels','err');return}if(labels.length>2000){showT('Too many labels at once (max 2000)','err');return}
-    setLblBusy(true);try{await downloadLabelPdf(labels,lo,firm,onSaveLabelName);showT(labels.length+' labels downloaded');setShowLbl(false);}catch(e){showT('Failed: '+e.message,'err')}finally{setLblBusy(false)}};
+    const win=print?openPrintTab():null;setLblBusy(true);try{const r=await downloadLabelPdf(labels,lo,firm,onSaveLabelName,win);showT(r==='printed'?'Labels opened for printing in a new tab':print?'Pop-up blocked — labels downloaded instead':labels.length+' labels downloaded');setShowLbl(false);}catch(e){win&&win.close();showT('Failed: '+e.message,'err')}finally{setLblBusy(false)}};
   const[scanSaving,onceScan]=useOnce();
   const addToCatalog=async()=>{
     const invNo=String(supplierBanner?.invoiceNo||'').trim();
@@ -1496,7 +1501,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
         </div>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
           <span style={{fontSize:12,color:MUT}}>{scanLabels().length} labels</span>
-          <div style={{display:'flex',gap:8}}><button style={S.btn()} onClick={()=>setShowLbl(false)} disabled={lblBusy}>Cancel</button><button style={S.btn('pri')} onClick={downloadScanLabels} disabled={lblBusy}>{lblBusy?'Generating...':'Download labels PDF'}</button></div>
+          <div style={{display:'flex',gap:8}}><button style={S.btn()} onClick={()=>setShowLbl(false)} disabled={lblBusy}>Cancel</button><button style={S.btn()} onClick={()=>downloadScanLabels(false)} disabled={lblBusy}>Download PDF</button><button style={S.btn('pri')} onClick={()=>downloadScanLabels(true)} disabled={lblBusy}>{lblBusy?'Generating...':'Print labels'}</button></div>
         </div>
       </div>
     </div>}
