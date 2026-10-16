@@ -10,6 +10,7 @@ import { INDUSTRY_TEMPLATES, getAvailableIndustries, UOM_BY_INDUSTRY } from '@/l
 import QRScanner from '@/components/QRScanner';
 import { LABEL_SIZES as LABEL_SIZE_OPTS } from '@/lib/labels';
 import { GST_STATES } from '@/lib/gstStates';
+import { fileToPayload, readJsonResponse, compressImage } from '@/lib/upload';
 import PhotoInvoice from '@/components/PhotoInvoice';
 import InvoicePreview from '@/components/InvoicePreview';
 import StockCheck from '@/components/StockCheck';
@@ -78,7 +79,7 @@ const authH=async()=>{const h={'Content-Type':'application/json','Authorization'
 // Server replies 402 {code:'PLAN_REQUIRED'} when the plan doesn't include a feature; the app shows the upgrade popup.
 const askUpgrade=detail=>{if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('shopos:upgrade',{detail}));};
 const checkPlanReply=async res=>{if(res.status!==402)return false;let j={};try{j=await res.clone().json();}catch{}if(j.code==='PLAN_REQUIRED'){askUpgrade(j);return j;}return false;};
-const handleRes=async res=>{if(res.ok)return res.json();let j={};try{j=await res.clone().json();}catch{}if(res.status===402&&j.code==='PLAN_REQUIRED')askUpgrade(j);throw new Error(j.error||`HTTP ${res.status}: ${res.statusText}`);};
+const handleRes=async res=>{if(res.ok)return res.json();let j={};try{j=await res.clone().json();}catch{}if(res.status===402&&j.code==='PLAN_REQUIRED')askUpgrade(j);throw new Error(j.error||(res.status===413?'The file is too large to upload (limit about 2.5 MB). Try a smaller photo or PDF.':`HTTP ${res.status}: ${res.statusText}`));};
 // Client-side mirror of the plan (server is the real gate)
 let _plan=null;
 const freePlan=()=>!!(_plan&&_plan.external===false);
@@ -1090,18 +1091,18 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
     const isPDF=file.type==='application/pdf';
     if(file.size>(isPDF?20:10)*1024*1024){setErr('File too large — max '+(isPDF?'20MB for PDFs':'10MB for images')+'.');return;}
     setFileType(file.type);setScanFileName(file.name);setMarkupPct('');
-    const reader=new FileReader();
-    reader.onload=async ev=>{
-      const b64=ev.target.result.split(',')[1];
-      setPreview(isPDF?null:ev.target.result);
-      setScanning(true);setErr(null);setScanStatus('');setSupplierBanner(null);
+    {
+      setScanning(true);setErr(null);setScanStatus('Preparing file...');setSupplierBanner(null);
 
       try{
+        // Photos are shrunk in the browser so the upload stays under the server's 4.5 MB limit
+        const payload=await fileToPayload(file);const b64=payload.base64;
+        setPreview(isPDF?null:payload.dataUrl);
         // Call backend API instead of Gemini directly (so trial limits are checked FIRST)
         console.log('[ScanBill] Calling backend /api/extract-invoice-items with trial check...');
         setScanStatus('Checking trial limits...');
 
-        const mimeType=file.type||'image/jpeg';
+        const mimeType=payload.mimeType;
 
         // Get auth token from Supabase
         const {data:{session}} = await supabase.auth.getSession();
@@ -1128,7 +1129,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
           body:JSON.stringify({imageBase64:b64,geminiKey:k,mimeType,industryType:industry,userCategories})
         });
 
-        const data=await backendRes.json();
+        const data=await readJsonResponse(backendRes);
 
         // Plan doesn't include AI scanning
         if(backendRes.status===402||backendRes.status===403){
@@ -1161,7 +1162,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
         setScanning(false);
         setScanStatus('');
       }
-    };reader.readAsDataURL(file);
+    }
   },[]);
 
   const upd=(i,k,v)=>setItems(it=>it.map((x,ix)=>ix===i?{...x,[k]:v,...(k==='price'&&!markupPct?{_costPrice:v}:{})}:x));
@@ -2834,8 +2835,8 @@ function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
         const isImage=file.type.startsWith('image/')||file.type==='application/pdf';
         let body;
         if(isImage){
-          const b64=ev.target.result.split(',')[1];
-          body={apiKey:k,imageData:b64,imageType:file.type,bills:custBills,payments:custPay};
+          const p=await fileToPayload(file);   // shrinks photos to fit the upload limit
+          body={apiKey:k,imageData:p.base64,imageType:p.mimeType,bills:custBills,payments:custPay};
           setScanStatus('Gemini reading bank statement image...');
         }else{
           // CSV or text
@@ -2845,7 +2846,7 @@ function BankReconciliation({customerId,customerName,B,Py,firm,mob}){
         }
         const res=await fetch('/api/reconcile',{method:'POST',headers:await authH(),body:JSON.stringify(body)});
         if(await checkPlanReply(res))throw new Error('AI statement reading is available on Business plans.');
-        const data=await res.json();
+        const data=await readJsonResponse(res);
         if(data.error)throw new Error(data.error);
         setTransactions(data.transactions||[]);
         setStats(data.stats);
@@ -2970,16 +2971,15 @@ function CustomerBankStatements({customerId}){
 
   const upload=async e=>{
     const file=e.target.files[0];if(!file)return;
-    const maxMB=5;
-    if(file.size>maxMB*1024*1024){showT('File too large — max 5MB','err');return;}
+    if(file.size>15*1024*1024){showT('File too large — max 15MB','err');return;}
     setUploading(true);
     const reader=new FileReader();
-    reader.onload=async ev=>{
+    reader.onload=async()=>{
       try{
-        const b64=ev.target.result.split(',')[1];
+        const p=await fileToPayload(file);   // photos are shrunk; PDFs must be under ~2.5 MB
         const res=await api.post('/api/statements',{
-          customerId,fileName:file.name,fileType:file.type,
-          fileData:b64,fileSize:file.size,
+          customerId,fileName:p.resized?file.name.replace(/\.[^.]+$/,'')+'.jpg':file.name,fileType:p.mimeType,
+          fileData:p.base64,fileSize:Math.round(p.base64.length*0.75),
           description:desc,statementDate:stmtDate||null,
         });
         if(res.error)throw new Error(res.error);
@@ -3199,7 +3199,7 @@ function BroadcastModal({firm,C,B,Py,onClose,onSent}){
   const[filter,setFilter]=useState('all');const[selected,setSelected]=useState(new Set());const[msg,setMsg]=useState('');const[image,setImage]=useState(null);const[imagePreview,setImagePreview]=useState('');const[sending,setSending]=useState(false);const[toast,showT]=useToast();
   const options={all:{label:'All Customers',count:C.length},balance:{label:'Customers with Balance',count:C.filter(c=>{const cb=B.filter(b=>b.customerId===c.id);const tp=Py.filter(p=>(cb.some(b=>b.id===p.billId)||isOBPay(p,c.id))&&!(p.mode==='Cheque'&&p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);return(c.openingBalance||0)+(cb.reduce((s,b)=>s+b.total,0))-tp>0;}).length}};
   const filtered=filter==='all'?C:filter==='balance'?C.filter(c=>{const cb=B.filter(b=>b.customerId===c.id);const tp=Py.filter(p=>(cb.some(b=>b.id===p.billId)||isOBPay(p,c.id))&&!(p.mode==='Cheque'&&p.chequeStatus==='bounced')).reduce((s,p)=>s+p.amount,0);return(c.openingBalance||0)+(cb.reduce((s,b)=>s+b.total,0))-tp>0;}):[];
-  const handleImageChange=e=>{const file=e.target.files?.[0];if(!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)){showT('Only JPG, PNG, WebP allowed','err');return;}if(file.size>5242880){showT('Image too large (max 5MB)','err');return;}const reader=new FileReader();reader.onload=ev=>{setImagePreview(ev.target?.result);setImage(file);};reader.readAsDataURL(file);};
+  const handleImageChange=async e=>{const file=e.target.files?.[0];if(!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)){showT('Only JPG, PNG, WebP allowed','err');return;}if(file.size>15*1024*1024){showT('Image too large (max 15MB)','err');return;}try{const p=await compressImage(file,{maxSide:1600,maxB64:1500000});setImagePreview(p.dataUrl);setImage(file);}catch(err){showT(err.message,'err');}};
   const send=async()=>{
     if(!msg.trim()){showT('Enter a message','err');return;}
     if(selected.size===0){showT('Select customers','err');return;}
@@ -3507,7 +3507,7 @@ function Ledger({B,Py,setPy,C,Ret,firm,mob,SI}){
 /* ── BANK STATEMENTS ── */
 function BankStatements({BS,setBS,mob}){
   const[toast,showT]=useToast();const[uploading,setUploading]=useState(false);
-  const handleUpload=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>(10*1024*1024)){showT('File too large (max 10MB)','err');return;}setUploading(true);try{const r=new FileReader();r.onload=async ev=>{const b64=ev.target.result.split(',')[1];const res=await api.post('/api/bank-statements',{fileName:file.name,fileType:file.type,fileData:b64,fileSize:file.size,description:''});setBS(bs=>[res,...bs]);showT('Bank statement uploaded!');};r.readAsDataURL(file);}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
+  const handleUpload=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(file.size>(15*1024*1024)){showT('File too large (max 15MB)','err');return;}setUploading(true);try{const p=await fileToPayload(file);const res=await api.post('/api/bank-statements',{fileName:p.resized?file.name.replace(/\.[^.]+$/,'')+'.jpg':file.name,fileType:p.mimeType,fileData:p.base64,fileSize:Math.round(p.base64.length*0.75),description:''});setBS(bs=>[res,...bs]);showT('Bank statement uploaded!');}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
   return<div>
     {toast}
     <div style={S.h2}>Bank Statements</div>
@@ -3617,7 +3617,7 @@ function FirmReconciliation({BS,B,Py,firm,C,gk,mob}){
 
   const handleFile=async e=>{const file=e.target.files[0];if(!file)return;setSelectedFile(file);setSessionLabel(file.name.replace(/\.[^/.]+$/,''));};
 
-  const uploadAndReconcile=async()=>{if(!selectedFile)return;if(needsPaid('ai','AI statement reading'))return;if(!gk()){showT('Add Gemini API key in Settings first','err');return;}setScanStatus('Extracting transactions...');setUploading(true);try{const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(String(ev.target.result).split(',')[1]);r.onerror=()=>rej(new Error('Could not read file'));r.readAsDataURL(selectedFile);});const mimeType=selectedFile.type||'application/octet-stream';const isText=mimeType.startsWith('text/')||/\.(csv|txt)$/i.test(selectedFile.name);const csvText=isText?new TextDecoder().decode(Uint8Array.from(atob(b64),c=>c.charCodeAt(0))):'';const reconcileRes=await api.post('/api/reconcile',isText?{apiKey:gk(),csvText}:{apiKey:gk(),imageData:b64,imageType:mimeType});const txns=reconcileRes.transactions||[];setScanStatus('Creating session...');const sessionRes=await api.post('/api/bank-reconciliation',{label:sessionLabel||'Bank Statement',bankStmtId:null,transactions:txns});setSessionId(sessionRes.id);setSelectedFile(null);setScanStatus('');showT('Statement processed! Review & match entries below.');}catch(err){showT('Error: '+err.message,'err');setScanStatus('');}finally{setUploading(false);}};
+  const uploadAndReconcile=async()=>{if(!selectedFile)return;if(needsPaid('ai','AI statement reading'))return;if(!gk()){showT('Add Gemini API key in Settings first','err');return;}setScanStatus('Extracting transactions...');setUploading(true);try{const p=await fileToPayload(selectedFile);const b64=p.base64;const mimeType=p.mimeType;const isText=mimeType.startsWith('text/')||/\.(csv|txt)$/i.test(selectedFile.name);const csvText=isText?new TextDecoder().decode(Uint8Array.from(atob(b64),c=>c.charCodeAt(0))):'';const reconcileRes=await api.post('/api/reconcile',isText?{apiKey:gk(),csvText}:{apiKey:gk(),imageData:b64,imageType:mimeType});const txns=reconcileRes.transactions||[];setScanStatus('Creating session...');const sessionRes=await api.post('/api/bank-reconciliation',{label:sessionLabel||'Bank Statement',bankStmtId:null,transactions:txns});setSessionId(sessionRes.id);setSelectedFile(null);setScanStatus('');showT('Statement processed! Review & match entries below.');}catch(err){showT('Error: '+err.message,'err');setScanStatus('');}finally{setUploading(false);}};
 
   if(sessionId){return<ReviewSession sessionId={sessionId} onBack={()=>{setSessionId(null);setSelectedFile(null);}} C={C} mob={mob} showT={showT}/>;}
 
@@ -3914,9 +3914,10 @@ function Settings({firm,saveFirm,ses,mob,theme,setTheme,planInfo,onUpgrade,activ
   const S=_theme==='modern'?MODERN_S:MINIMAL_S;
   const up=k=>v=>setF(x=>({...x,[k]:v}));
   const save=()=>{saveFirm(f);setSaved(true);setTimeout(()=>setSaved(false),2500)};
-  const handleLogo=e=>{const file=e.target.files[0];if(!file)return;setLogoUploading(true);const r=new FileReader();r.onload=ev=>{setF(x=>({...x,logo:ev.target.result}));setLogoUploading(false);};r.readAsDataURL(file);};
+  // Logo and UPI QR are stored inside firm settings and printed on every invoice — keep them small
+  const handleLogo=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;setLogoUploading(true);try{const p=await compressImage(file,{maxSide:600,maxB64:300000});setF(x=>({...x,logo:p.dataUrl}));}catch(err){alert('Could not use this image: '+err.message);}finally{setLogoUploading(false);}};
   const removeLogo=()=>setF(x=>({...x,logo:''}));
-  const handleUpiQrImage=e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{setF(x=>({...x,upiQrImage:ev.target.result}));};r.readAsDataURL(file);};
+  const handleUpiQrImage=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;try{const p=await compressImage(file,{maxSide:800,maxB64:400000});setF(x=>({...x,upiQrImage:p.dataUrl}));}catch(err){alert('Could not use this image: '+err.message);}};
   const removeUpiQrImage=()=>setF(x=>({...x,upiQrImage:''}));
   // Sync form state when firm data loads from API
   useEffect(()=>{if(firm&&firm.name)setF(firm);},[firm]);
@@ -4684,7 +4685,7 @@ function Suppliers({SI,setSI,SS,setSS,Py,setPy,Ret,firm,gk,mob}){
   const[payMode,setPayMode]=useState('Cash');
   const[payRef,setPayRef]=useState('');
   const[payCity,setPayCity]=useState('');
-  const handleStatementUpload=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(!selSupplier){showT('Select a supplier first','err');return;}if(file.size>(10*1024*1024)){showT('File too large (max 10MB)','err');return;}setUploading(true);setUpName(file.name);try{const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(String(ev.target.result).split(',')[1]);r.onerror=()=>rej(new Error('Could not read file'));r.readAsDataURL(file);});const res=await api.post('/api/supplier-statements',{supplierId:null,supplierName:selSupplier,fileName:file.name,fileType:file.type,fileData:b64,fileSize:file.size,description:'',statementDate:stmtDate||new Date().toISOString().split('T')[0]});if(res?.error)throw new Error(res.error);setSS(ss=>[res,...ss]);showT('Statement uploaded for '+selSupplier);}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
+  const handleStatementUpload=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(!selSupplier){showT('Select a supplier first','err');return;}if(file.size>(15*1024*1024)){showT('File too large (max 15MB)','err');return;}setUploading(true);setUpName(file.name);try{const p=await fileToPayload(file);const res=await api.post('/api/supplier-statements',{supplierId:null,supplierName:selSupplier,fileName:p.resized?file.name.replace(/\.[^.]+$/,'')+'.jpg':file.name,fileType:p.mimeType,fileData:p.base64,fileSize:Math.round(p.base64.length*0.75),description:'',statementDate:stmtDate||new Date().toISOString().split('T')[0]});if(res?.error)throw new Error(res.error);setSS(ss=>[res,...ss]);showT('Statement uploaded for '+selSupplier);}catch(err){showT('Upload failed: '+err.message,'err');}finally{setUploading(false);}};
   const[upName,setUpName]=useState('');const[stmtDate,setStmtDate]=useState(new Date().toISOString().split('T')[0]);
   const relatedStatements=selSupplier?SS.filter(s=>normalizeSupplierName(s.supplierName)===normalizeSupplierName(selSupplier)):SS;
   const BLANK={supplierName:'',supplierGSTIN:'',invoiceNo:'',invoiceDate:'',place:'',subtotal:'',discount:'',discountPct:'',cgst:'',sgst:'',igst:'',roundOff:'',total:'',notes:''};
