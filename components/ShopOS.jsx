@@ -31,7 +31,7 @@ import { buildEwbPayload, normVehicle, TRANS_MODES } from '@/lib/ewaybill';
 // This allows ANY business to use ANY categories: Jeans, AC, Ring, Red chilly, Clothing, etc.
 const CATS=['All'];
 const SIZES=['XS','S','M','L','XL','XXL','3XL','Free Size','28','30','32','34','36','38','40','42'];
-const GST_RATES=[0,5,12,18,28];
+const GST_RATES=[0,5,12,18,28,40];   // GST 2.0 (22 Sep 2025): 5% / 18% main slabs, 40% special; 12% / 28% kept for older items
 const PAY_MODES=['Cash','Online (UPI)','Cheque'];
 const UPI_APPS=['PhonePe','Google Pay','Paytm','BHIM','Other'];
 const CHQ=[
@@ -1152,7 +1152,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
         if(parsed._truncated)setErr('Response was cut off — recovered '+parsed.items.length+' items. Check for missing items.');
         if(parsed.supplier||parsed.invoiceNo)setSupplierBanner({supplier:parsed.supplier||'',gstin:parsed.supplierGSTIN||'',invoiceNo:parsed.invoiceNo||'',invoiceDate:parsed.invoiceDate||'',place:parsed.place||'',subtotal:+parsed.subtotal||0,discount:+parsed.discount||0,discountPct:+parsed.discountPct||0,cgst:+parsed.cgst||0,sgst:+parsed.sgst||0,igst:+parsed.igst||0,invoiceTotal:+parsed.invoiceTotal||0});
         // OCR validation - accept extracted category or default to Others
-        const extracted=(parsed.items||[]).map(i=>({articleNo:String(i.articleNo||'').trim(),name:String(i.name||'Unknown').trim(),hsn:String(i.hsn||'').trim(),sizes:String(i.sizes||i.size||'Free Size').trim(),qty:Math.max(1,+i.qty||1),price:+i.price||0,_costPrice:+i.price||0,gst:[0,5,12,18,28].includes(+i.gst)?+i.gst:5,cat:(i.cat&&String(i.cat).trim())||'Others',color:String(i.color||'').trim(),qrCount:Math.max(1,+i.qty||1)}));
+        const extracted=(parsed.items||[]).map(i=>({articleNo:String(i.articleNo||'').trim(),name:String(i.name||'Unknown').trim(),hsn:String(i.hsn||'').trim(),sizes:String(i.sizes||i.size||'Free Size').trim(),qty:Math.max(1,+i.qty||1),price:+i.price||0,_costPrice:+i.price||0,gst:GST_RATES.includes(+i.gst)?+i.gst:5,cat:(i.cat&&String(i.cat).trim())||'Others',color:String(i.color||'').trim(),qrCount:Math.max(1,+i.qty||1)}));
         if(extracted.length===0)setErr('No items found. Try a clearer photo or add manually below.');
         else setItems(extracted);
       }catch(e){
@@ -1789,6 +1789,9 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
   };
   addBCRef.current=addBC; // keep ref in sync for keydown handler
   const addG=p=>{if(p.qty===0){showT(p.name+' out of stock','err');return}if((cart.find(x=>x.id===p.id)?.qty||0)>=p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');return}setCart(c=>{const ex=c.find(x=>x.id===p.id);if(ex)return ex.qty<p.qty?c.map(x=>x.id===p.id?{...x,qty:x.qty+1}:x):c;return[...c,{id:p.id,qty:1,price:p.price,gstRate:p.gst,name:p.name,sku:p.sku,cat:p.cat,size:p.size,hsn:p.hsn||'',articleNo:p.articleNo||'',color:p.color||''}]});};
+  // GST per cart line (starts from the product's rate); can also be saved back to the product
+  const setLineGst=(id,r)=>setCart(c=>c.map(x=>x.id===id?{...x,gstRate:r}:x));
+  const saveProductGst=async(p,r)=>{try{const u=await api.put('/api/products',{id:p.id,gst:r});setP(ps=>ps.map(x=>x.id===p.id?{...x,...u}:x));showT('GST '+r+'% saved for '+p.name);}catch(e){showT('Could not save: '+e.message,'err');}};
   const uQty=(id,d)=>{const p=P.find(x=>x.id===id);const cur=cart.find(x=>x.id===id)?.qty||0;if(d>0&&p&&cur+d>p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');return;}setCart(c=>c.map(x=>x.id===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));};
   // Discount is given before GST (GST Act s.15(3)): it is shared across lines by value and lowers each line's taxable value
   const calc=()=>{const r2=n=>Math.round(n*100)/100;const lines=cart.map(c=>{const base=gstMode==='incl'?c.price/(1+c.gstRate/100):c.price;return{c,base,gross:base*c.qty};});const sub=lines.reduce((s,l)=>s+l.gross,0);
@@ -1822,13 +1825,16 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
       {!isRel&&<span title='Change in Settings → Account & Firm' style={{fontSize:10.5,fontWeight:600,color:gstMode==='incl'?PUR:BL,background:gstMode==='incl'?PURL:BLL,padding:'3px 8px',borderRadius:10}}>{gstMode==='incl'?'Prices incl. GST':'Prices + GST'}</span>}
     </div>
     <div style={{overflowY:'auto',maxHeight:mob?200:300}}>
-      {cart.length===0?<MT msg='Scan barcode or tap product'/>:cart.map(c=>{const p=P.find(x=>x.id===c.id);if(!p)return null;const base=gstMode==='incl'?p.price/(1+p.gst/100):p.price;const line=isRel?base*c.qty:base*(1+p.gst/100)*c.qty;return<div key={c.id} style={{padding:'7px 12px',borderBottom:'0.5px solid #f0ede8',fontSize:12}}>
+      {cart.length===0?<MT msg='Scan barcode or tap product'/>:cart.map(c=>{const p=P.find(x=>x.id===c.id);if(!p)return null;const r=+c.gstRate||0;const base=gstMode==='incl'?c.price/(1+r/100):c.price;const line=isRel?base*c.qty:base*(1+r/100)*c.qty;return<div key={c.id} style={{padding:'7px 12px',borderBottom:'0.5px solid #f0ede8',fontSize:12}}>
         <div style={{fontWeight:600,marginBottom:2}}>{p.name}</div>
         <div style={{fontSize:10,color:MUT,marginBottom:3}}>{p.cat}·{p.size}{p.articleNo?' · '+p.articleNo:''}</div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:4}}><button onClick={()=>uQty(c.id,-1)} style={{width:22,height:22,border:'0.5px solid '+BORD,borderRadius:4,background:'none',cursor:'pointer'}}>-</button><span style={{minWidth:24,textAlign:'center',fontWeight:700,color:c.qty>p.qty?RD:TXT}}>{c.qty}</span><button onClick={()=>uQty(c.id,1)} style={{width:22,height:22,border:'0.5px solid '+BORD,borderRadius:4,background:'none',cursor:c.qty>=p.qty?'not-allowed':'pointer',opacity:c.qty>=p.qty?0.35:1}}>+</button><span style={{fontSize:9,color:c.qty>p.qty?RD:MUT,marginLeft:2}}>/ {p.qty}</span></div>
+          {!isRel&&<select aria-label='GST rate' title='GST rate for this item' value={r} onChange={e=>setLineGst(c.id,+e.target.value)} style={{fontSize:11,padding:'2px 4px',borderRadius:5,border:'0.5px solid '+(r===0?AMB:BORD),background:r===0?AMBL:'#fff',color:r===0?AMB:TXT,fontWeight:600}}>{GST_RATES.map(g=><option key={g} value={g}>GST {g}%</option>)}</select>}
           <span style={{...S.mono,color:BL,fontWeight:700}}>{fmt(line)}</span>
-        </div></div>;})}
+        </div>
+        {!isRel&&r!==(+p.gst||0)&&<div style={{fontSize:10,marginTop:3,color:MUT}}>Catalog has {+p.gst||0}%. <button onClick={()=>saveProductGst(p,r)} style={{background:'none',border:'none',color:BL,cursor:'pointer',padding:0,fontSize:10,fontWeight:700}}>Save {r}% for this product</button></div>}
+        </div>;})}
     </div>
     <div style={{padding:'10px 14px',borderTop:'0.5px solid '+BORD}}>
       <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:MUT,marginBottom:2}}><span>Subtotal</span><span style={S.mono}>{fmt(sub)}</span></div>
@@ -1923,7 +1929,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
       <div style={S.card}><div style={S.h2}>Order Summary</div>
         {isRel?<div style={{padding:'8px 12px',background:AMBL,borderRadius:8,marginBottom:12}}><div style={{fontWeight:700,color:AMB}}>Walk-in: {rn||'(unnamed)'}</div>{ri&&<div style={{fontSize:11,color:MUT}}>{ri}</div>}</div>:sel&&<div style={{padding:'8px 12px',background:BLL,borderRadius:8,marginBottom:12}}><div style={{fontWeight:700}}>{sel.name}</div><div style={{fontSize:12,color:BL}}>{sel.phone}{sel.shopname?' · '+sel.shopname:''}</div>{sel.gst&&<div style={{...S.mono,fontSize:10}}>GSTIN: {sel.gst}</div>}</div>}
         <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:400}}><thead><tr>{['Product','Size','Qty','Rate',!isRel&&'GST%','Total'].filter(Boolean).map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-        <tbody>{cart.map(c=>{const p=P.find(x=>x.id===c.id);if(!p)return null;const base=gstMode==='incl'?p.price/(1+p.gst/100):p.price;const line=isRel?base*c.qty:base*(1+p.gst/100)*c.qty;return<tr key={c.id}><td style={S.td}><div style={{fontWeight:600}}>{p.name}</div>{p.articleNo&&<div style={{fontSize:9,color:BL,...S.mono}}>Art: {p.articleNo}</div>}</td><td style={S.td}><Bdg c='gray'>{p.size}</Bdg></td><td style={{...S.td,...S.mono,fontWeight:700}}>{c.qty}</td><td style={{...S.td,...S.mono}}>{fmt(base)}</td>{!isRel&&<td style={S.td}><Bdg c='blue'>{p.gst}%</Bdg></td>}<td style={{...S.td,...S.mono,fontWeight:800,color:GR}}>{fmt(line)}</td></tr>;})}
+        <tbody>{cart.map(c=>{const p=P.find(x=>x.id===c.id);if(!p)return null;const r=+c.gstRate||0;const base=gstMode==='incl'?c.price/(1+r/100):c.price;const line=isRel?base*c.qty:base*(1+r/100)*c.qty;return<tr key={c.id}><td style={S.td}><div style={{fontWeight:600}}>{p.name}</div>{p.articleNo&&<div style={{fontSize:9,color:BL,...S.mono}}>Art: {p.articleNo}</div>}</td><td style={S.td}><Bdg c='gray'>{p.size}</Bdg></td><td style={{...S.td,...S.mono,fontWeight:700}}>{c.qty}</td><td style={{...S.td,...S.mono}}>{fmt(base)}</td>{!isRel&&<td style={S.td}><select aria-label='GST rate' value={r} onChange={e=>setLineGst(c.id,+e.target.value)} style={{fontSize:11,padding:'2px 4px',borderRadius:5,border:'0.5px solid '+(r===0?AMB:BORD),background:r===0?AMBL:'#fff',fontWeight:600}}>{GST_RATES.map(g=><option key={g} value={g}>{g}%</option>)}</select></td>}<td style={{...S.td,...S.mono,fontWeight:800,color:GR}}>{fmt(line)}</td></tr>;})}
         </tbody></table></div>
         <div style={{marginTop:14,padding:'12px 14px',background:billDate<todayLocal()?AMBL:BG,borderRadius:8,border:'0.5px solid '+(billDate<todayLocal()?AMB+'60':BORD),display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
           <div style={{flex:'0 0 auto'}}><label style={S.lbl}>Invoice date</label><input style={{...S.inp,width:170,margin:0}} type='date' value={billDate} max={todayLocal()} onChange={e=>setBillDate(e.target.value||todayLocal())}/></div>
