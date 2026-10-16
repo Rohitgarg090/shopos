@@ -2082,37 +2082,21 @@ function Invoice({bill,firm,payments=[]}){
         </div>
       </td>
     </tr></tbody></table>
+    {/* Item lines show amounts before GST; the tax is shown once, in the totals and HSN summary below */}
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8,fontSize:11,tableLayout:'fixed'}}>
-      <colgroup>
-        <col style={{width:'2%'}}/>
-        <col style={{width:'15%'}}/>
-        <col style={{width:'4%'}}/>
-        <col style={{width:'4%'}}/>
-        <col style={{width:'5%'}}/>
-        <col style={{width:'2%'}}/>
-        <col style={{width:'4%'}}/>
-        <col style={{width:'5%'}}/>
-        <col style={{width:'6%'}}/>
-        {!igst&&<col style={{width:'5%'}}/>}
-        <col style={{width:'6%'}}/>
-        <col style={{width:'8%'}}/>
-      </colgroup>
-      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{(igst?['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','IGST','Total']:['#','Description','Art.No','HSN','Cat','Size','Qty','Rate','GST%','CGST','SGST','Total']).map((h,idx)=><th key={h} style={{padding:'4px 2px',textAlign:idx<6?'left':h==='Qty'||h==='GST%'?'center':'right',fontSize:9,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis'}}>{h}</th>)}</tr></thead>
-      <tbody>{(bill.items||[]).map((item,i)=><tr key={i} style={{background:i%2===0?'#fafafa':'#fff'}}>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'left',overflow:'hidden'}}>{i+1}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',fontWeight:600,overflow:'hidden',wordBreak:'break-word'}}>{item.name}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700,textAlign:'left',overflow:'hidden'}}>{item.articleNo||'-'}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',fontFamily:'monospace',fontSize:9,color:'#1B5E8A',fontWeight:700,textAlign:'left',overflow:'hidden'}}>{item.hsn||'-'}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'left',overflow:'hidden'}}>{item.cat}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'left',overflow:'hidden'}}>{item.size}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'center',overflow:'hidden'}}>{item.qty||0}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt(item.rate||0)}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'center',overflow:'hidden'}}>{item.gstRate||0}%</td>
-        {igst?<td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt(item.gstAmt||0)}</td>:<>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt((item.gstAmt||0)/2)}</td>
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',overflow:'hidden'}}>{fmt((item.gstAmt||0)/2)}</td></>}
-        <td style={{padding:'3px 2px',borderBottom:'0.5px solid #eee',textAlign:'right',fontWeight:700,overflow:'hidden'}}>{fmt(item.total||0)}</td>
-      </tr>)}</tbody>
+      <colgroup>{[4,30,11,9,9,7,11,7,12].map((w,k)=><col key={k} style={{width:w+'%'}}/>)}</colgroup>
+      <thead><tr style={{background:'#1B3A6B',color:'#fff'}}>{[['#','left'],['Description','left'],['Art. No','left'],['HSN','left'],['Size','left'],['Qty','center'],['Rate','right'],['GST','center'],['Total','right']].map(([h,al])=><th key={h} style={{padding:'5px 4px',textAlign:al,fontSize:9.5,fontWeight:600}}>{h}</th>)}</tr></thead>
+      <tbody>{(bill.items||[]).map((item,i)=>{const td={padding:'4px 4px',borderBottom:'0.5px solid #eee',overflow:'hidden'};return<tr key={i} style={{background:i%2===0?'#fafafa':'#fff'}}>
+        <td style={td}>{i+1}</td>
+        <td style={{...td,fontWeight:600,wordBreak:'break-word'}}>{item.name}</td>
+        <td style={{...td,fontFamily:'monospace',fontSize:9.5,color:'#1B5E8A',fontWeight:700}}>{item.articleNo||'-'}</td>
+        <td style={{...td,fontFamily:'monospace',fontSize:9.5}}>{item.hsn||'-'}</td>
+        <td style={td}>{item.size||'-'}</td>
+        <td style={{...td,textAlign:'center'}}>{item.qty||0}</td>
+        <td style={{...td,textAlign:'right'}}>{fmt(item.rate||0)}</td>
+        <td style={{...td,textAlign:'center'}}>{item.gstRate||0}%</td>
+        <td style={{...td,textAlign:'right',fontWeight:700}}>{fmt((+item.rate||0)*(+item.qty||0))}</td>
+      </tr>;})}</tbody>
     </table>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8}}><tbody><tr>
       <td style={{width:'55%',verticalAlign:'top',paddingRight:14}}>
@@ -2125,7 +2109,7 @@ function Invoice({bill,firm,payments=[]}){
           <tr><td style={{padding:'3px 7px',color:'#555'}}>Subtotal</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.subtotal)}</td></tr>
           {bill.discountBeforeTax&&hasDiscount&&<><tr style={{color:GR}}><td style={{padding:'3px 7px'}}>Discount</td><td style={{padding:'3px 7px',textAlign:'right'}}>- {fmt(bill.discount)}</td></tr><tr><td style={{padding:'3px 7px',color:'#555',fontWeight:600}}>Taxable Value</td><td style={{padding:'3px 7px',textAlign:'right',fontWeight:600}}>{fmt(bill.subtotal-bill.discount)}</td></tr></>}
           {!bill.isRelative&&igst&&(bill.gst||0)>0&&<tr><td style={{padding:'3px 7px',color:'#555'}}>IGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.gst||0)}</td></tr>}
-          {!bill.isRelative&&!igst&&(bill.gst||0)>0&&<><tr><td style={{padding:'3px 7px',color:'#555'}}>CGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr><tr><td style={{padding:'3px 7px',color:'#555'}}>SGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt((bill.gst||0)/2)}</td></tr></>}
+          {!bill.isRelative&&!igst&&(bill.gst||0)>0&&(()=>{const g=Math.round((bill.gst||0)*100)/100,cg=Math.round(g*50)/100;return<><tr><td style={{padding:'3px 7px',color:'#555'}}>CGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(cg)}</td></tr><tr><td style={{padding:'3px 7px',color:'#555'}}>SGST</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(Math.round((g-cg)*100)/100)}</td></tr></>;})()}
           {bill.isRelative&&(bill.markup||0)>0&&<tr><td style={{padding:'3px 7px',color:'#555'}}>Other Charges</td><td style={{padding:'3px 7px',textAlign:'right'}}>{fmt(bill.markup)}</td></tr>}
           {hasDiscount&&!bill.discountBeforeTax&&<tr style={{color:GR}}><td style={{padding:'3px 7px'}}>Discount</td><td style={{padding:'3px 7px',textAlign:'right'}}>- {fmt(bill.discount)}</td></tr>}
           <tr style={{background:'#1B3A6B',color:'#fff'}}><td style={{padding:'6px 7px',fontWeight:700}}>Grand Total</td><td style={{padding:'6px 7px',textAlign:'right',fontWeight:800,fontFamily:'monospace'}}>{fmt(bill.total)}</td></tr>
