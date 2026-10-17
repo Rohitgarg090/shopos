@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import ModernLogin from '@/components/auth/modern-login';
 import UserMenu from '@/components/ui/user-menu';
@@ -137,18 +138,38 @@ const getStyle=(minimalStyle,modernStyle)=>_theme==='modern'?modernStyle:minimal
 const S=MINIMAL_S;
 
 /* ── mini helpers ── */
+// Finds the product for a scanned barcode / QR (USB scanner and phone camera use the same rules):
+// 1. exact barcode, or an old barcode of a product that was merged into this one (skuAliases)
+// 2. that entry is out of stock → another entry with the same article + size that has stock
+// 3. otherwise article (+ size) from "ART:..|SIZE:.." QR or "article|size" barcode, preferring stock
+function findScanned(P,code){
+  const s=String(code||'').trim();if(!s)return null;
+  let sku=s,art=s,size=null;
+  if(s.startsWith('ART:')){const parts=Object.fromEntries(s.split('|').map(x=>{const[k,...v]=x.split(':');return[k,v.join(':')];}));sku=parts.BC||'';art=parts.ART||'';size=parts.SIZE||null;}
+  else if(s.includes('|')){const[a,z]=s.split('|');sku='';art=a;size=z||null;}
+  const nrm=v=>String(v||'').trim().toUpperCase();
+  const pick=l=>l.find(x=>x.qty>0)||l[0];
+  const bySku=c=>c?(P.find(x=>x.sku===c)||P.find(x=>(x.customAttrs?.skuAliases||[]).includes(c))):null;
+  let p=bySku(sku)||bySku(s);
+  if(p&&!(p.qty>0)&&p.articleNo){const alt=P.find(x=>x.id!==p.id&&x.qty>0&&nrm(x.articleNo)===nrm(p.articleNo)&&nrm(x.size)===nrm(p.size));if(alt)p=alt;}
+  if(!p&&art)p=pick(P.filter(x=>nrm(x.articleNo)===nrm(art)&&(!size||nrm(x.size)===nrm(size))));
+  if(!p)p=pick(P.filter(x=>nrm(x.articleNo)===nrm(s)));
+  return p||null;
+}
+
 function MoreMenu({items,label='⋯',btnStyle}){
   const[pos,setPos]=useState(null);const btn=useRef(null);
   useEffect(()=>{if(!pos)return;const close=e=>{if(!e.target.closest?.('[data-moremenu]'))setPos(null);};const off=()=>setPos(null);document.addEventListener('mousedown',close);window.addEventListener('scroll',off,true);window.addEventListener('resize',off);return()=>{document.removeEventListener('mousedown',close);window.removeEventListener('scroll',off,true);window.removeEventListener('resize',off);};},[pos]);
   if(!items.some(Boolean))return null;
-  const toggle=()=>{if(pos){setPos(null);return}const r=btn.current.getBoundingClientRect();const h=items.filter(Boolean).length*34+10;setPos({right:window.innerWidth-r.right,top:r.bottom+h>window.innerHeight?r.top-h-4:r.bottom+4});};
+  const toggle=()=>{if(pos){setPos(null);return}const r=btn.current.getBoundingClientRect();const h=items.filter(Boolean).length*34+12;const below=r.bottom+4,above=r.top-h-4;setPos({right:Math.max(8,window.innerWidth-r.right),top:below+h<=window.innerHeight-8?below:Math.max(8,above)});};
   return<span data-moremenu style={{display:'inline-flex'}}>
     <button ref={btn} onClick={toggle} title='More actions' style={btnStyle||{width:30,height:28,border:'1px solid '+BORD,borderRadius:7,background:pos?BLL:'#fff',cursor:'pointer',fontSize:16,lineHeight:1,color:TXT}}>{label}</button>
-    {pos&&<div data-moremenu style={{position:'fixed',top:pos.top,right:pos.right,zIndex:1000,background:'#fff',border:'1px solid '+BORD,borderRadius:9,boxShadow:'0 10px 30px rgba(0,0,0,0.12)',padding:5,minWidth:170}}>
+    {/* Rendered into <body>: cards with blur/transform would otherwise trap and clip a fixed-position menu */}
+    {pos&&typeof document!=='undefined'&&createPortal(<div data-moremenu style={{position:'fixed',top:pos.top,right:pos.right,zIndex:1000,background:'#fff',border:'1px solid '+BORD,borderRadius:9,boxShadow:'0 10px 30px rgba(0,0,0,0.12)',padding:5,minWidth:170}}>
       {items.filter(Boolean).map((it,i)=><button key={i} disabled={it.disabled} onClick={()=>{setPos(null);it.onClick();}}
         onMouseEnter={e=>{if(!it.disabled)e.currentTarget.style.background=it.danger?RDL:'#F4F2EE'}} onMouseLeave={e=>e.currentTarget.style.background='none'}
         style={{display:'block',width:'100%',textAlign:'left',padding:'7px 10px',border:'none',background:'none',borderRadius:6,fontSize:12,fontWeight:600,cursor:it.disabled?'default':'pointer',color:it.disabled?'#bbb':it.danger?RD:TXT,borderTop:it.danger&&i>0?'1px solid #f0ede8':'none'}}>{it.label}</button>)}
-    </div>}
+    </div>,document.body)}
   </span>;}
 function Bdg({c,children}){const m={green:[GRL,GR],amber:[AMBL,AMB],red:[RDL,RD],blue:[BLL,BL],gray:['#F1EFE8','#555'],purple:[PURL,PUR]};const[bg,co]=m[c]||m.gray;return<span style={_theme==='modern'?{background:bg,color:co,padding:'3px 8px',borderRadius:6,fontSize:11,fontWeight:600,display:'inline-block',letterSpacing:'0.3px'}:{background:bg,color:co,padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:700,display:'inline-block'}}>{children}</span>;}
 function Fld({label,children,span2}){return<div style={{marginBottom:8,gridColumn:span2?'span 2':'auto'}}><label style={S.lbl}>{label}</label>{children}</div>}
@@ -929,6 +950,18 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
   const view=rows.filter(p=>stockF==='all'||(stockF==='low'&&p.qty>0&&p.qty<=LOW)||(stockF==='out'&&p.qty<=0)||(stockF==='dup'&&isDup(p)))
     .sort((a,b)=>sortBy==='name'?(a.name||'').localeCompare(b.name||'')||(a.articleNo||'').localeCompare(b.articleNo||''):sortBy==='article'?(a.articleNo||'').localeCompare(b.articleNo||'',undefined,{numeric:true}):sortBy==='priceHi'?b.price-a.price:sortBy==='priceLo'?a.price-b.price:sortBy==='stockLo'?a.qty-b.qty:0);
   const shown=view.slice(0,limit);
+  // Duplicates (same article, size and name): merge into one product — stock added together, history and
+  // old stickers keep working (see supabase/migrations/products_merge.sql)
+  const dupGroups=Object.values(P.filter(isDup).reduce((m,p)=>{(m[dupKey(p)]=m[dupKey(p)]||[]).push(p);return m;},{}));
+  const keeperOf=g=>[...g].sort((a,b)=>(b.qty||0)-(a.qty||0))[0];
+  const[merging,setMerging]=useState(false);
+  const mergeGroup=async(g,keep)=>{const others=g.filter(p=>p.id!==keep.id);if(!others.length)return;const r=await api.post('/api/products/merge',{keepId:keep.id,mergeIds:others.map(p=>p.id)});setP(ps=>ps.filter(p=>!others.some(o=>o.id===p.id)).map(p=>p.id===keep.id&&r.product?r.product:p));};
+  const mergeInto=async keep=>{const g=dupGroups.find(x=>x.some(p=>p.id===keep.id))||[];const others=g.filter(p=>p.id!==keep.id);if(!others.length)return;const total=g.reduce((t,p)=>t+Math.max(0,p.qty||0),0);
+    if(!confirm(`Merge ${others.length} duplicate${others.length>1?'s':''} of "${keep.name}" (Art ${keep.articleNo}, ${keep.size}) into barcode ${keep.sku}?\n\nStock becomes ${total} pcs. Stickers already printed for the duplicates will still scan.`))return;
+    setMerging(true);try{await mergeGroup(g,keep);showT('Merged — '+keep.name+' now has '+total+' pcs');}catch(e){showT('Merge failed: '+e.message,'err');}finally{setMerging(false);}};
+  const mergeAll=async()=>{const n=dupGroups.reduce((t,g)=>t+g.length-1,0);if(!n)return;
+    if(!confirm(`Merge ${n} duplicate entr${n>1?'ies':'y'} into ${dupGroups.length} product${dupGroups.length>1?'s':''}?\n\nFor each group the entry with the most stock is kept and the others' stock is added to it. Stickers already printed will still scan.`))return;
+    setMerging(true);let ok=0;try{for(const g of dupGroups){await mergeGroup(g,keeperOf(g));ok++;}showT(`Merged ${ok} group${ok>1?'s':''}`);}catch(e){showT(`Merged ${ok} of ${dupGroups.length} — then failed: ${e.message}`,'err');}finally{setMerging(false);}};
   const allSel=view.length>0&&view.every(p=>selected.has(p.id));
   const stat=(k,l,v,sub,c)=><button key={k} onClick={()=>setStockF(stockF===k?'all':k)} style={{textAlign:'left',background:'#fff',border:'1px solid '+(stockF===k&&k!=='all'?c:BORD),boxShadow:stockF===k&&k!=='all'?'0 0 0 3px '+c+'22':'none',borderRadius:12,padding:'12px 14px',cursor:'pointer',position:'relative',overflow:'hidden'}}>
     <span style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:c}}/>
@@ -969,6 +1002,10 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
         <button style={S.btn('dan',true)} onClick={bulkDelete}>Delete</button>
         <button style={{...S.btn('def',true),marginLeft:'auto'}} onClick={()=>setSelected(new Set())}>Clear</button>
       </div>}
+      {stockF==='dup'&&dupGroups.length>0&&<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',padding:'10px 12px',margin:'0 0 10px',background:PURL,border:'0.5px solid '+PUR+'40',borderRadius:9,fontSize:12.5}}>
+        <span><strong>{dupGroups.reduce((t,g)=>t+g.length,0)} entries</strong> are duplicates of <strong>{dupGroups.length}</strong> product{dupGroups.length>1?'s':''}. Merge them so stock is in one place and every sticker scans to the right item.</span>
+        <button style={{...S.btn('pur'),opacity:merging?0.6:1}} disabled={merging} onClick={mergeAll}>{merging?'Merging…':'Merge all duplicates'}</button>
+      </div>}
       <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:680}}>
         <thead><tr>
           <th style={{...S.th,width:34,textAlign:'center'}}><input type='checkbox' checked={allSel} onChange={()=>{const s=new Set(selected);if(allSel)view.forEach(p=>s.delete(p.id));else view.forEach(p=>s.add(p.id));setSelected(s);}} style={{cursor:'pointer'}}/></th>
@@ -994,7 +1031,7 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
             <td style={{...S.td,textAlign:'center'}}><span style={{display:'inline-block',minWidth:52,fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:10,background:out?RDL:low?AMBL:GRL,color:out?RD:low?AMB:GR}}>{out?'Out':p.qty+' pcs'}</span></td>
             <td style={{...S.td,textAlign:'right',whiteSpace:'nowrap'}}><div style={{display:'inline-flex',gap:5,alignItems:'center'}}>
               <button style={S.btn('def',true)} onClick={()=>openEdit(p)}>Edit</button>
-              <MoreMenu items={[{label:'Download QR label',onClick:()=>{setSelected(new Set([p.id]));setShowQR(true);}},{label:'Delete product',danger:true,onClick:()=>del(p.id)}]}/>
+              <MoreMenu items={[{label:'Download QR label',onClick:()=>{setSelected(new Set([p.id]));setShowQR(true);}},isDup(p)&&{label:'Merge duplicates into this',onClick:()=>mergeInto(p),disabled:merging},{label:'Delete product',danger:true,onClick:()=>del(p.id)}]}/>
             </div></td>
           </tr>;})}
         </tbody>
@@ -1182,6 +1219,7 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
       showT(`Bill ${invNo} from ${normalizeSupplierName(supplierBanner.supplier)} is already saved — stock was not added again.`,'err');return;
     }
     let n=0;
+    const cat=[...P];   // catalog + products created earlier in this run (a bill can list the same article twice)
     for(const item of items){
       const sizes=(item.sizes||'Free Size').split(',').map(s=>s.trim()).filter(Boolean);
       // split the bill quantity exactly across sizes (5 over S,M,L → 2,2,1 — never more than billed)
@@ -1191,10 +1229,10 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
         const perSize=baseQty+(k<extraQty?1:0);
         const pname=item.name+(sizes.length>1?' ('+sz+')':'');
         // same article + size (ignoring case/spaces) is the same product — add stock instead of creating a duplicate
-        const matches=P.filter(p=>nrm(p.size)===nrm(sz)&&(item.articleNo?nrm(p.articleNo)===nrm(item.articleNo):(nrm(p.name)===nrm(pname)||nrm(p.name)===nrm(item.name))));
+        const matches=cat.filter(p=>nrm(p.size)===nrm(sz)&&(item.articleNo?nrm(p.articleNo)===nrm(item.articleNo):(nrm(p.name)===nrm(pname)||nrm(p.name)===nrm(item.name))));
         const ex=matches.sort((a,b)=>(b.qty||0)-(a.qty||0))[0];
-        if(ex){const u=perSize>0?await api.put('/api/products',{id:ex.id,addQty:perSize}):ex;setP(ps=>ps.map(p=>p.id===ex.id?u:p));}
-        else{const c=await api.post('/api/products',{name:pname,sku:rnd9(),cat:item.cat||'Others',sub:'',size:sz,color:item.color||'',price:+item.price,gst:+item.gst,qty:perSize,hsn:item.hsn||'',articleNo:item.articleNo||''});setP(ps=>[c,...ps]);}
+        if(ex){const u=perSize>0?await api.put('/api/products',{id:ex.id,addQty:perSize}):ex;setP(ps=>ps.map(p=>p.id===ex.id?u:p));const k=cat.findIndex(p=>p.id===ex.id);if(k>=0)cat[k]=u;}
+        else{const c=await api.post('/api/products',{name:pname,sku:rnd9(),cat:item.cat||'Others',sub:'',size:sz,color:item.color||'',price:+item.price,gst:+item.gst,qty:perSize,hsn:item.hsn||'',articleNo:item.articleNo||''});setP(ps=>[c,...ps]);cat.unshift(c);}
         n++;
       }
     }
@@ -1625,16 +1663,7 @@ function CameraScanner({products,onAddItems,onClose}){
           const now=Date.now();
           if(code===lastCodeRef.current&&now-lastTimeRef.current<1500)return;
           lastCodeRef.current=code;lastTimeRef.current=now;
-          // Parse ShopOS QR format: ART:articleNo|SIZE:size|BC:sku
-          let searchSku=code,searchArt=code,searchSize=null;
-          if(code.startsWith('ART:')){
-            const parts=Object.fromEntries(code.split('|').map(p=>{const[k,...v]=p.split(':');return[k,v.join(':')];}));
-            searchSku=parts.BC||code;searchArt=parts.ART||code;searchSize=parts.SIZE||null;
-          }else if(code.includes('|')){const[a,z]=code.split('|');searchArt=a;searchSize=z||null;}
-          const P=productsRef.current;const nrm=v=>String(v||'').trim().toUpperCase();const pick=l=>l.find(x=>x.qty>0)||l[0];
-          const p=P.find(x=>x.sku===searchSku)||P.find(x=>x.sku===code)
-            ||pick(P.filter(x=>searchArt&&nrm(x.articleNo)===nrm(searchArt)&&(!searchSize||nrm(x.size)===nrm(searchSize))))
-            ||pick(P.filter(x=>nrm(x.articleNo)===nrm(code)));
+          const p=findScanned(productsRef.current,code);
           if(!p){setErr('Not found: '+code);setTimeout(()=>setErr(null),2000);return;}
           beep();
           setFlash(true);setTimeout(()=>setFlash(false),200);
@@ -1767,20 +1796,7 @@ function POS({P,setP,C,setC,B,setB,firm,nextInv,getNextInvoiceNo,mob,onDone}){
 
   const addBC=code=>{
     const s=code.trim();if(!s)return;
-    // Parse ShopOS QR format: ART:articleNo|SIZE:size|BC:sku
-    let searchSku=s,searchArt=s,searchSize=null;
-    if(s.startsWith('ART:')){
-      const parts=Object.fromEntries(s.split('|').map(p=>{const[k,...v]=p.split(':');return[k,v.join(':')];}));
-      searchSku=parts.BC||s;searchArt=parts.ART||s;searchSize=parts.SIZE||null;
-    }else if(s.includes('|')){const[a,z]=s.split('|');searchArt=a;searchSize=z||null;}   // barcode printed before the item was in the catalog: article|size
-    // Find product by BC (sku), articleNo, or raw input
-    // Exact barcode first; otherwise article (+size from QR) ignoring case — and if the catalog has several
-    // entries for it (duplicates or sizes), pick one that still has stock.
-    const nrm=v=>String(v||'').trim().toUpperCase();
-    const pick=list=>list.find(x=>x.qty>0)||list[0];
-    let p=P.find(x=>x.sku===searchSku)||P.find(x=>x.sku===s)
-      ||pick(P.filter(x=>searchArt&&nrm(x.articleNo)===nrm(searchArt)&&(!searchSize||nrm(x.size)===nrm(searchSize))))
-      ||pick(P.filter(x=>nrm(x.articleNo)===nrm(s)));
+    const p=findScanned(P,s);
     if(!p){showT('Product not found: '+s,'err');return;}
     if(p.qty===0){showT(p.name+' out of stock!','err');return;}
     if((cart.find(x=>x.id===p.id)?.qty||0)>=p.qty){showT('Only '+p.qty+' pcs of '+p.name+(p.articleNo?' ('+p.articleNo+')':'')+' in stock','err');setBc('');return;}
