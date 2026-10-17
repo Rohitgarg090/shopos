@@ -140,7 +140,7 @@ const S=MINIMAL_S;
 /* ── mini helpers ── */
 // Finds the product for a scanned barcode / QR (USB scanner and phone camera use the same rules):
 // 1. exact barcode, or an old barcode of a product that was merged into this one (skuAliases)
-// 2. that entry is out of stock → another entry with the same article + size that has stock
+// 2. that entry is out of stock → another entry with the same article + size + price that has stock
 // 3. otherwise article (+ size) from "ART:..|SIZE:.." QR or "article|size" barcode, preferring stock
 function findScanned(P,code){
   const s=String(code||'').trim();if(!s)return null;
@@ -151,7 +151,7 @@ function findScanned(P,code){
   const pick=l=>l.find(x=>x.qty>0)||l[0];
   const bySku=c=>c?(P.find(x=>x.sku===c)||P.find(x=>(x.customAttrs?.skuAliases||[]).includes(c))):null;
   let p=bySku(sku)||bySku(s);
-  if(p&&!(p.qty>0)&&p.articleNo){const alt=P.find(x=>x.id!==p.id&&x.qty>0&&nrm(x.articleNo)===nrm(p.articleNo)&&nrm(x.size)===nrm(p.size));if(alt)p=alt;}
+  if(p&&!(p.qty>0)&&p.articleNo){const alt=P.find(x=>x.id!==p.id&&x.qty>0&&nrm(x.articleNo)===nrm(p.articleNo)&&nrm(x.size)===nrm(p.size)&&Math.round(+x.price||0)===Math.round(+p.price||0));if(alt)p=alt;}
   if(!p&&art)p=pick(P.filter(x=>nrm(x.articleNo)===nrm(art)&&(!size||nrm(x.size)===nrm(size))));
   if(!p)p=pick(P.filter(x=>nrm(x.articleNo)===nrm(s)));
   return p||null;
@@ -939,7 +939,8 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
   const[showQR,setShowQR]=useState(false);const[qrQty,setQrQty]=useState({});const[dlQR,setDlQR]=useState(false);
   const lo=useLabelOpts(firm);
   const downloadQRLabels=async(print)=>{if(selected.size===0){showT('Select products','err');return}if(dlQR)return;const win=print?openPrintTab():null;setDlQR(true);try{const labels=[];for(const p of rows.filter(p=>selected.has(p.id))){const n=Math.max(1,parseInt(qrQty[p.id])||p.qty||1);for(let i=0;i<n;i++)labels.push({name:p.name,articleNo:p.articleNo,size:p.size,color:p.color,price:p.price,sku:p.sku});}if(labels.length>2000){win&&win.close();showT('Too many labels at once (max 2000). Select fewer products.','err');return}const r=await downloadLabelPdf(labels,lo,firm,onSaveLabelName,win);showT(r==='printed'?'Labels opened for printing in a new tab':print?'Pop-up blocked — labels downloaded instead':`${labels.length} label${labels.length!==1?'s':''} downloaded`);setShowQR(false);setSelected(new Set());setQrQty({});}catch(e){win&&win.close();console.error('[labels]',e);showT('Failed: '+e.message,'err')}finally{setDlQR(false)}};
-  const dupKey=p=>(p.articleNo||'').trim().toUpperCase()+'|'+(p.size||'').toUpperCase()+'|'+(p.name||'').trim().toUpperCase();
+  // Duplicates = same article + size + price (a different price is a real variant, not a duplicate)
+  const dupKey=p=>(p.articleNo||'').trim().toUpperCase()+'|'+(p.size||'').trim().toUpperCase()+'|'+Math.round(+p.price||0);
   const dupCount=P.reduce((m,p)=>{if(p.articleNo){const k=dupKey(p);m[k]=(m[k]||0)+1;}return m;},{});
   const isDup=p=>p.articleNo&&dupCount[dupKey(p)]>1;
   const LOW=3;
@@ -978,7 +979,7 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
       {stat('all','Stock value',fmt(stockVal),'at selling price',BL)}
       {stat('low','Low stock',lowN,LOW+' pcs or fewer',AMB)}
       {stat('out','Out of stock',outN,'tap to view',RD)}
-      {stat('dup','Possible duplicates',dupN,'same article, size & name',PUR)}
+      {stat('dup','Possible duplicates',dupN,'same article, size & price',PUR)}
     </div>
     <div style={{...S.card,padding:0,overflow:'hidden'}}>
       <div style={{padding:'12px 14px',borderBottom:'1px solid '+BORD,display:'flex',flexDirection:'column',gap:10}}>
@@ -1018,7 +1019,7 @@ function Catalog({P,setP,mob,firm,onSaveLabelName}){
             <td style={S.td}><div style={{display:'flex',alignItems:'center',gap:10}}>
               <img src={qrU(p.sku,60)} width={34} height={34} loading='lazy' style={{borderRadius:6,border:'1px solid '+BORD,flexShrink:0,background:'#fff'}} alt=''/>
               <div style={{minWidth:0}}>
-                <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6}}>{p.name}{isDup(p)&&<span title='Another product has the same article no., size and name' style={{fontSize:9,fontWeight:700,color:PUR,background:PURL,padding:'1px 6px',borderRadius:8}}>DUPLICATE</span>}</div>
+                <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6}}>{p.name}{isDup(p)&&<span title='Another product has the same article no., size and price' style={{fontSize:9,fontWeight:700,color:PUR,background:PURL,padding:'1px 6px',borderRadius:8}}>DUPLICATE</span>}</div>
                 <div style={{fontSize:10,color:MUT,...S.mono}}>{p.sku}{p.hsn?' · HSN '+p.hsn:''}</div>
                 {p.customAttrs&&Object.entries(p.customAttrs).some(([,v])=>v)&&<div style={{fontSize:9.5,color:BL,marginTop:2}}>{Object.entries(p.customAttrs).map(([k,v])=>v?`${k}: ${v}`:null).filter(Boolean).join(' · ')}</div>}
               </div>
@@ -1228,8 +1229,10 @@ function ScanBill({P,setP,firm,activeFirm,SI,setSI,onDone,onSaveLabelName,onUpgr
       for(const [k,sz] of sizes.entries()){
         const perSize=baseQty+(k<extraQty?1:0);
         const pname=item.name+(sizes.length>1?' ('+sz+')':'');
-        // same article + size (ignoring case/spaces) is the same product — add stock instead of creating a duplicate
-        const matches=cat.filter(p=>nrm(p.size)===nrm(sz)&&(item.articleNo?nrm(p.articleNo)===nrm(item.articleNo):(nrm(p.name)===nrm(pname)||nrm(p.name)===nrm(item.name))));
+        // Same article + size + price (ignoring case/spaces, price to the rupee) is the same product → add stock.
+        // A different size or a different price is a new product (prices of an article can change between bills).
+        const samePrice=(a,b)=>Math.round(+a||0)===Math.round(+b||0);
+        const matches=cat.filter(p=>nrm(p.size)===nrm(sz)&&samePrice(p.price,item.price)&&(item.articleNo?nrm(p.articleNo)===nrm(item.articleNo):(nrm(p.name)===nrm(pname)||nrm(p.name)===nrm(item.name))));
         const ex=matches.sort((a,b)=>(b.qty||0)-(a.qty||0))[0];
         if(ex){const u=perSize>0?await api.put('/api/products',{id:ex.id,addQty:perSize}):ex;setP(ps=>ps.map(p=>p.id===ex.id?u:p));const k=cat.findIndex(p=>p.id===ex.id);if(k>=0)cat[k]=u;}
         else{const c=await api.post('/api/products',{name:pname,sku:rnd9(),cat:item.cat||'Others',sub:'',size:sz,color:item.color||'',price:+item.price,gst:+item.gst,qty:perSize,hsn:item.hsn||'',articleNo:item.articleNo||''});setP(ps=>[c,...ps]);cat.unshift(c);}
