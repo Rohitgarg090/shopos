@@ -2097,6 +2097,8 @@ function Invoice({bill,firm,payments=[]}){
         <td style={{...td,textAlign:'center'}}>{item.gstRate||0}%</td>
         <td style={{...td,textAlign:'right',fontWeight:700}}>{fmt((+item.rate||0)*(+item.qty||0))}</td>
       </tr>;})}</tbody>
+      {(bill.items||[]).length>0&&(()=>{const its=bill.items||[],tq=its.reduce((s,i)=>s+(+i.qty||0),0),tt=its.reduce((s,i)=>s+(+i.rate||0)*(+i.qty||0),0),ft={padding:'5px 4px',borderTop:'1px solid #1B3A6B',background:'#eef1f6',fontWeight:800};
+        return<tfoot><tr><td style={ft}></td><td style={ft}>Total</td><td style={ft}></td><td style={ft}></td><td style={ft}></td><td style={{...ft,textAlign:'center'}}>{tq} pcs</td><td style={ft}></td><td style={ft}></td><td style={{...ft,textAlign:'right'}}>{fmt(tt)}</td></tr></tfoot>;})()}
     </table>
     <table style={{width:'100%',borderCollapse:'collapse',marginBottom:8}}><tbody><tr>
       <td style={{width:'55%',verticalAlign:'top',paddingRight:14}}>
